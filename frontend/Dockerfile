@@ -1,13 +1,12 @@
 FROM node:22-slim
 WORKDIR /app
-
-# ۱. کپی کردن تمام فایل‌ها و پکیج‌ها
+# 1. Copy all files and packages
 COPY . .
-
-# ۲. بیلد کردن پروژه
+# Install dependencies
+RUN npm install
+# 2. Build the project
 ENV NODE_ENV=production
 RUN npm run build
-
-# ⚡️ خط جدید و حیاتی: دستور روشن کردن سرور پروداکشن Next.js و گوش دادن به پورت ۳۰۰۰
+# Critical: start the Next.js production server, listening on port 3000
 EXPOSE 3000
 CMD ["npm", "start"]
