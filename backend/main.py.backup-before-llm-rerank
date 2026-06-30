@@ -1,0 +1,250 @@
+import os
+import json
+import csv
+import math
+import re
+from difflib import SequenceMatcher
+from pathlib import Path
+
+import requests
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+
+app = FastAPI(title="Iran Pharma Chat API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+BASE_DIR = Path(__file__).resolve().parent
+
+FAQ_PATH = BASE_DIR / "knowledge" / "faq.csv"
+PROMPT_JSON_PATH = BASE_DIR / "prompts" / "system_prompt.json"
+
+OLLAMA_CHAT_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
+OLLAMA_BASE_URL = OLLAMA_CHAT_URL.replace("/api/chat", "")
+OLLAMA_EMBED_URL = f"{OLLAMA_BASE_URL}/api/embeddings"
+
+MODEL = "iranpharma-assistant"
+EMBED_MODEL = "nomic-embed-text"
+
+DEFAULT_FALLBACK = (
+    "این سؤال خارج از حوزه نمایشگاه ایران‌فارما است یا اطلاعات آن در پایگاه دانش ثبت نشده است."
+)
+
+
+class ChatRequest(BaseModel):
+    message: str
+
+
+def normalize_text(text: str) -> str:
+    text = text.strip().lower()
+    text = text.replace("ي", "ی").replace("ك", "ک")
+    text = text.replace("ۀ", "ه").replace("ة", "ه")
+    text = text.replace("‌", " ")
+    text = re.sub(r"[^\w\sآ-ی]", " ", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def load_prompt_config():
+    with open(PROMPT_JSON_PATH, encoding="utf-8") as f:
+        return json.load(f)
+
+
+prompt_config = load_prompt_config()
+FALLBACK = prompt_config.get("fallback", DEFAULT_FALLBACK)
+
+
+def similarity(a: str, b: str) -> float:
+    return SequenceMatcher(None, normalize_text(a), normalize_text(b)).ratio()
+
+
+def embed_text(text: str):
+    response = requests.post(
+        OLLAMA_EMBED_URL,
+        json={"model": EMBED_MODEL, "prompt": normalize_text(text)},
+        timeout=60,
+    )
+    response.raise_for_status()
+    return response.json()["embedding"]
+
+
+def cosine_similarity(a, b):
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(y * y for y in b))
+
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+
+    return dot / (norm_a * norm_b)
+
+
+def keyword_score(user_message: str, faq_question: str) -> float:
+    user_words = set(normalize_text(user_message).split())
+    faq_words = set(normalize_text(faq_question).split())
+
+    if not user_words or not faq_words:
+        return 0.0
+
+    common = user_words.intersection(faq_words)
+    return len(common) / len(user_words)
+
+
+def load_faqs():
+    faqs = []
+
+    with open(FAQ_PATH, newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+
+        for row in reader:
+            question = row.get("question", "").strip()
+            answer = row.get("answer", "").strip()
+
+            if question and answer:
+                faqs.append({
+                    "id": row.get("id", ""),
+                    "category": row.get("category", ""),
+                    "question": question,
+                    "question_norm": normalize_text(question),
+                    "answer": answer,
+                })
+
+    return faqs
+
+
+FAQS = load_faqs()
+FAQ_EMBEDDINGS = []
+
+print(f"Loading embeddings for {len(FAQS)} FAQs...", flush=True)
+
+for faq in FAQS:
+    FAQ_EMBEDDINGS.append(embed_text(faq["question"]))
+
+print("FAQ embeddings loaded.", flush=True)
+
+
+def search_examples(user_message: str):
+    best = None
+    best_score = 0
+
+    for example in prompt_config.get("examples", []):
+        score = similarity(user_message, example.get("input", ""))
+
+        if score > best_score:
+            best_score = score
+            best = example
+
+    if best and best_score >= 0.90:
+        return best.get("response"), best_score
+
+    return None, best_score
+
+
+def search_exact_faq(user_message: str):
+    user_norm = normalize_text(user_message)
+
+    for faq in FAQS:
+        if user_norm == faq["question_norm"]:
+            return faq, 1.0
+
+    best = None
+    best_score = 0
+
+    for faq in FAQS:
+        score = similarity(user_norm, faq["question_norm"])
+        if score > best_score:
+            best_score = score
+            best = faq
+
+    if best and best_score >= 0.92:
+        return best, best_score
+
+    return None, best_score
+
+
+def search_hybrid_faq(user_message: str, top_k: int = 10):
+    query_embedding = embed_text(user_message)
+    scored = []
+
+    for faq, faq_embedding in zip(FAQS, FAQ_EMBEDDINGS):
+        emb_score = cosine_similarity(query_embedding, faq_embedding)
+        key_score = keyword_score(user_message, faq["question"])
+
+        final_score = (emb_score * 0.65) + (key_score * 0.35)
+
+        scored.append({
+            "faq": faq,
+            "score": final_score,
+            "emb_score": emb_score,
+            "key_score": key_score,
+        })
+
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    return scored[:top_k]
+
+
+@app.get("/")
+def root():
+    return {
+        "status": "ok",
+        "model": MODEL,
+        "embed_model": EMBED_MODEL,
+        "faq_count": len(FAQS),
+        "mode": "debug_top_10_hybrid",
+    }
+
+
+@app.post("/chat")
+def chat(req: ChatRequest):
+    user_message = req.message.strip()
+
+    if not user_message:
+        return {
+            "answer": FALLBACK,
+            "source": "empty",
+            "score": 0,
+        }
+
+    example_answer, example_score = search_examples(user_message)
+
+    if example_answer:
+        return {
+            "answer": example_answer,
+            "source": "example",
+            "score": round(example_score, 2),
+        }
+
+    exact_faq, exact_score = search_exact_faq(user_message)
+
+    if exact_faq:
+        return {
+            "answer": exact_faq["answer"],
+            "source": "faq_exact",
+            "score": round(exact_score, 2),
+        }
+
+    results = search_hybrid_faq(user_message, top_k=10)
+
+    best = results[0]
+    
+    if best["score"] >= 0.70:
+        return {
+            "answer": best["faq"]["answer"],
+            "source": "faq_hybrid",
+            "matched_question": best["faq"]["question"],
+            "score": round(best["score"], 3),
+        }
+    
+    return {
+        "answer": FALLBACK,
+        "source": "fallback",
+        "score": round(best["score"], 3),
+    }

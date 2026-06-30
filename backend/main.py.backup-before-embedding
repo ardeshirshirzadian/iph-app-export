@@ -1,0 +1,193 @@
+import os
+import json
+import csv
+import requests
+from difflib import SequenceMatcher
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+
+app = FastAPI(title="Iran Pharma Chat API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+
+FAQ_PATH = BASE_DIR / "knowledge" / "faq.csv"
+PROMPT_JSON_PATH = BASE_DIR / "prompts" / "system_prompt.json"
+
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
+MODEL = "iranpharma-assistant"
+
+DEFAULT_FALLBACK = (
+    "این سؤال خارج از حوزه نمایشگاه ایران‌فارما است یا اطلاعات آن در پایگاه دانش ثبت نشده است."
+)
+
+
+class ChatRequest(BaseModel):
+    message: str
+
+
+def load_prompt_config():
+    try:
+        with open(PROMPT_JSON_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        raise RuntimeError("فایل system_prompt.json پیدا نشد")
+    except json.JSONDecodeError:
+        raise RuntimeError("فرمت فایل system_prompt.json معتبر نیست")
+
+
+def build_system_prompt(config: dict) -> str:
+    identity = config.get("identity", "")
+    fallback = config.get("fallback", DEFAULT_FALLBACK)
+    rules = config.get("rules", [])
+
+    rules_text = "\n".join([f"- {rule}" for rule in rules])
+
+    return f"""
+هویت:
+{identity}
+
+قوانین:
+{rules_text}
+
+اگر پاسخ در پایگاه دانش نبود یا سوال خارج از حوزه نمایشگاه بود، دقیقاً این جمله را برگردان:
+"{fallback}"
+""".strip()
+
+
+def build_few_shot_messages(config: dict):
+    messages = []
+    for example in config.get("examples", []):
+        user_input = example.get("input")
+        assistant_response = example.get("response")
+
+        if user_input and assistant_response:
+            messages.append({"role": "user", "content": user_input})
+            messages.append({"role": "assistant", "content": assistant_response})
+
+    return messages
+
+
+prompt_config = load_prompt_config()
+SYSTEM_PROMPT = build_system_prompt(prompt_config)
+FALLBACK = prompt_config.get("fallback", DEFAULT_FALLBACK)
+
+
+def similarity(a: str, b: str) -> float:
+    return SequenceMatcher(None, a.strip().lower(), b.strip().lower()).ratio()
+
+
+def search_faq(user_message: str):
+    best = None
+    best_score = 0
+
+    with open(FAQ_PATH, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            score = similarity(user_message, row["question"])
+            if score > best_score:
+                best_score = score
+                best = row
+
+    if best and best_score >= 0.55:
+        return best, best_score
+
+    return None, best_score
+
+
+@app.get("/")
+def root():
+    return {
+        "status": "ok",
+        "model": MODEL,
+        "prompt": "json",
+        "examples": len(prompt_config.get("examples", [])),
+    }
+
+def search_examples(user_message: str):
+    best = None
+    best_score = 0
+
+    for example in prompt_config.get("examples", []):
+        score = similarity(user_message, example["input"])
+        if score > best_score:
+            best_score = score
+            best = example
+
+    if best and best_score >= 0.85:
+        return best["response"], best_score
+
+    return None, best_score
+
+@app.post("/chat")
+def chat(req: ChatRequest):
+    example_answer, example_score = search_examples(req.message)
+
+    if example_answer:
+        return {
+            "answer": example_answer,
+            "source": "example",
+            "score": round(example_score, 2),
+        }
+
+    faq, score = search_faq(req.message)
+
+    if not faq:
+        return {
+            "answer": FALLBACK,
+            "source": "fallback",
+            "score": round(score, 2),
+        }
+
+    context = f"""
+سوال ثبت‌شده در پایگاه دانش:
+{faq["question"]}
+
+پاسخ ثبت‌شده در پایگاه دانش:
+{faq["answer"]}
+""".strip()
+
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": f"""
+فقط با استفاده از اطلاعات زیر پاسخ بده.
+
+{context}
+
+سوال کاربر:
+{req.message}
+""".strip(),
+        },
+    ]
+
+    response = requests.post(
+        OLLAMA_URL,
+        json={
+            "model": MODEL,
+            "messages": messages,
+            "stream": False,
+        },
+        timeout=300,
+    )
+
+    data = response.json()
+
+    return {
+        "answer": data["message"]["content"].strip(),
+        "source": "faq+llm",
+        "score": round(score, 2),
+    }

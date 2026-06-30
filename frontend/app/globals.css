@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--active-font-family, "Vazirmatn"), sans-serif;
+}
+
+html,
+body {
+  overflow-x: hidden;
+  max-width: 100vw;
+  font-family: var(--active-font-family, "Vazirmatn"), sans-serif;
+  /* iOS 26+ Safari reads toolbar color from body background-color */
+  background-color: var(--bg);
+}
+
+/* --bg, --accent, --surface, --border, --text, --text-muted, --text-dim
+   are injected by layout.js from the theme_colors DB table (force-dynamic).
+   Only derived/secondary vars that are not admin-configurable live here. */
+:root {
+  --surface-2: rgba(255, 255, 255, 0.05);
+  --surface-hover: rgba(255, 255, 255, 0.2);
+  --text-faint: rgba(255, 255, 255, 0.25);
+  --border-accent: rgba(0, 255, 179, 0.2);
+  --nav-bg: rgba(5, 64, 65, 0.8);
+  --sheet-bg: rgba(2, 31, 32, 0.95);
+  --overlay: rgba(2, 31, 32, 0.6);
+}
+
+html.lang-en body {
+  font-family: var(--active-font-en-family, 'Inter'), system-ui, -apple-system, sans-serif;
+}
+
+html.light {
+  --surface-2: rgba(255, 255, 255, 0.6);
+  --surface-hover: rgba(15, 36, 32, 0.1);
+  --text-faint: rgba(15, 36, 32, 0.35);
+  --border-accent: rgba(4, 120, 87, 0.2);
+  --nav-bg: rgba(255, 255, 255, 0.85);
+  --sheet-bg: rgba(240, 250, 248, 0.98);
+  --overlay: rgba(15, 36, 32, 0.4);
+}
