@@ -31,7 +31,7 @@ const REQUEST_PAYMENT = gql`
   }
 `;
 
-const CANCEL_CART = gql`mutation { cancelAttendeeCart }`;
+const CANCEL_CART = gql`mutation CancelCart { cancelAttendeeCart }`;
 
 function formatPrice(price, lang) {
   if (price === undefined || price === null) return "";

@@ -2,6 +2,7 @@ import { ApolloClient, InMemoryCache, HttpLink } from '@apollo/client';
 
 const RASAYESH_URL = 'https://api.rasayesh.com/graphql';
 const REFRESH_URL = 'https://api.rasayesh.com/refresh-token';
+const ATTENDEE_ORIGIN = 'https://attendee.rasayesh.com';
 
 let refreshPromise = null;
 
@@ -44,7 +45,10 @@ function createRasayeshFetch() {
       ...options,
       headers: {
         ...options.headers,
-        'x-rasayesh-site': 'event',
+        'x-rasayesh-site': 'attendee',
+        'origin': ATTENDEE_ORIGIN,
+        'referer': `${ATTENDEE_ORIGIN}/`,
+        'lang': 'fa',
         ...(token ? { authorization: `Bearer ${token}` } : {}),
       },
     };
@@ -68,7 +72,10 @@ function createRasayeshFetch() {
         ...options,
         headers: {
           ...options.headers,
-          'x-rasayesh-site': 'event',
+          'x-rasayesh-site': 'attendee',
+          'origin': ATTENDEE_ORIGIN,
+          'referer': `${ATTENDEE_ORIGIN}/`,
+          'lang': 'fa',
           authorization: `Bearer ${newToken}`,
         },
       });

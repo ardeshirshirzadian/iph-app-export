@@ -12,10 +12,10 @@ import { t } from "@/lib/i18n";
 import { toPersianDigits, toEnglishDigits } from "@/lib/utils";
 
 const ATTENDEE_QUERY = gql`
-  query GetAttendee($id: Int!) {
-    attendee(id: $id) {
+  query GetAttendee {
+    getAttendee {
       firstname_en lastname_en national_code email profile phone
-      occupation_id education_level_id field_of_activities job_title_en
+      occupation_id education_level_id field_of_activities { id } job_title_en
     }
   }
 `;
@@ -164,10 +164,9 @@ export default function EditProfileClient() {
   useEffect(() => {
     const client = getApolloClient();
 
-    if (user?.id) {
-      client.query({ query: ATTENDEE_QUERY, variables: { id: Number(user.id) } })
-        .then(({ data }) => {
-          const a = data?.attendee;
+    client.query({ query: ATTENDEE_QUERY })
+      .then(({ data }) => {
+          const a = data?.getAttendee;
           if (!a) return;
           setForm((prev) => ({
             ...prev,
@@ -181,11 +180,10 @@ export default function EditProfileClient() {
             educationLevelId: prev.educationLevelId || String(a.education_level_id ?? ""),
             fieldOfActivities: prev.fieldOfActivities.length
               ? prev.fieldOfActivities
-              : (a.field_of_activities ?? []),
+              : (a.field_of_activities ?? []).map(f => f?.id ?? f),
           }));
         })
         .catch(() => {});
-    }
 
     client.query({ query: FORM_OPTIONS_QUERY })
       .then(({ data }) => setFormOptions({
@@ -195,7 +193,7 @@ export default function EditProfileClient() {
       }))
       .catch(() => {})
       .finally(() => setOptionsLoading(false));
-  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function set(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -254,11 +252,11 @@ export default function EditProfileClient() {
     setActivityState({ saving: true, saved: false, error: "" });
     try {
       const client = getApolloClient();
-      const { errors } = await client.mutate({
+const { errors } = await client.mutate({
         mutation: UPDATE_ACTIVITY,
         variables: {
           occupationId: form.occupationId ? parseInt(form.occupationId) : null,
-          fieldOfActivities: form.fieldOfActivities.map(Number).filter(Boolean),
+          fieldOfActivities: form.fieldOfActivities.map(f => Number(f?.id ?? f)).filter(Boolean),
           educationLevelId: form.educationLevelId ? parseInt(form.educationLevelId) : null,
         },
       });

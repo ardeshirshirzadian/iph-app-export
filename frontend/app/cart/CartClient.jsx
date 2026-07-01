@@ -41,7 +41,7 @@ const REQUEST_PAYMENT = gql`
 `;
 
 const CANCEL_CART = gql`
-  mutation {
+  mutation CancelCart {
     cancelAttendeeCart
   }
 `;

@@ -11,10 +11,10 @@ import { useLang } from "@/lib/useLang";
 import { toPersianDigits, toEnglishDigits } from "@/lib/utils";
 
 const ATTENDEE_QUERY = gql`
-  query GetAttendee($id: Int!) {
-    attendee(id: $id) {
+  query GetAttendee {
+    getAttendee {
       firstname_en lastname_en national_code email profile phone
-      occupation_id education_level_id field_of_activities job_title_en
+      occupation_id education_level_id field_of_activities { id } job_title_en
     }
   }
 `;
@@ -148,10 +148,9 @@ export default function ProfileUpdateClient() {
       .catch(() => {})
       .finally(() => setOptionsLoading(false));
 
-    if (user?.id) {
-      client.query({ query: ATTENDEE_QUERY, variables: { id: Number(user.id) } })
-        .then(({ data }) => {
-          const a = data?.attendee;
+    client.query({ query: ATTENDEE_QUERY })
+      .then(({ data }) => {
+          const a = data?.getAttendee;
           if (!a) return;
           setForm((prev) => ({
             ...prev,
@@ -165,12 +164,11 @@ export default function ProfileUpdateClient() {
             educationLevelId: prev.educationLevelId || String(a.education_level_id ?? ""),
             fieldOfActivities: prev.fieldOfActivities.length
               ? prev.fieldOfActivities
-              : (a.field_of_activities ?? []),
+              : (a.field_of_activities ?? []).map(f => f?.id ?? f),
           }));
         })
         .catch(() => {});
-    }
-  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function set(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
