@@ -24,8 +24,9 @@ export function useAuth() {
 
   const logout = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
-    // Clear readable cookie client-side immediately
     document.cookie = "iph_user=; path=/; max-age=0";
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
     setUser(null);
     router.push("/login");
   }, [router]);

@@ -3,10 +3,24 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { gql } from "@apollo/client";
+import { getApolloClient } from "@/lib/apolloClient";
 import { toPersianDigits, toEnglishDigits, toLocalMobile } from "@/lib/utils";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 import LangToggle from "@/components/LangToggle";
+
+const SEND_OTP = gql`
+  mutation SendOtp($mobile: String, $email: String) {
+    attendeeLogin(mobile: $mobile, email: $email)
+  }
+`;
+
+const VERIFY_OTP = gql`
+  mutation VerifyOtp($mobile: String, $email: String, $code: String!) {
+    attendeeLoginValidateOTP(mobile: $mobile, email: $email, code: $code)
+  }
+`;
 
 export default function LoginForm({ settings, initialVerify, initialContact, initialIsEmail, quickMode = false, fromPath = '/' }) {
   const router = useRouter();
@@ -62,19 +76,23 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
     setError("");
     setLoading(true);
     try {
-      const endpoint = isEmail ? "/api/auth/send-otp-email" : "/api/auth/send-otp";
-      const body = isEmail ? { email: contact } : { mobile: contact };
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (data.success) {
+      const client = getApolloClient();
+      const variables = isEmail ? { email: contact } : { mobile: contact };
+      const { data, errors } = await client.mutate({ mutation: SEND_OTP, variables });
+
+      if (errors?.length) {
+        setError(isEmail ? "Failed to send code" : "خطا در ارسال کد");
+        return;
+      }
+
+      const result = data?.attendeeLogin;
+      const ok = result?.status && result.status !== 'fail' && result.status !== 'error';
+
+      if (ok) {
         setStep(2);
         setResendCooldown(60);
       } else {
-        setError(data.message || (isEmail ? "Failed to send code" : "خطا در ارسال کد"));
+        setError(result?.message || (isEmail ? "Failed to send code" : "خطا در ارسال کد"));
       }
     } catch {
       setError(t(lang, "server_error"));
@@ -109,28 +127,47 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
       setError("");
       setLoading(true);
       try {
-        const endpoint = isEmail ? "/api/auth/verify-otp-email" : "/api/auth/verify-otp";
-        const body = isEmail ? { email: contact, code } : { mobile: contact, code };
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        const data = await res.json();
-        if (data.success) {
-          if (!quickMode) {
-            sessionStorage.setItem(
-              "iph_show_welcome",
-              JSON.stringify({
-                firstname_fa: data.firstname_fa || "",
-                lastname_fa: data.lastname_fa || "",
-              })
-            );
-          }
-          router.push(quickMode ? fromPath : "/");
-        } else {
-          setError(data.message || (isEmail ? "Incorrect code" : "کد وارد شده اشتباه است"));
+        const client = getApolloClient();
+        const variables = isEmail
+          ? { email: contact, code }
+          : { mobile: contact, code };
+        const { data, errors } = await client.mutate({ mutation: VERIFY_OTP, variables });
+
+        if (errors?.length) {
+          setError(isEmail ? "Incorrect code" : "کد وارد شده اشتباه است");
+          return;
         }
+
+        const raw = data?.attendeeLoginValidateOTP;
+        const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+
+        if (result?.status !== 'success') {
+          setError(result?.message || (isEmail ? "Incorrect code" : "کد وارد شده اشتباه است"));
+          return;
+        }
+
+        // Store tokens in localStorage
+        localStorage.setItem('access_token', result.accessToken);
+        localStorage.setItem('refresh_token', result.refreshToken);
+
+        // Set iph_user cookie + upsert DB (fire-and-forget for the upsert)
+        const u = result.user || {};
+        await fetch('/api/auth/finalize-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user: u }),
+        });
+
+        if (!quickMode) {
+          sessionStorage.setItem(
+            "iph_show_welcome",
+            JSON.stringify({
+              firstname_fa: u.firstname_fa || "",
+              lastname_fa: u.lastname_fa || "",
+            })
+          );
+        }
+        router.push(quickMode ? fromPath : "/");
       } catch {
         setError(t(lang, "server_error"));
       } finally {
@@ -182,20 +219,24 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
     setError("");
     setLoading(true);
     try {
-      const endpoint = isEmail ? "/api/auth/send-otp-email" : "/api/auth/send-otp";
-      const body = isEmail ? { email: contact } : { mobile: contact };
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (data.success) {
+      const client = getApolloClient();
+      const variables = isEmail ? { email: contact } : { mobile: contact };
+      const { data, errors } = await client.mutate({ mutation: SEND_OTP, variables });
+
+      if (errors?.length) {
+        setError(t(lang, "server_error"));
+        return;
+      }
+
+      const result = data?.attendeeLogin;
+      const ok = result?.status && result.status !== 'fail' && result.status !== 'error';
+
+      if (ok) {
         setResendCooldown(60);
         setOtpDigits(["", "", "", "", ""]);
         setTimeout(() => otpRefs.current[0]?.focus(), 0);
       } else {
-        setError(data.message || t(lang, "server_error"));
+        setError(result?.message || t(lang, "server_error"));
       }
     } catch {
       setError(t(lang, "server_error"));

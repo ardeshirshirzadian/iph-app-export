@@ -2,11 +2,36 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { gql } from "@apollo/client";
+import { getApolloClient } from "@/lib/apolloClient";
 import BottomNav from "../../components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 import { toPersianDigits } from "@/lib/utils";
+
+const CART_QUERY = gql`
+  query {
+    getAttendeeCart {
+      id status total_price price_to_pay
+      cart_items { id entity_type entity_id price discounted_price price_to_pay discount discount_price snapshot }
+    }
+  }
+`;
+
+const APPLY_COUPON = gql`
+  mutation ApplyCoupon($code: String!) {
+    applyDiscountCodeToAttendeeCart(discount_code: $code)
+  }
+`;
+
+const REQUEST_PAYMENT = gql`
+  mutation RequestPayment($ipgId: Int!, $redirectUrl: String!) {
+    requestAttendeeCartPayment(ipgId: $ipgId, redirectUrl: $redirectUrl)
+  }
+`;
+
+const CANCEL_CART = gql`mutation { cancelAttendeeCart }`;
 
 function formatPrice(price, lang) {
   if (price === undefined || price === null) return "";
@@ -45,6 +70,7 @@ export default function CartClient() {
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState(null);
   const [bookCover, setBookCover] = useState(null);
+  const [ipgId, setIpgId] = useState(1);
 
   const [couponCode, setCouponCode] = useState("");
   const [couponResult, setCouponResult] = useState(null);
@@ -56,14 +82,19 @@ export default function CartClient() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    const client = getApolloClient();
     Promise.all([
-      fetch("/api/book/cart-status").then((r) => r.json()),
-      fetch("/api/book").then((r) => r.json()),
+      client ? client.query({ query: CART_QUERY }).then(({ data }) => data?.getAttendeeCart ?? null).catch(() => null) : Promise.resolve(null),
+      fetch("/api/book").then((r) => r.json()).catch(() => ({})),
     ])
-      .then(([cartData, bookData]) => {
-        setCart(cartData);
+      .then(([cartGql, bookData]) => {
+        if (bookData.ipg_id) setIpgId(Number(bookData.ipg_id));
         const cover = bookData.book?.cover || bookData.book?.thumbnail;
         if (cover) setBookCover(cover);
+        if (!cartGql?.id) { setCart({ has_open_cart: false, items: [], total_price: 0, price_to_pay: 0 }); return; }
+        const items = cartGql.cart_items || [];
+        const has_open_cart = !['paid', 'cancelled', 'expired'].includes(cartGql.status) && items.length > 0;
+        setCart({ has_open_cart, cart_id: cartGql.id, items, total_price: cartGql.total_price ?? 0, price_to_pay: cartGql.price_to_pay ?? 0 });
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -74,14 +105,15 @@ export default function CartClient() {
     setCouponLoading(true);
     setCouponError("");
     try {
-      const res = await fetch("/api/book/coupon", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: couponCode }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || t(lang, "book_coupon_label"));
-      setCouponResult(data);
+      const client = getApolloClient();
+      const { data, errors } = await client.mutate({ mutation: APPLY_COUPON, variables: { code: couponCode.trim() } });
+      if (errors?.length) throw new Error(errors[0].message || t(lang, "book_coupon_label"));
+      const result = data?.applyDiscountCodeToAttendeeCart;
+      if (!result || result?.status === 'fail' || result?.status === 'invalid') {
+        throw new Error(result?.error || Object.values(result?.errors ?? {})[0]?.[0] || 'کد تخفیف نامعتبر است');
+      }
+      const cart = result.cart ?? result;
+      setCouponResult({ ...cart, discount_amount: (cart.total_price ?? 0) - (cart.price_to_pay ?? 0) });
     } catch (err) {
       setCouponError(err.message);
     } finally {
@@ -93,10 +125,15 @@ export default function CartClient() {
     setPayLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/book/payment", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "خطا");
-      window.location.href = data.redirect_url;
+      const client = getApolloClient();
+      const { data, errors } = await client.mutate({
+        mutation: REQUEST_PAYMENT,
+        variables: { ipgId, redirectUrl: "https://app.iphexpo.com/cart/callback" },
+      });
+      if (errors?.length) throw new Error(errors[0].message || "خطا");
+      const result = data?.requestAttendeeCartPayment;
+      if (!result?.redirect_url) throw new Error("آدرس پرداخت دریافت نشد");
+      window.location.href = result.redirect_url;
     } catch (err) {
       setError(err.message);
       setPayLoading(false);
@@ -106,7 +143,8 @@ export default function CartClient() {
   async function handleCancelOrder() {
     setCancelLoading(true);
     try {
-      await fetch("/api/book/cart", { method: "DELETE" });
+      const client = getApolloClient();
+      await client.mutate({ mutation: CANCEL_CART });
       router.push("/book?cart=cancelled");
     } catch {
       setCancelLoading(false);

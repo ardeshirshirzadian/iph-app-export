@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getTokenFromCookies } from '@/lib/rasayeshClient';
 import { query } from '@/lib/db';
 
 async function fetchLiveTemplate(templateId, adminToken) {
@@ -31,8 +30,8 @@ async function fetchLiveTemplate(templateId, adminToken) {
 
 export async function GET() {
   const cookieStore = await cookies();
-  const token = getTokenFromCookies(cookieStore);
-  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const userRaw = cookieStore.get('iph_user')?.value;
+  if (!userRaw) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const [badgeResult, tokenResult] = await Promise.all([

@@ -3,9 +3,47 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { gql } from "@apollo/client";
+import { getApolloClient } from "@/lib/apolloClient";
 import { useLang } from "@/lib/useLang";
 import { toPersianDigits, toEnglishDigits } from "@/lib/utils";
 import LangToggle from "@/components/LangToggle";
+
+const FORM_OPTIONS_QUERY = gql`
+  {
+    occupations(industryId: 1) { id title_fa title_en }
+    fieldOfActivities(industryId: 1) { id title_fa title_en }
+    educationLevels { id title_fa title_en }
+  }
+`;
+
+const REGISTER_MUTATION = gql`
+  mutation Register(
+    $firstnameFa: String!, $lastnameFa: String!,
+    $firstnameEn: String, $lastnameEn: String,
+    $mobile: String, $email: String,
+    $nationalCode: String,
+    $jobTitleFa: String, $jobTitleEn: String,
+    $occupationId: Int, $fieldOfActivities: [Int!]!,
+    $educationLevelId: Int
+  ) {
+    attendeeRegister(
+      firstnameFa: $firstnameFa, lastnameFa: $lastnameFa,
+      firstnameEn: $firstnameEn, lastnameEn: $lastnameEn,
+      mobile: $mobile, email: $email,
+      nationalCode: $nationalCode,
+      jobTitleFa: $jobTitleFa, jobTitleEn: $jobTitleEn,
+      occupationId: $occupationId, fieldOfActivities: $fieldOfActivities,
+      educationLevelId: $educationLevelId
+    )
+  }
+`;
+
+const SEND_OTP_MUTATION = gql`
+  mutation SendOtp($mobile: String, $email: String) {
+    attendeeLogin(mobile: $mobile, email: $email)
+  }
+`;
 
 const INPUT_STYLE = {
   width: "100%",
@@ -71,9 +109,13 @@ export default function SignupClient() {
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    fetch("/api/registration/form-data")
-      .then((r) => r.json())
-      .then((data) => setFormOptions(data))
+    const client = getApolloClient();
+    client.query({ query: FORM_OPTIONS_QUERY })
+      .then(({ data }) => setFormOptions({
+        occupations: data?.occupations ?? [],
+        fieldOfActivities: data?.fieldOfActivities ?? [],
+        educationLevels: data?.educationLevels ?? [],
+      }))
       .catch(() => {})
       .finally(() => setOptionsLoading(false));
   }, []);
@@ -105,25 +147,49 @@ export default function SignupClient() {
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetch("/api/auth/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...formData,
-          occupationId: formData.occupationId ? parseInt(formData.occupationId) : null,
-          educationLevelId: formData.educationLevelId ? parseInt(formData.educationLevelId) : null,
-        }),
+      const client = getApolloClient();
+      const { data, errors } = await client.mutate({
+        mutation: REGISTER_MUTATION,
+        variables: {
+          firstnameFa: formData.firstnameFa,
+          lastnameFa: formData.lastnameFa,
+          firstnameEn: formData.firstnameEn || undefined,
+          lastnameEn: formData.lastnameEn || undefined,
+          mobile: formData.mobile || undefined,
+          email: formData.email || undefined,
+          nationalCode: formData.nationalCode || undefined,
+          jobTitleFa: formData.jobTitleFa || undefined,
+          jobTitleEn: formData.jobTitleEn || undefined,
+          occupationId: formData.occupationId ? parseInt(formData.occupationId) : undefined,
+          fieldOfActivities: formData.fieldOfActivities.map(Number).filter(Boolean),
+          educationLevelId: formData.educationLevelId ? parseInt(formData.educationLevelId) : undefined,
+        },
       });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        setError(data.error || (isEN ? "Failed to create account" : "خطا در ایجاد حساب"));
+
+      if (errors?.length) {
+        setError(errors[0].message || (isEN ? "Failed to create account" : "خطا در ایجاد حساب"));
         return;
       }
+
+      const result = data?.attendeeRegister;
+      const failed = result?.status === 'error' || result?.success === false || result?.error;
+      if (failed) {
+        setError(result?.message || result?.error || (isEN ? "Failed to create account" : "خطا در ایجاد حساب"));
+        return;
+      }
+
+      // Trigger OTP so /login?verify=1 can show the code-entry screen
+      const contact = isEN ? formData.email : formData.mobile;
+      if (contact) {
+        const vars = isEN ? { email: contact } : { mobile: contact };
+        await client.mutate({ mutation: SEND_OTP_MUTATION, variables: vars }).catch(() => {});
+      }
+
       setSuccess(true);
-      // Navigate to login with OTP step pre-filled
       setTimeout(() => {
-        const contact = isEN ? formData.email : formData.mobile;
-        const param = isEN ? `email=${encodeURIComponent(contact)}` : `mobile=${encodeURIComponent(contact)}`;
+        const param = isEN
+          ? `email=${encodeURIComponent(formData.email)}`
+          : `mobile=${encodeURIComponent(formData.mobile)}`;
         router.push(`/login?verify=1&${param}`);
       }, 1500);
     } catch {

@@ -1,13 +1,24 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter, usePathname } from "next/navigation";
-import { handleApiResponse } from "@/lib/handleApiResponse";
+import { useRouter } from "next/navigation";
+import { gql } from "@apollo/client";
+import { getApolloClient } from "@/lib/apolloClient";
 import BottomNav from "../components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 import { toPersianDigits } from "@/lib/utils";
+
+const ADD_TO_CART = gql`
+  mutation AddToCart($bookId: Int!, $bookCount: Int!, $cdCount: Int!, $pdfCount: Int!) {
+    addItemToCart(
+      itemType: "EventExhibitionBook"
+      itemId: $bookId
+      metadata: {book_count: $bookCount, cd_count: $cdCount, pdf_count: $pdfCount}
+    )
+  }
+`;
 
 function formatPrice(price, lang) {
   if (!price || price === 0) return t(lang, "book_free");
@@ -82,10 +93,10 @@ function Skeleton() {
 export default function BookClient({ title, subtitle, title_en, subtitle_en }) {
   const { lang, isRTL } = useLang();
   const router = useRouter();
-  const pathname = usePathname();
 
   const [loading, setLoading] = useState(true);
   const [book, setBook] = useState(null);
+  const [bookId, setBookId] = useState(6);
   const [enabled, setEnabled] = useState(true);
   const [descExpanded, setDescExpanded] = useState(false);
 
@@ -101,6 +112,7 @@ export default function BookClient({ title, subtitle, title_en, subtitle_en }) {
       .then((r) => r.json())
       .then((data) => {
         setEnabled(data.enabled !== false);
+        if (data.book_id) setBookId(data.book_id);
         if (data.book) {
           setBook(data.book);
           const hasBook = (data.book.book_capacity ?? 0) > 0 || data.book.book_price === 0;
@@ -116,14 +128,12 @@ export default function BookClient({ title, subtitle, title_en, subtitle_en }) {
     setAddingToCart(true);
     setCartError("");
     try {
-      const res = await fetch("/api/book/cart", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ book_count: bookCount, cd_count: cdCount, pdf_count: pdfCount }),
+      const client = getApolloClient();
+      const { errors } = await client.mutate({
+        mutation: ADD_TO_CART,
+        variables: { bookId, bookCount, cdCount, pdfCount },
       });
-      const result = await handleApiResponse(res, router, pathname);
-      if (result.sessionExpired || result.notLoggedIn) { setAddingToCart(false); return; }
-      if (!res.ok) throw new Error(result.data?.error || "خطا");
+      if (errors?.length) throw new Error(errors[0].message || "خطا");
       router.push("/cart");
     } catch (err) {
       setCartError(err.message);

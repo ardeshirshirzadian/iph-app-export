@@ -2,12 +2,31 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { gql } from "@apollo/client";
+import { getApolloClient } from "@/lib/apolloClient";
 import BottomNav from "../components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import RasayeshBadgeCard from "@/components/RasayeshBadgeCard";
 import { useAuth } from "../../hooks/useAuth";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
+
+const BADGE_QUERY = gql`
+  query GetBadge($uuid: String!, $eventSlug: String!) {
+    attendeeEventCard(eventSlug: $eventSlug, uuid: $uuid) {
+      status
+      message
+      data {
+        attendee {
+          firstname_fa lastname_fa firstname_en lastname_en
+          uuid job_title_fa mobile
+        }
+        registrationPlan { id }
+        event { id slug }
+      }
+    }
+  }
+`;
 
 function SkeletonBlock({ className }) {
   return (
@@ -129,14 +148,38 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
       return;
     }
 
+    const { user } = (() => {
+      try {
+        const m = document.cookie.match(/(?:^|; )iph_user=([^;]*)/);
+        const u = m ? JSON.parse(decodeURIComponent(m[1])) : null;
+        return { user: u };
+      } catch { return { user: null }; }
+    })();
+
+    const uuid = user?.uuid;
+
     Promise.all([
       fetch("/api/badge").then((r) => r.json()),
       fetch("/api/badge/template").then((r) => r.json()).catch(() => ({ template: null })),
     ])
-      .then(([badgeRes, tmplRes]) => {
-        setBadgeStatus(badgeRes.status ?? null);
-        if (badgeRes.status === "success") setBadgeData(badgeRes.data ?? null);
+      .then(([configRes, tmplRes]) => {
+        const eventSlug = configRes.event_slug || 'iph';
         if (tmplRes.template) setCardTemplate(tmplRes.template);
+
+        if (!uuid) {
+          setBadgeStatus("fail");
+          return;
+        }
+
+        const client = getApolloClient();
+        return client.query({
+          query: BADGE_QUERY,
+          variables: { uuid, eventSlug },
+        }).then(({ data }) => {
+          const card = data?.attendeeEventCard;
+          setBadgeStatus(card?.status ?? null);
+          if (card?.status === "success") setBadgeData(card.data ?? null);
+        });
       })
       .catch(() => setBadgeStatus("fail"))
       .finally(() => setLoading(false));

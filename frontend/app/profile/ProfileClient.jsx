@@ -3,12 +3,86 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { gql } from "@apollo/client";
+import { getApolloClient } from "@/lib/apolloClient";
 import BottomNav from "../components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { useAuth } from "../../hooks/useAuth";
 import { toPersianDigits } from "@/lib/utils";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
+
+const ATTENDEE_QUERY = gql`
+  query GetAttendee($id: Int!) {
+    attendee(id: $id) {
+      firstname_en
+      lastname_en
+      national_code
+      email
+      profile
+      todayEventPresence(eventId: 1)
+    }
+  }
+`;
+
+const TRANSACTIONS_QUERY = gql`
+  {
+    attendeeTransactions {
+      id
+      total_price
+      discounted_price
+      discount_price
+      price_paid
+      status
+      success
+      verification_status
+      uuid
+      created_at
+      event { id title_fa title_en }
+      cart { id cart_items { entity_type entity_id snapshot } }
+    }
+  }
+`;
+
+const PANELS_QUERY = gql`
+  {
+    attendeePanels {
+      id
+      panel {
+        id title_fa title_en starts_at ends_at hall_fa hall_en
+        event { id title_fa title_en }
+      }
+    }
+  }
+`;
+
+const IRANPHARMA_EVENT_IDS = new Set([1, 6, 14, 18, 26]);
+
+function parseSnapshot(raw) {
+  if (!raw) return {};
+  if (typeof raw === 'object') return raw;
+  try { return JSON.parse(raw); } catch { return {}; }
+}
+
+function buildDescription(cartItems) {
+  if (!cartItems?.length) return { fa: null, en: null };
+  const parts_fa = [];
+  const parts_en = [];
+  for (const item of cartItems) {
+    const snap = parseSnapshot(item.snapshot);
+    if (item.entity_type === 'EventExhibitionBook') {
+      parts_fa.push(`خرید کتاب: ${snap.title_fa || 'کتاب نمایشگاه'}`);
+      parts_en.push(`Book: ${snap.title_en || 'Exhibition Book'}`);
+    } else if (item.entity_type === 'EventRegistrationPlan') {
+      parts_fa.push(`ثبت‌نام: ${snap.title_fa || 'طرح ثبت‌نام'}`);
+      parts_en.push(`Registration: ${snap.title_en || 'Registration Plan'}`);
+    } else if (item.entity_type === 'EventPanel') {
+      parts_fa.push(`ثبت‌نام پنل: ${snap.title_fa || 'پنل'}`);
+      parts_en.push(`Panel: ${snap.title_en || 'Panel'}`);
+    }
+  }
+  return { fa: parts_fa.join('، ') || null, en: parts_en.join(', ') || null };
+}
 
 function maskNationalCode(code, lang) {
   if (!code || code.length < 7) return code;
@@ -112,28 +186,71 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en }
   const [panelsLoading, setPanelsLoading] = useState(false);
   const [panelsOpen, setPanelsOpen] = useState(true);
 
+  const [authReady, setAuthReady] = useState(false);
+
   useEffect(() => {
+    queueMicrotask(() => setAuthReady(true));
+  }, []);
+
+  useEffect(() => {
+    if (!authReady || !user?.id) return;
+    const client = getApolloClient();
+
     setProfileLoading(true);
-    fetch("/api/profile")
-      .then((r) => (r.status === 401 ? null : r.json()))
-      .then((data) => { if (data?.attendee) setAttendeeData(data.attendee); })
+    client.query({ query: ATTENDEE_QUERY, variables: { id: Number(user.id) } })
+      .then(({ data }) => { if (data?.attendee) setAttendeeData(data.attendee); })
       .catch(() => {})
       .finally(() => setProfileLoading(false));
 
     setTxnLoading(true);
-    fetch("/api/user/transactions")
-      .then((r) => (r.status === 401 ? null : r.json()))
-      .then((data) => { if (data?.transactions) setTransactions(data.transactions); })
+    client.query({ query: TRANSACTIONS_QUERY })
+      .then(({ data }) => {
+        const raw = data?.attendeeTransactions ?? [];
+        const filtered = [...raw]
+          .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+          .filter(t =>
+            IRANPHARMA_EVENT_IDS.has(Number(t.event?.id)) &&
+            (t.total_price > 0 || t.discount_price > 0)
+          )
+          .map(t => {
+            const desc = buildDescription(t.cart?.cart_items);
+            return {
+              id: t.id,
+              uuid: t.uuid,
+              total_price: t.total_price,
+              discounted_price: t.discounted_price,
+              discount_price: t.discount_price,
+              price_paid: t.price_paid,
+              status: t.status,
+              success: t.success,
+              verification_status: t.verification_status,
+              created_at: t.created_at,
+              event_name: t.event?.title_fa ?? null,
+              items_description_fa: desc.fa,
+              items_description_en: desc.en,
+            };
+          });
+        setTransactions(filtered);
+      })
       .catch(() => {})
       .finally(() => setTxnLoading(false));
 
     setPanelsLoading(true);
-    fetch("/api/user/panels")
-      .then((r) => (r.status === 401 ? null : r.json()))
-      .then((data) => { if (data?.panels) setPanels(data.panels); })
+    client.query({ query: PANELS_QUERY })
+      .then(({ data }) => {
+        const items = data?.attendeePanels ?? [];
+        const mapped = items
+          .map(item => ({
+            ...item.panel,
+            isOnline: false,
+            event_name: item.panel?.event?.title_fa ?? null,
+          }))
+          .sort((a, b) => new Date(b.starts_at) - new Date(a.starts_at));
+        setPanels(mapped);
+      })
       .catch(() => {})
       .finally(() => setPanelsLoading(false));
-  }, []);
+  }, [authReady, user?.id]);
 
   const fullNameFa = user ? `${user.firstname_fa || ""} ${user.lastname_fa || ""}`.trim() : "";
   const enName = attendeeData

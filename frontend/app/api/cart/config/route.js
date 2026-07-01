@@ -11,13 +11,13 @@ const DEFAULTS = {
   logo_icon_type: 'emoji',
   logo_icon_value: '🛒',
   logo_icon_size: 48,
+  ipg_id: 1,
 };
 
 export async function GET() {
   try {
     const result = await query("SELECT value FROM app_settings WHERE key = 'cart_config'");
     const raw = result.rows[0]?.value ?? {};
-    // Return only display-facing fields — never expose rasayesh_site or ipg_id
     const config = {
       title_fa: raw.title_fa ?? DEFAULTS.title_fa,
       title_en: raw.title_en ?? DEFAULTS.title_en,
@@ -28,9 +28,10 @@ export async function GET() {
       logo_icon_type: raw.logo_icon_type ?? DEFAULTS.logo_icon_type,
       logo_icon_value: raw.logo_icon_value ?? DEFAULTS.logo_icon_value,
       logo_icon_size: raw.logo_icon_size ?? DEFAULTS.logo_icon_size,
+      ipg_id: raw.ipg_id ?? 1,
     };
     return NextResponse.json({ config });
   } catch {
-    return NextResponse.json({ config: DEFAULTS });
+    return NextResponse.json({ config: { ...DEFAULTS } });
   }
 }

@@ -1,13 +1,20 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { gql } from "@apollo/client";
+import { getApolloClient } from "@/lib/apolloClient";
 import BottomNav from "@/app/components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { useAuth } from "@/hooks/useAuth";
 import { useLang } from "@/lib/useLang";
 import { toPersianDigits } from "@/lib/utils";
-import { handleApiResponse } from "@/lib/handleApiResponse";
+
+const ADD_WIZARD_ITEMS = gql`
+  mutation AddWizardItems($planIds: [Int!]!, $redirectUrl: String!) {
+    addWizardItemsToCart(items: { plan_ids: $planIds }, redirectUrl: $redirectUrl)
+  }
+`;
 
 function formatPrice(price, lang) {
   if (!price || price === 0) return lang === "fa" ? "رایگان" : "Free";
@@ -19,7 +26,6 @@ function formatPrice(price, lang) {
 export default function ConfirmClient() {
   const { user } = useAuth();
   const router = useRouter();
-  const pathname = usePathname();
   const { lang, isRTL } = useLang();
 
   const [planIds, setPlanIds] = useState([]);
@@ -53,22 +59,24 @@ export default function ConfirmClient() {
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetch("/api/registration/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan_ids: planIds }),
+      const client = getApolloClient();
+      const { data, errors } = await client.mutate({
+        mutation: ADD_WIZARD_ITEMS,
+        variables: {
+          planIds: planIds.map(Number).filter(Boolean),
+          redirectUrl: "https://app.iphexpo.com/cart/callback",
+        },
       });
-      const result = await handleApiResponse(res, router, pathname);
-      if (result.sessionExpired || result.notLoggedIn) { setSubmitting(false); return; }
-      if (!res.ok) throw new Error(result.data?.error || "خطا در ثبت‌نام");
 
-      const data = result.data;
-      if (data.needs_payment && data.redirect_url) {
+      if (errors?.length) throw new Error(errors[0].message || "خطا در ثبت‌نام");
+
+      const result = data?.addWizardItemsToCart;
+      if (result?.redirect_url) {
         localStorage.removeItem("iph-selected-plans");
-        window.location.href = data.redirect_url;
+        window.location.href = result.redirect_url;
         return;
       }
-      if (data.success) {
+      if (result?.status === 'success' || result?.success === true || result) {
         localStorage.removeItem("iph-selected-plans");
         router.push("/badge");
       }

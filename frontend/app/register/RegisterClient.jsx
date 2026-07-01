@@ -6,7 +6,6 @@ import BottomNav from "../components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { useLang } from "@/lib/useLang";
 import { toPersianDigits } from "@/lib/utils";
-import { handleApiResponse } from "@/lib/handleApiResponse";
 import { useAuth } from "@/hooks/useAuth";
 
 function formatPrice(price, lang) {

@@ -1,13 +1,50 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter, usePathname } from "next/navigation";
-import { handleApiResponse } from "@/lib/handleApiResponse";
+import { useRouter } from "next/navigation";
+import { gql } from "@apollo/client";
+import { getApolloClient } from "@/lib/apolloClient";
 import BottomNav from "../components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 import { toPersianDigits } from "@/lib/utils";
+
+const CART_QUERY = gql`
+  query {
+    getAttendeeCart {
+      id status total_price price_to_pay
+      cart_items {
+        id entity_type entity_id
+        price discounted_price price_to_pay discount discount_price snapshot
+      }
+    }
+  }
+`;
+
+const DELETE_ITEM = gql`
+  mutation DeleteItem($id: Int!) {
+    deleteCartItem(id: $id)
+  }
+`;
+
+const APPLY_COUPON = gql`
+  mutation ApplyCoupon($code: String!) {
+    applyDiscountCodeToAttendeeCart(discount_code: $code)
+  }
+`;
+
+const REQUEST_PAYMENT = gql`
+  mutation RequestPayment($ipgId: Int!, $redirectUrl: String!) {
+    requestAttendeeCartPayment(ipgId: $ipgId, redirectUrl: $redirectUrl)
+  }
+`;
+
+const CANCEL_CART = gql`
+  mutation {
+    cancelAttendeeCart
+  }
+`;
 
 function formatPrice(price, lang) {
   if (price === undefined || price === null) return "";
@@ -50,12 +87,25 @@ const CONFIG_DEFAULTS = {
   logo_icon_type: 'emoji',
   logo_icon_value: '🛒',
   logo_icon_size: 48,
+  ipg_id: 1,
 };
+
+function parseCartData(cartGql) {
+  if (!cartGql?.id) return { has_open_cart: false, items: [], total_price: 0, price_to_pay: 0 };
+  const items = cartGql.cart_items || [];
+  const has_open_cart = !['paid', 'cancelled', 'expired'].includes(cartGql.status) && items.length > 0;
+  return {
+    has_open_cart,
+    cart_id: cartGql.id,
+    items,
+    total_price: cartGql.total_price ?? 0,
+    price_to_pay: cartGql.price_to_pay ?? 0,
+  };
+}
 
 export default function CartClient() {
   const { lang, isRTL } = useLang();
   const router = useRouter();
-  const pathname = usePathname();
 
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState(null);
@@ -73,10 +123,9 @@ export default function CartClient() {
 
   async function loadCart() {
     try {
-      const res = await fetch("/api/cart/status");
-      const result = await handleApiResponse(res, router, pathname);
-      if (result.sessionExpired || result.notLoggedIn) return;
-      setCart(result.data);
+      const client = getApolloClient();
+      const { data } = await client.query({ query: CART_QUERY });
+      setCart(parseCartData(data?.getAttendeeCart));
     } catch {}
   }
 
@@ -86,18 +135,15 @@ export default function CartClient() {
       .then(data => { if (data.config) setConfig({ ...CONFIG_DEFAULTS, ...data.config }); })
       .catch(() => {});
     loadCart().finally(() => setLoading(false));
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleRemoveItem(itemId) {
     setRemovingItemId(itemId);
     try {
-      const res = await fetch(`/api/cart/item/${itemId}`, { method: "DELETE" });
-      const result = await handleApiResponse(res, router, pathname);
-      if (result.sessionExpired || result.notLoggedIn) return;
-      if (res.ok) {
-        await loadCart();
-        setCouponResult(null);
-      }
+      const client = getApolloClient();
+      await client.mutate({ mutation: DELETE_ITEM, variables: { id: itemId } });
+      await loadCart();
+      setCouponResult(null);
     } catch {
       // ignore
     } finally {
@@ -110,22 +156,25 @@ export default function CartClient() {
     setCouponLoading(true);
     setCouponError("");
     try {
-      const res = await fetch("/api/cart/coupon", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: couponCode }),
+      const client = getApolloClient();
+      const { data, errors } = await client.mutate({
+        mutation: APPLY_COUPON,
+        variables: { code: couponCode.trim() },
       });
-      const result = await res.json();
-      if (!res.ok) {
-        setCouponError(result.error || 'کد تخفیف نامعتبر است');
-        setCouponResult(null);
+      if (errors?.length) {
+        setCouponError(errors[0].message || 'کد تخفیف نامعتبر است');
         return;
       }
-      if (result.success) {
-        setCouponResult(result);
-        setCouponError('');
-        setCouponCode('');
+      const result = data?.applyDiscountCodeToAttendeeCart;
+      if (!result || result?.status === 'fail' || result?.status === 'invalid') {
+        const msg = result?.error || Object.values(result?.errors ?? {})[0]?.[0] || 'کد تخفیف نامعتبر است';
+        setCouponError(msg);
+        return;
       }
+      const cart = result.cart ?? result;
+      setCouponResult({ ...cart, discount_amount: (cart.total_price ?? 0) - (cart.price_to_pay ?? 0) });
+      setCouponError('');
+      setCouponCode('');
     } catch (err) {
       setCouponError(err.message);
     } finally {
@@ -137,15 +186,18 @@ export default function CartClient() {
     setPayLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/cart/payment", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ redirectUrl: "https://app.iphexpo.com/cart/callback" }),
+      const client = getApolloClient();
+      const { data, errors } = await client.mutate({
+        mutation: REQUEST_PAYMENT,
+        variables: {
+          ipgId: Number(config.ipg_id ?? 1),
+          redirectUrl: "https://app.iphexpo.com/cart/callback",
+        },
       });
-      const result = await handleApiResponse(res, router, pathname);
-      if (result.sessionExpired || result.notLoggedIn) { setPayLoading(false); return; }
-      if (!res.ok) throw new Error(result.data?.error || "خطا");
-      window.location.href = result.data.redirect_url;
+      if (errors?.length) throw new Error(errors[0].message || "خطا");
+      const result = data?.requestAttendeeCartPayment;
+      if (!result?.redirect_url) throw new Error("آدرس پرداخت دریافت نشد");
+      window.location.href = result.redirect_url;
     } catch (err) {
       setError(err.message);
       setPayLoading(false);
@@ -155,9 +207,8 @@ export default function CartClient() {
   async function handleCancelOrder() {
     setCancelLoading(true);
     try {
-      const res = await fetch("/api/cart", { method: "DELETE" });
-      const result = await handleApiResponse(res, router, pathname);
-      if (result.sessionExpired || result.notLoggedIn) { setCancelLoading(false); return; }
+      const client = getApolloClient();
+      await client.mutate({ mutation: CANCEL_CART });
       router.push("/");
     } catch {
       setCancelLoading(false);
@@ -240,7 +291,6 @@ export default function CartClient() {
                     className="rounded-3xl p-4 flex items-center gap-4 backdrop-blur-xl"
                     style={{ background: "rgba(5,64,65,0.4)", border: "1px solid rgba(0,255,179,0.2)" }}
                   >
-                    {/* Thumbnail placeholder */}
                     <div
                       className="flex-shrink-0 rounded-xl flex items-center justify-center"
                       style={{ width: 56, height: 56, background: "rgba(0,255,179,0.08)", border: "1px solid rgba(0,255,179,0.15)" }}
@@ -248,7 +298,6 @@ export default function CartClient() {
                       <span style={{ fontSize: 28 }}>🛍️</span>
                     </div>
 
-                    {/* Info */}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold leading-snug" style={{ color: "var(--text)" }}>
                         {name}
@@ -263,7 +312,6 @@ export default function CartClient() {
                       </p>
                     </div>
 
-                    {/* Price + remove */}
                     <div className="flex-shrink-0 flex flex-col items-end gap-1">
                       <p className="text-sm font-black" style={{ color: "var(--accent)" }}>
                         {formatPrice(itemPrice, lang)}

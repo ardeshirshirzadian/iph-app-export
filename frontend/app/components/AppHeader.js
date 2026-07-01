@@ -2,12 +2,18 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { gql } from "@apollo/client";
+import { getApolloClient } from "@/lib/apolloClient";
 import Logo from "@/components/Logo";
 import Toast from "@/components/Toast";
 import { toPersianDigits } from "@/lib/utils";
 import { useNotificationSocket } from "@/lib/socketClient";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
+
+const CART_HAS_ITEMS = gql`
+  query { getAttendeeCart { id status cart_items { id } } }
+`;
 
 const BELL_MASK = {
   display: "block",
@@ -69,12 +75,17 @@ export default function AppHeader({ leftActions, rightActions }) {
   }, []);
 
   useEffect(() => {
-    fetch("/api/cart/status")
-      .then((r) => r.json())
-      .then((data) => {
-        setHasCart(!!(data.has_open_cart && (data.items?.length ?? 0) > 0));
+    const token = typeof window !== 'undefined' && localStorage.getItem('access_token');
+    if (!token) { setHasCart(false); return; }
+    const client = getApolloClient();
+    if (!client) return;
+    client.query({ query: CART_HAS_ITEMS })
+      .then(({ data }) => {
+        const cart = data?.getAttendeeCart;
+        const items = cart?.cart_items || [];
+        setHasCart(!!(cart?.id && !['paid', 'cancelled', 'expired'].includes(cart.status) && items.length > 0));
       })
-      .catch(() => {});
+      .catch(() => setHasCart(false));
   }, [pathname, searchParams]);
 
   useEffect(() => {

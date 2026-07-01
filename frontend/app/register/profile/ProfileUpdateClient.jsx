@@ -1,13 +1,64 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { gql } from "@apollo/client";
+import { getApolloClient } from "@/lib/apolloClient";
 import BottomNav from "@/app/components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { useAuth } from "@/hooks/useAuth";
 import { useLang } from "@/lib/useLang";
 import { toPersianDigits, toEnglishDigits } from "@/lib/utils";
-import { handleApiResponse } from "@/lib/handleApiResponse";
+
+const ATTENDEE_QUERY = gql`
+  query GetAttendee($id: Int!) {
+    attendee(id: $id) {
+      firstname_en lastname_en national_code email profile phone
+      occupation_id education_level_id field_of_activities job_title_en
+    }
+  }
+`;
+
+const FORM_OPTIONS_QUERY = gql`
+  {
+    occupations(industryId: 1) { id title_fa title_en }
+    fieldOfActivities(industryId: 1) { id title_fa title_en }
+    educationLevels { id title_fa title_en }
+  }
+`;
+
+const UPDATE_INFO = gql`
+  mutation UpdateInfo(
+    $firstnameFa: String! $lastnameFa: String!
+    $firstnameEn: String! $lastnameEn: String!
+    $jobTitleFa: String $jobTitleEn: String $nationalCode: String
+  ) {
+    attendeeUpdateProfileInfo(
+      firstnameFa: $firstnameFa lastnameFa: $lastnameFa
+      firstnameEn: $firstnameEn lastnameEn: $lastnameEn
+      jobTitleFa: $jobTitleFa jobTitleEn: $jobTitleEn nationalCode: $nationalCode
+    )
+  }
+`;
+
+const UPDATE_CONTACT = gql`
+  mutation UpdateContact($email: String $phone: String) {
+    attendeeUpdateProfileContact(email: $email phone: $phone)
+  }
+`;
+
+const UPDATE_ACTIVITY = gql`
+  mutation UpdateActivity(
+    $occupationId: Int $fieldOfActivities: [Int!]! $educationLevelId: Int
+  ) {
+    attendeeUpdateProfileActivity(
+      industryId: 1
+      occupationId: $occupationId
+      fieldOfActivities: $fieldOfActivities
+      educationLevelId: $educationLevelId
+    )
+  }
+`;
 
 const INPUT_STYLE = {
   width: "100%",
@@ -56,7 +107,6 @@ function SectionCard({ title, children }) {
 export default function ProfileUpdateClient() {
   const { user } = useAuth();
   const router = useRouter();
-  const pathname = usePathname();
   const { lang, isRTL } = useLang();
   const isEN = lang === "en";
 
@@ -85,39 +135,42 @@ export default function ProfileUpdateClient() {
     }));
   }, [user]);
 
-  // Load form options
+  // Load form options + extended profile via Apollo
   useEffect(() => {
-    fetch("/api/registration/form-data")
-      .then((r) => r.json())
-      .then((data) => setFormOptions(data))
+    const client = getApolloClient();
+
+    client.query({ query: FORM_OPTIONS_QUERY })
+      .then(({ data }) => setFormOptions({
+        occupations: data?.occupations ?? [],
+        fieldOfActivities: data?.fieldOfActivities ?? [],
+        educationLevels: data?.educationLevels ?? [],
+      }))
       .catch(() => {})
       .finally(() => setOptionsLoading(false));
-  }, []);
 
-  // Load extended profile
-  useEffect(() => {
-    fetch("/api/profile")
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => {
-        if (!data?.attendee) return;
-        const a = data.attendee;
-        setForm((prev) => ({
-          ...prev,
-          firstnameEn:    prev.firstnameEn    || a.firstname_en    || "",
-          lastnameEn:     prev.lastnameEn     || a.lastname_en     || "",
-          jobTitleEn:     prev.jobTitleEn     || a.job_title_en    || "",
-          nationalCode:   prev.nationalCode   || a.national_code   || "",
-          email:          prev.email          || a.email           || "",
-          phone:          prev.phone          || a.phone           || "",
-          occupationId:   prev.occupationId   || String(a.occupation_id   ?? "") || "",
-          educationLevelId: prev.educationLevelId || String(a.education_level_id ?? "") || "",
-          fieldOfActivities: prev.fieldOfActivities.length
-            ? prev.fieldOfActivities
-            : (a.field_of_activities ?? []),
-        }));
-      })
-      .catch(() => {});
-  }, []);
+    if (user?.id) {
+      client.query({ query: ATTENDEE_QUERY, variables: { id: Number(user.id) } })
+        .then(({ data }) => {
+          const a = data?.attendee;
+          if (!a) return;
+          setForm((prev) => ({
+            ...prev,
+            firstnameEn:    prev.firstnameEn    || a.firstname_en    || "",
+            lastnameEn:     prev.lastnameEn     || a.lastname_en     || "",
+            jobTitleEn:     prev.jobTitleEn     || a.job_title_en    || "",
+            nationalCode:   prev.nationalCode   || a.national_code   || "",
+            email:          prev.email          || a.email           || "",
+            phone:          prev.phone          || a.phone           || "",
+            occupationId:   prev.occupationId   || String(a.occupation_id   ?? ""),
+            educationLevelId: prev.educationLevelId || String(a.education_level_id ?? ""),
+            fieldOfActivities: prev.fieldOfActivities.length
+              ? prev.fieldOfActivities
+              : (a.field_of_activities ?? []),
+          }));
+        })
+        .catch(() => {});
+    }
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function set(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -136,18 +189,43 @@ export default function ProfileUpdateClient() {
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetch("/api/registration/update-profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          occupationId: form.occupationId ? parseInt(form.occupationId) : null,
-          educationLevelId: form.educationLevelId ? parseInt(form.educationLevelId) : null,
-        }),
+      const client = getApolloClient();
+
+      // 1. Personal info (required)
+      const { errors: infoErrors } = await client.mutate({
+        mutation: UPDATE_INFO,
+        variables: {
+          firstnameFa: form.firstnameFa,
+          lastnameFa: form.lastnameFa,
+          firstnameEn: form.firstnameEn || user?.firstname_en || "",
+          lastnameEn: form.lastnameEn || user?.lastname_en || "",
+          jobTitleFa: form.jobTitleFa || undefined,
+          jobTitleEn: form.jobTitleEn || undefined,
+          nationalCode: form.nationalCode || undefined,
+        },
       });
-      const result = await handleApiResponse(res, router, pathname);
-      if (result.sessionExpired || result.notLoggedIn) { setSubmitting(false); return; }
-      if (!res.ok) throw new Error(result.data?.error || "خطا در ذخیره اطلاعات");
+      if (infoErrors?.length) throw new Error(infoErrors[0].message || "خطا در ذخیره اطلاعات");
+
+      // 2. Contact (non-fatal)
+      if (form.email || form.phone) {
+        await client.mutate({
+          mutation: UPDATE_CONTACT,
+          variables: { email: form.email || undefined, phone: form.phone || undefined },
+        }).catch(() => {});
+      }
+
+      // 3. Activity (non-fatal)
+      const hasActivity = form.occupationId || form.fieldOfActivities.length || form.educationLevelId;
+      if (hasActivity) {
+        await client.mutate({
+          mutation: UPDATE_ACTIVITY,
+          variables: {
+            occupationId: form.occupationId ? parseInt(form.occupationId) : undefined,
+            fieldOfActivities: form.fieldOfActivities.map(Number).filter(Boolean),
+            educationLevelId: form.educationLevelId ? parseInt(form.educationLevelId) : undefined,
+          },
+        }).catch(() => {});
+      }
 
       router.push("/register/confirm");
     } catch (err) {

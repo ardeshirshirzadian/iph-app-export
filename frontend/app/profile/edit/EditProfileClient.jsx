@@ -1,14 +1,65 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { gql } from "@apollo/client";
+import { getApolloClient } from "@/lib/apolloClient";
 import BottomNav from "@/app/components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { useAuth } from "@/hooks/useAuth";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 import { toPersianDigits, toEnglishDigits } from "@/lib/utils";
-import { handleApiResponse } from "@/lib/handleApiResponse";
+
+const ATTENDEE_QUERY = gql`
+  query GetAttendee($id: Int!) {
+    attendee(id: $id) {
+      firstname_en lastname_en national_code email profile phone
+      occupation_id education_level_id field_of_activities job_title_en
+    }
+  }
+`;
+
+const FORM_OPTIONS_QUERY = gql`
+  {
+    occupations(industryId: 1) { id title_fa title_en }
+    fieldOfActivities(industryId: 1) { id title_fa title_en }
+    educationLevels { id title_fa title_en }
+  }
+`;
+
+const UPDATE_INFO = gql`
+  mutation UpdateInfo(
+    $firstnameFa: String! $lastnameFa: String!
+    $firstnameEn: String! $lastnameEn: String!
+    $jobTitleFa: String $jobTitleEn: String $nationalCode: String
+  ) {
+    attendeeUpdateProfileInfo(
+      firstnameFa: $firstnameFa lastnameFa: $lastnameFa
+      firstnameEn: $firstnameEn lastnameEn: $lastnameEn
+      jobTitleFa: $jobTitleFa jobTitleEn: $jobTitleEn nationalCode: $nationalCode
+    )
+  }
+`;
+
+const UPDATE_CONTACT = gql`
+  mutation UpdateContact($email: String $phone: String) {
+    attendeeUpdateProfileContact(email: $email phone: $phone)
+  }
+`;
+
+const UPDATE_ACTIVITY = gql`
+  mutation UpdateActivity(
+    $occupationId: Int $fieldOfActivities: [Int!]! $educationLevelId: Int
+  ) {
+    attendeeUpdateProfileActivity(
+      industryId: 1
+      occupationId: $occupationId
+      fieldOfActivities: $fieldOfActivities
+      educationLevelId: $educationLevelId
+    )
+  }
+`;
 
 const INPUT_STYLE = {
   width: "100%",
@@ -75,7 +126,6 @@ function SaveButton({ onClick, saving, saved }) {
 export default function EditProfileClient() {
   const { user } = useAuth();
   const router = useRouter();
-  const pathname = usePathname();
   const { lang, isRTL } = useLang();
   const isEN = lang === "en";
 
@@ -110,39 +160,42 @@ export default function EditProfileClient() {
     }));
   }, [user]);
 
-  // Load profile API data
+  // Load profile and form options via Apollo
   useEffect(() => {
-    fetch("/api/profile")
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => {
-        const a = data?.attendee;
-        if (!a) return;
-        setForm((prev) => ({
-          ...prev,
-          firstnameEn:      prev.firstnameEn    || a.firstname_en    || "",
-          lastnameEn:       prev.lastnameEn     || a.lastname_en     || "",
-          jobTitleEn:       prev.jobTitleEn     || a.job_title_en    || "",
-          nationalCode:     prev.nationalCode   || a.national_code   || "",
-          email:            prev.email          || a.email           || "",
-          phone:            prev.phone          || a.phone           || "",
-          occupationId:     prev.occupationId   || String(a.occupation_id      ?? ""),
-          educationLevelId: prev.educationLevelId || String(a.education_level_id ?? ""),
-          fieldOfActivities: prev.fieldOfActivities.length
-            ? prev.fieldOfActivities
-            : (a.field_of_activities ?? []),
-        }));
-      })
-      .catch(() => {});
-  }, []);
+    const client = getApolloClient();
 
-  // Load dropdown options
-  useEffect(() => {
-    fetch("/api/registration/form-data")
-      .then((r) => r.json())
-      .then((data) => setFormOptions(data))
+    if (user?.id) {
+      client.query({ query: ATTENDEE_QUERY, variables: { id: Number(user.id) } })
+        .then(({ data }) => {
+          const a = data?.attendee;
+          if (!a) return;
+          setForm((prev) => ({
+            ...prev,
+            firstnameEn:      prev.firstnameEn    || a.firstname_en    || "",
+            lastnameEn:       prev.lastnameEn     || a.lastname_en     || "",
+            jobTitleEn:       prev.jobTitleEn     || a.job_title_en    || "",
+            nationalCode:     prev.nationalCode   || a.national_code   || "",
+            email:            prev.email          || a.email           || "",
+            phone:            prev.phone          || a.phone           || "",
+            occupationId:     prev.occupationId   || String(a.occupation_id      ?? ""),
+            educationLevelId: prev.educationLevelId || String(a.education_level_id ?? ""),
+            fieldOfActivities: prev.fieldOfActivities.length
+              ? prev.fieldOfActivities
+              : (a.field_of_activities ?? []),
+          }));
+        })
+        .catch(() => {});
+    }
+
+    client.query({ query: FORM_OPTIONS_QUERY })
+      .then(({ data }) => setFormOptions({
+        occupations: data?.occupations ?? [],
+        fieldOfActivities: data?.fieldOfActivities ?? [],
+        educationLevels: data?.educationLevels ?? [],
+      }))
       .catch(() => {})
       .finally(() => setOptionsLoading(false));
-  }, []);
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function set(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -160,19 +213,20 @@ export default function EditProfileClient() {
   async function saveInfo() {
     setInfoState({ saving: true, saved: false, error: "" });
     try {
-      const res = await fetch("/api/user/update-info", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          firstnameFa: form.firstnameFa, lastnameFa: form.lastnameFa,
-          firstnameEn: form.firstnameEn, lastnameEn: form.lastnameEn,
-          jobTitleFa: form.jobTitleFa, jobTitleEn: form.jobTitleEn,
+      const client = getApolloClient();
+      const { errors } = await client.mutate({
+        mutation: UPDATE_INFO,
+        variables: {
+          firstnameFa: form.firstnameFa,
+          lastnameFa: form.lastnameFa,
+          firstnameEn: form.firstnameEn || user?.firstname_en || "",
+          lastnameEn: form.lastnameEn || user?.lastname_en || "",
+          jobTitleFa: form.jobTitleFa,
+          jobTitleEn: form.jobTitleEn,
           nationalCode: form.nationalCode,
-        }),
+        },
       });
-      const result = await handleApiResponse(res, router, pathname);
-      if (result.sessionExpired || result.notLoggedIn) { setInfoState({ saving: false, saved: false, error: "" }); return; }
-      if (!res.ok) throw new Error(result.data?.error || "خطا در ذخیره‌سازی");
+      if (errors?.length) throw new Error(errors[0].message || "خطا در ذخیره‌سازی");
       setInfoState({ saving: false, saved: true, error: "" });
       setTimeout(() => router.push("/profile"), 1500);
     } catch (err) {
@@ -183,14 +237,12 @@ export default function EditProfileClient() {
   async function saveContact() {
     setContactState({ saving: true, saved: false, error: "" });
     try {
-      const res = await fetch("/api/user/update-contact", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: form.email, phone: form.phone }),
+      const client = getApolloClient();
+      const { errors } = await client.mutate({
+        mutation: UPDATE_CONTACT,
+        variables: { email: form.email, phone: form.phone },
       });
-      const result = await handleApiResponse(res, router, pathname);
-      if (result.sessionExpired || result.notLoggedIn) { setContactState({ saving: false, saved: false, error: "" }); return; }
-      if (!res.ok) throw new Error(result.data?.error || "خطا در ذخیره‌سازی");
+      if (errors?.length) throw new Error(errors[0].message || "خطا در ذخیره‌سازی");
       setContactState({ saving: false, saved: true, error: "" });
       setTimeout(() => router.push("/profile"), 1500);
     } catch (err) {
@@ -201,18 +253,16 @@ export default function EditProfileClient() {
   async function saveActivity() {
     setActivityState({ saving: true, saved: false, error: "" });
     try {
-      const res = await fetch("/api/user/update-activity", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const client = getApolloClient();
+      const { errors } = await client.mutate({
+        mutation: UPDATE_ACTIVITY,
+        variables: {
           occupationId: form.occupationId ? parseInt(form.occupationId) : null,
-          fieldOfActivities: form.fieldOfActivities,
+          fieldOfActivities: form.fieldOfActivities.map(Number).filter(Boolean),
           educationLevelId: form.educationLevelId ? parseInt(form.educationLevelId) : null,
-        }),
+        },
       });
-      const result = await handleApiResponse(res, router, pathname);
-      if (result.sessionExpired || result.notLoggedIn) { setActivityState({ saving: false, saved: false, error: "" }); return; }
-      if (!res.ok) throw new Error(result.data?.error || "خطا در ذخیره‌سازی");
+      if (errors?.length) throw new Error(errors[0].message || "خطا در ذخیره‌سازی");
       setActivityState({ saving: false, saved: true, error: "" });
       setTimeout(() => router.push("/profile"), 1500);
     } catch (err) {

@@ -37,10 +37,7 @@ function toLocalMobile(mobile) {
 }
 
 function clearAuthCookies(response) {
-  const opts = { path: '/', maxAge: 0 }
-  response.cookies.set('iph_access_token', '', opts)
-  response.cookies.set('iph_refresh_token', '', opts)
-  response.cookies.set('iph_user', '', opts)
+  response.cookies.set('iph_user', '', { path: '/', maxAge: 0 })
 }
 
 function getAdminSession(request) {
@@ -177,9 +174,9 @@ export async function proxy(request) {
   }
 
   // ── Regular user auth ─────────────────────────────────────────────────────
-  const token = request.cookies.get('iph_access_token')?.value
+  const userCookieRaw = request.cookies.get('iph_user')?.value
 
-  if (token && (pathname.startsWith('/login') || pathname.startsWith('/signup'))) {
+  if (userCookieRaw && (pathname.startsWith('/login') || pathname.startsWith('/signup'))) {
     return NextResponse.redirect(new URL('/', request.url))
   }
 
@@ -196,24 +193,7 @@ export async function proxy(request) {
     return NextResponse.next()
   }
 
-  if (!token) {
-    const refreshToken = request.cookies.get('iph_refresh_token')?.value
-    if (refreshToken) {
-      const userCookieRaw = request.cookies.get('iph_user')?.value
-      try {
-        const userData = userCookieRaw ? JSON.parse(userCookieRaw) : {}
-        const rawContact = userData.mobile || userData.email || ''
-        const isEmailContact = rawContact.includes('@')
-        const contact = isEmailContact ? rawContact : toLocalMobile(rawContact)
-        const loginUrl = new URL('/login', request.url)
-        loginUrl.searchParams.set('quick', 'true')
-        loginUrl.searchParams.set('from', pathname)
-        if (contact) loginUrl.searchParams.set('contact', contact)
-        return NextResponse.redirect(loginUrl)
-      } catch {
-        // Fall through to normal login redirect
-      }
-    }
+  if (!userCookieRaw) {
     const loginUrl = new URL('/login', request.url)
     loginUrl.searchParams.set('from', pathname)
     return NextResponse.redirect(loginUrl)
@@ -221,10 +201,7 @@ export async function proxy(request) {
 
   // Token version check: if DB version is higher, admin triggered force-logout
   try {
-    const userCookieRaw = request.cookies.get('iph_user')?.value
-    const userVersion = userCookieRaw
-      ? (JSON.parse(userCookieRaw).tokenVersion ?? 1)
-      : 1
+    const userVersion = JSON.parse(userCookieRaw).tokenVersion ?? 1
     const currentVersion = await getCurrentTokenVersion()
 
     if (userVersion < currentVersion) {
