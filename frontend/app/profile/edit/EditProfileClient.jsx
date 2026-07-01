@@ -226,7 +226,9 @@ export default function EditProfileClient() {
       });
       if (errors?.length) throw new Error(errors[0].message || "خطا در ذخیره‌سازی");
       client.cache.evict({ fieldName: 'getAttendee' });
+      client.cache.evict({ fieldName: 'attendee' });
       client.cache.gc();
+      await client.query({ query: ATTENDEE_QUERY, fetchPolicy: 'network-only' });
       setInfoState({ saving: false, saved: true, error: "" });
       setTimeout(() => router.push("/profile"), 1500);
     } catch (err) {
@@ -244,7 +246,9 @@ export default function EditProfileClient() {
       });
       if (errors?.length) throw new Error(errors[0].message || "خطا در ذخیره‌سازی");
       client.cache.evict({ fieldName: 'getAttendee' });
+      client.cache.evict({ fieldName: 'attendee' });
       client.cache.gc();
+      await client.query({ query: ATTENDEE_QUERY, fetchPolicy: 'network-only' });
       setContactState({ saving: false, saved: true, error: "" });
       setTimeout(() => router.push("/profile"), 1500);
     } catch (err) {
@@ -266,7 +270,9 @@ const { errors } = await client.mutate({
       });
       if (errors?.length) throw new Error(errors[0].message || "خطا در ذخیره‌سازی");
       client.cache.evict({ fieldName: 'getAttendee' });
+      client.cache.evict({ fieldName: 'attendee' });
       client.cache.gc();
+      await client.query({ query: ATTENDEE_QUERY, fetchPolicy: 'network-only' });
       setActivityState({ saving: false, saved: true, error: "" });
       setTimeout(() => router.push("/profile"), 1500);
     } catch (err) {

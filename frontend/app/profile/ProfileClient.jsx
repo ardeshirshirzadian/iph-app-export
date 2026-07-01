@@ -13,14 +13,23 @@ import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 
 const ATTENDEE_QUERY = gql`
-  query GetAttendee($id: Int!) {
-    attendee(id: $id) {
+  query GetAttendee {
+    getAttendee {
+      id
+      firstname_fa
+      lastname_fa
       firstname_en
       lastname_en
+      job_title_fa
+      job_title_en
       national_code
       email
+      phone
       profile
-      todayEventPresence(eventId: 1)
+      occupation_id
+      education_level_id
+      field_of_activities { id title_fa title_en }
+      todayEventPresence(eventId: 18)
     }
   }
 `;
@@ -197,8 +206,8 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en }
     const client = getApolloClient();
 
     setProfileLoading(true);
-    client.query({ query: ATTENDEE_QUERY, variables: { id: Number(user.id) }, fetchPolicy: 'network-only' })
-      .then(({ data }) => { if (data?.attendee) setAttendeeData(data.attendee); })
+    client.query({ query: ATTENDEE_QUERY, fetchPolicy: 'network-only' })
+      .then(({ data }) => { if (data?.getAttendee) setAttendeeData(data.getAttendee); })
       .catch(() => {})
       .finally(() => setProfileLoading(false));
 
@@ -252,12 +261,8 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en }
       .finally(() => setPanelsLoading(false));
   }, [authReady, user?.id]);
 
-  const fullNameFa = user ? `${user.firstname_fa || ""} ${user.lastname_fa || ""}`.trim() : "";
-  const enName = attendeeData
-    ? `${attendeeData.firstname_en || ""} ${attendeeData.lastname_en || ""}`.trim()
-    : user
-    ? `${user.firstname_en || ""} ${user.lastname_en || ""}`.trim()
-    : "";
+  const fullNameFa = attendeeData ? `${attendeeData.firstname_fa || ""} ${attendeeData.lastname_fa || ""}`.trim() : "";
+  const enName = attendeeData ? `${attendeeData.firstname_en || ""} ${attendeeData.lastname_en || ""}`.trim() : "";
 
 
   return (
@@ -373,27 +378,27 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en }
           </div>
 
           <div className="space-y-3 border-t pt-4" style={{ borderColor: "var(--border)" }}>
-            {lang === "en" && (attendeeData?.email || user?.email) && (
+            {lang === "en" && attendeeData?.email && (
               <div className="flex justify-between items-center">
                 <span className="text-xs" style={{ color: "var(--text-dim)" }}>{t(lang, "profile_email")}</span>
                 <span className="text-sm font-medium" style={{ color: "var(--text)", direction: "ltr" }}>
-                  {attendeeData?.email || user?.email}
+                  {attendeeData.email}
                 </span>
               </div>
             )}
-            {user?.mobile && (
+            {attendeeData?.phone && (
               <div className="flex justify-between items-center">
                 <span className="text-xs" style={{ color: "var(--text-dim)" }}>{t(lang, "profile_mobile")}</span>
                 <span className="text-sm font-medium" style={{ color: "var(--text)", direction: "ltr" }}>
-                  {normalizePhone(user.mobile, lang)}
+                  {normalizePhone(attendeeData.phone, lang)}
                 </span>
               </div>
             )}
-            {user?.job_title_fa && (
+            {attendeeData?.job_title_fa && (
               <div className="flex justify-between items-center">
                 <span className="text-xs" style={{ color: "var(--text-dim)" }}>{t(lang, "profile_job")}</span>
                 <span className="text-sm font-medium" style={{ color: "var(--text)" }}>
-                  {user.job_title_fa}
+                  {attendeeData.job_title_fa}
                 </span>
               </div>
             )}
