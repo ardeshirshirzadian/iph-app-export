@@ -225,6 +225,8 @@ export default function EditProfileClient() {
         },
       });
       if (errors?.length) throw new Error(errors[0].message || "خطا در ذخیره‌سازی");
+      client.cache.evict({ fieldName: 'getAttendee' });
+      client.cache.gc();
       setInfoState({ saving: false, saved: true, error: "" });
       setTimeout(() => router.push("/profile"), 1500);
     } catch (err) {
@@ -241,6 +243,8 @@ export default function EditProfileClient() {
         variables: { email: form.email, phone: form.phone },
       });
       if (errors?.length) throw new Error(errors[0].message || "خطا در ذخیره‌سازی");
+      client.cache.evict({ fieldName: 'getAttendee' });
+      client.cache.gc();
       setContactState({ saving: false, saved: true, error: "" });
       setTimeout(() => router.push("/profile"), 1500);
     } catch (err) {
@@ -261,6 +265,8 @@ const { errors } = await client.mutate({
         },
       });
       if (errors?.length) throw new Error(errors[0].message || "خطا در ذخیره‌سازی");
+      client.cache.evict({ fieldName: 'getAttendee' });
+      client.cache.gc();
       setActivityState({ saving: false, saved: true, error: "" });
       setTimeout(() => router.push("/profile"), 1500);
     } catch (err) {

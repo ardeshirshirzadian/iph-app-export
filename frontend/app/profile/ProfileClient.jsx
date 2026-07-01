@@ -197,7 +197,7 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en }
     const client = getApolloClient();
 
     setProfileLoading(true);
-    client.query({ query: ATTENDEE_QUERY, variables: { id: Number(user.id) } })
+    client.query({ query: ATTENDEE_QUERY, variables: { id: Number(user.id) }, fetchPolicy: 'network-only' })
       .then(({ data }) => { if (data?.attendee) setAttendeeData(data.attendee); })
       .catch(() => {})
       .finally(() => setProfileLoading(false));
