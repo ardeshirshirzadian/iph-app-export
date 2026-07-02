@@ -12,6 +12,8 @@ import { toPersianDigits } from "@/lib/utils";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 
+const RASAYESH_BASE = "https://api.rasayesh.com/";
+
 const ATTENDEE_QUERY = gql`
   query GetAttendee {
     getAttendee {
@@ -317,9 +319,9 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en }
 
           <div className="flex items-center gap-4 mb-4">
             <div className="w-16 h-16 rounded-full bg-[#00ffb3]/10 border border-[#00ffb3]/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
-              {attendeeData?.profile ? (
+              {attendeeData?.profile?.jpg?.["128"] ? (
                 <img
-                  src={attendeeData.profile}
+                  src={`${RASAYESH_BASE}${attendeeData.profile.jpg["128"]}`}
                   alt={t(lang, "profile_title")}
                   className="w-16 h-16 rounded-full object-cover"
                   referrerPolicy="no-referrer"

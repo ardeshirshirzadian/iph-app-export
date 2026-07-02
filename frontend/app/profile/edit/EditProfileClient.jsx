@@ -1,15 +1,89 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { gql } from "@apollo/client";
 import { getApolloClient } from "@/lib/apolloClient";
+import Cropper from "react-easy-crop";
 import BottomNav from "@/app/components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { useAuth } from "@/hooks/useAuth";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 import { toPersianDigits, toEnglishDigits } from "@/lib/utils";
+
+const RASAYESH_BASE   = "https://api.rasayesh.com/";
+const RASAYESH_GQL    = "https://api.rasayesh.com/graphql";
+const RASAYESH_ORIGIN = "https://attendee.rasayesh.com";
+
+// Canvas-based crop: returns a JPEG Blob of the cropped region
+async function getCroppedImg(imageSrc, pixelCrop) {
+  const image = new Image();
+  image.src = imageSrc;
+  await new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = reject;
+  });
+  const canvas = document.createElement("canvas");
+  canvas.width  = pixelCrop.width;
+  canvas.height = pixelCrop.height;
+  canvas.getContext("2d").drawImage(
+    image,
+    pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height,
+    0, 0, pixelCrop.width, pixelCrop.height,
+  );
+  return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+}
+
+// Multipart GraphQL upload (HttpLink doesn't support files, so raw fetch)
+async function uploadProfileImage(blob, fields) {
+  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const query = `mutation AttendeeUpdateProfileInfo(
+    $firstnameFa: String, $lastnameFa: String,
+    $firstnameEn: String, $lastnameEn: String,
+    $jobTitleFa: String, $jobTitleEn: String,
+    $nationalCode: String, $profile: Upload
+  ) {
+    attendeeUpdateProfileInfo(
+      firstnameFa: $firstnameFa
+      lastnameFa: $lastnameFa
+      firstnameEn: $firstnameEn
+      lastnameEn: $lastnameEn
+      jobTitleFa: $jobTitleFa
+      jobTitleEn: $jobTitleEn
+      nationalCode: $nationalCode
+      profile: $profile
+    )
+  }`;
+  const fd = new FormData();
+  fd.append("operations", JSON.stringify({
+    query,
+    variables: {
+      firstnameFa: fields.firstnameFa || "",
+      lastnameFa:  fields.lastnameFa  || "",
+      firstnameEn: fields.firstnameEn || "",
+      lastnameEn:  fields.lastnameEn  || "",
+      jobTitleFa:  fields.jobTitleFa  || null,
+      jobTitleEn:  fields.jobTitleEn  || null,
+      nationalCode: fields.nationalCode || null,
+      profile: null,
+    },
+  }));
+  fd.append("map", JSON.stringify({ "1": ["variables.profile"] }));
+  fd.append("1", new File([blob], "profile.jpg", { type: "image/jpeg" }));
+  const res = await fetch(RASAYESH_GQL, {
+    method: "POST",
+    headers: {
+      "x-rasayesh-site": "attendee",
+      origin: RASAYESH_ORIGIN,
+      referer: `${RASAYESH_ORIGIN}/`,
+      lang: "fa",
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    body: fd,
+  });
+  return res.json();
+}
 
 const ATTENDEE_QUERY = gql`
   query GetAttendee {
@@ -38,13 +112,13 @@ const UPDATE_INFO = gql`
       firstnameFa: $firstnameFa lastnameFa: $lastnameFa
       firstnameEn: $firstnameEn lastnameEn: $lastnameEn
       jobTitleFa: $jobTitleFa jobTitleEn: $jobTitleEn nationalCode: $nationalCode
-    )
+    ) { status errors }
   }
 `;
 
 const UPDATE_CONTACT = gql`
   mutation UpdateContact($email: String $phone: String) {
-    attendeeUpdateProfileContact(email: $email phone: $phone)
+    attendeeUpdateProfileContact(email: $email phone: $phone) { status errors }
   }
 `;
 
@@ -57,7 +131,7 @@ const UPDATE_ACTIVITY = gql`
       occupationId: $occupationId
       fieldOfActivities: $fieldOfActivities
       educationLevelId: $educationLevelId
-    )
+    ) { status errors }
   }
 `;
 
@@ -146,6 +220,15 @@ export default function EditProfileClient() {
   const [contactState,  setContactState]  = useState({ saving: false, saved: false, error: "" });
   const [activityState, setActivityState] = useState({ saving: false, saved: false, error: "" });
 
+  // Profile photo state
+  const [profileUrl,       setProfileUrl]       = useState(null);
+  const [cropSrc,          setCropSrc]          = useState(null);
+  const [crop,             setCrop]             = useState({ x: 0, y: 0 });
+  const [zoom,             setZoom]             = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
+  const [uploadingPhoto,   setUploadingPhoto]   = useState(false);
+  const [photoError,       setPhotoError]       = useState("");
+
   // Pre-fill from user cookie immediately
   useEffect(() => {
     if (!user) return;
@@ -166,24 +249,29 @@ export default function EditProfileClient() {
 
     client.query({ query: ATTENDEE_QUERY })
       .then(({ data }) => {
-          const a = data?.getAttendee;
-          if (!a) return;
-          setForm((prev) => ({
-            ...prev,
-            firstnameEn:      prev.firstnameEn    || a.firstname_en    || "",
-            lastnameEn:       prev.lastnameEn     || a.lastname_en     || "",
-            jobTitleEn:       prev.jobTitleEn     || a.job_title_en    || "",
-            nationalCode:     prev.nationalCode   || a.national_code   || "",
-            email:            prev.email          || a.email           || "",
-            phone:            prev.phone          || a.phone           || "",
-            occupationId:     prev.occupationId   || String(a.occupation_id      ?? ""),
-            educationLevelId: prev.educationLevelId || String(a.education_level_id ?? ""),
-            fieldOfActivities: prev.fieldOfActivities.length
-              ? prev.fieldOfActivities
-              : (a.field_of_activities ?? []).map(f => f?.id ?? f),
-          }));
-        })
-        .catch(() => {});
+        const a = data?.getAttendee;
+        if (!a) return;
+        // Set profile image URL from the jpg object returned by the API
+        const pSrc = a.profile?.jpg?.["128"]
+          ? `${RASAYESH_BASE}${a.profile.jpg["128"]}`
+          : null;
+        setProfileUrl(pSrc);
+        setForm((prev) => ({
+          ...prev,
+          firstnameEn:      prev.firstnameEn    || a.firstname_en    || "",
+          lastnameEn:       prev.lastnameEn     || a.lastname_en     || "",
+          jobTitleEn:       prev.jobTitleEn     || a.job_title_en    || "",
+          nationalCode:     prev.nationalCode   || a.national_code   || "",
+          email:            prev.email          || a.email           || "",
+          phone:            prev.phone          || a.phone           || "",
+          occupationId:     prev.occupationId   || String(a.occupation_id      ?? ""),
+          educationLevelId: prev.educationLevelId || String(a.education_level_id ?? ""),
+          fieldOfActivities: prev.fieldOfActivities.length
+            ? prev.fieldOfActivities
+            : (a.field_of_activities ?? []).map(f => f?.id ?? f),
+        }));
+      })
+      .catch(() => {});
 
     client.query({ query: FORM_OPTIONS_QUERY })
       .then(({ data }) => setFormOptions({
@@ -208,11 +296,73 @@ export default function EditProfileClient() {
     });
   }
 
+  // ── Photo upload handlers ─────────────────────────────────────────────────
+
+  function onFileChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCrop({ x: 0, y: 0 });
+      setZoom(1);
+      setCropSrc(reader.result);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = ""; // allow re-selecting the same file
+  }
+
+  const onCropComplete = useCallback((_, pixels) => {
+    setCroppedAreaPixels(pixels);
+  }, []);
+
+  async function confirmCrop() {
+    if (!cropSrc || !croppedAreaPixels) return;
+    setUploadingPhoto(true);
+    setPhotoError("");
+    try {
+      const blob = await getCroppedImg(cropSrc, croppedAreaPixels);
+      const json = await uploadProfileImage(blob, {
+        firstnameFa:  form.firstnameFa  || "",
+        lastnameFa:   form.lastnameFa   || "",
+        firstnameEn:  form.firstnameEn  || "",
+        lastnameEn:   form.lastnameEn   || "",
+        jobTitleFa:   form.jobTitleFa   || null,
+        jobTitleEn:   form.jobTitleEn   || null,
+        nationalCode: form.nationalCode || null,
+      });
+      const payload = json?.data?.attendeeUpdateProfileInfo;
+      if (payload?.status === "invalid") {
+        const msg = payload.errors
+          ? Object.values(payload.errors).flat().join(", ")
+          : "خطا در آپلود تصویر";
+        setPhotoError(msg);
+        return;
+      }
+      const profileObj = payload?.data?.profile ?? payload?.profile;
+      const newSrc = profileObj?.jpg?.["128"]
+        ? `${RASAYESH_BASE}${profileObj.jpg["128"]}`
+        : null;
+      if (newSrc) setProfileUrl(newSrc);
+      // Evict so ProfileClient re-fetches fresh data
+      const client = getApolloClient();
+      client.cache.evict({ fieldName: "getAttendee" });
+      client.cache.evict({ fieldName: "attendee" });
+      client.cache.gc();
+      setCropSrc(null);
+    } catch (err) {
+      setPhotoError(err.message || "خطا در آپلود تصویر");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
+  // ── Text-field save handlers ──────────────────────────────────────────────
+
   async function saveInfo() {
     setInfoState({ saving: true, saved: false, error: "" });
     try {
       const client = getApolloClient();
-      const { errors } = await client.mutate({
+      const result = await client.mutate({
         mutation: UPDATE_INFO,
         variables: {
           firstnameFa: form.firstnameFa,
@@ -224,7 +374,13 @@ export default function EditProfileClient() {
           nationalCode: form.nationalCode,
         },
       });
-      if (errors?.length) throw new Error(errors[0].message || "خطا در ذخیره‌سازی");
+      if (result.errors?.length) throw new Error(result.errors[0].message || "خطا در ذخیره‌سازی");
+      const payload = result.data?.attendeeUpdateProfileInfo;
+      if (payload?.status === 'invalid') {
+        const msg = payload.errors ? Object.values(payload.errors).flat().join(', ') : "خطا در ذخیره‌سازی";
+        setInfoState({ saving: false, saved: false, error: msg });
+        return;
+      }
       client.cache.evict({ fieldName: 'getAttendee' });
       client.cache.evict({ fieldName: 'attendee' });
       client.cache.gc();
@@ -240,11 +396,17 @@ export default function EditProfileClient() {
     setContactState({ saving: true, saved: false, error: "" });
     try {
       const client = getApolloClient();
-      const { errors } = await client.mutate({
+      const result = await client.mutate({
         mutation: UPDATE_CONTACT,
         variables: { email: form.email, phone: form.phone },
       });
-      if (errors?.length) throw new Error(errors[0].message || "خطا در ذخیره‌سازی");
+      if (result.errors?.length) throw new Error(result.errors[0].message || "خطا در ذخیره‌سازی");
+      const payload = result.data?.attendeeUpdateProfileContact;
+      if (payload?.status === 'invalid') {
+        const msg = payload.errors ? Object.values(payload.errors).flat().join(', ') : "خطا در ذخیره‌سازی";
+        setContactState({ saving: false, saved: false, error: msg });
+        return;
+      }
       client.cache.evict({ fieldName: 'getAttendee' });
       client.cache.evict({ fieldName: 'attendee' });
       client.cache.gc();
@@ -260,7 +422,7 @@ export default function EditProfileClient() {
     setActivityState({ saving: true, saved: false, error: "" });
     try {
       const client = getApolloClient();
-const { errors } = await client.mutate({
+      const result = await client.mutate({
         mutation: UPDATE_ACTIVITY,
         variables: {
           occupationId: form.occupationId ? parseInt(form.occupationId) : null,
@@ -268,7 +430,13 @@ const { errors } = await client.mutate({
           educationLevelId: form.educationLevelId ? parseInt(form.educationLevelId) : null,
         },
       });
-      if (errors?.length) throw new Error(errors[0].message || "خطا در ذخیره‌سازی");
+      if (result.errors?.length) throw new Error(result.errors[0].message || "خطا در ذخیره‌سازی");
+      const payload = result.data?.attendeeUpdateProfileActivity;
+      if (payload?.status === 'invalid') {
+        const msg = payload.errors ? Object.values(payload.errors).flat().join(', ') : "خطا در ذخیره‌سازی";
+        setActivityState({ saving: false, saved: false, error: msg });
+        return;
+      }
       client.cache.evict({ fieldName: 'getAttendee' });
       client.cache.evict({ fieldName: 'attendee' });
       client.cache.gc();
@@ -289,6 +457,58 @@ const { errors } = await client.mutate({
       className="min-h-screen"
       style={{ background: "var(--bg)", color: "var(--text)" }}
     >
+      {/* ── Crop modal (full-screen overlay) ───────────────────────────── */}
+      {cropSrc && (
+        <div
+          className="fixed inset-0 z-[60] flex flex-col"
+          style={{ background: "rgba(2,31,32,0.97)" }}
+        >
+          <div className="relative flex-1" style={{ minHeight: 0 }}>
+            <Cropper
+              image={cropSrc}
+              crop={crop}
+              zoom={zoom}
+              aspect={1}
+              onCropChange={setCrop}
+              onZoomChange={setZoom}
+              onCropComplete={onCropComplete}
+            />
+          </div>
+          <div className="px-6 py-2">
+            <input
+              type="range"
+              min={1}
+              max={3}
+              step={0.01}
+              value={zoom}
+              onChange={(e) => setZoom(Number(e.target.value))}
+              className="w-full"
+              style={{ accentColor: "var(--accent)" }}
+            />
+          </div>
+          {photoError && (
+            <p className="text-xs text-center px-4" style={{ color: "#ef4444" }}>{photoError}</p>
+          )}
+          <div className="flex gap-3 px-4 pb-24 pt-2">
+            <button
+              onClick={() => { setCropSrc(null); setPhotoError(""); }}
+              className="flex-1 py-3 rounded-xl text-sm font-bold"
+              style={{ background: "rgba(255,255,255,0.08)", color: "var(--text)" }}
+            >
+              {isEN ? "Cancel" : "انصراف"}
+            </button>
+            <button
+              onClick={confirmCrop}
+              disabled={uploadingPhoto}
+              className="flex-1 py-3 rounded-xl text-sm font-bold disabled:opacity-50"
+              style={{ background: "var(--accent)", color: "#021f20" }}
+            >
+              {uploadingPhoto ? "..." : isEN ? "Upload" : "آپلود"}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[#00ffb3]/5 rounded-full blur-3xl" />
         <div className="absolute bottom-0 left-0 w-[350px] h-[350px] bg-[#054041]/60 rounded-full blur-3xl" />
@@ -302,6 +522,65 @@ const { errors } = await client.mutate({
         />
 
         <div className="flex flex-col gap-4">
+          {/* ── Profile photo ── */}
+          <div className="flex flex-col items-center gap-2 py-2">
+            <label
+              className="relative cursor-pointer group"
+              title={isEN ? "Change photo" : "تغییر تصویر"}
+            >
+              <div
+                className="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center border-2"
+                style={{ background: "rgba(5,64,65,0.5)", borderColor: "rgba(0,255,179,0.3)" }}
+              >
+                {profileUrl ? (
+                  <img src={profileUrl} alt="profile" className="w-full h-full object-cover" />
+                ) : (
+                  <span
+                    style={{
+                      display: "block",
+                      width: 40,
+                      height: 40,
+                      backgroundColor: "var(--text-muted)",
+                      maskImage: "url('/logo/user.svg')",
+                      maskSize: "contain",
+                      maskRepeat: "no-repeat",
+                      maskPosition: "center",
+                      WebkitMaskImage: "url('/logo/user.svg')",
+                      WebkitMaskSize: "contain",
+                      WebkitMaskRepeat: "no-repeat",
+                      WebkitMaskPosition: "center",
+                    }}
+                  />
+                )}
+                <div
+                  className="absolute inset-0 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{ background: "rgba(0,0,0,0.45)" }}
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="white" aria-hidden="true">
+                    <path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/>
+                  </svg>
+                </div>
+              </div>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={onFileChange}
+              />
+            </label>
+            <p className="text-xs" style={{ color: "var(--text-dim)" }}>
+              {isEN ? "Tap to change photo" : "برای تغییر تصویر ضربه بزنید"}
+            </p>
+            {uploadingPhoto && (
+              <p className="text-xs" style={{ color: "var(--accent)" }}>
+                {isEN ? "Uploading..." : "در حال آپلود..."}
+              </p>
+            )}
+            {photoError && !cropSrc && (
+              <p className="text-xs" style={{ color: "#ef4444" }}>{photoError}</p>
+            )}
+          </div>
+
           {/* FA / EN toggle */}
           <div
             className="flex rounded-xl overflow-hidden border"
