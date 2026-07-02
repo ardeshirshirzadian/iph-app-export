@@ -78,23 +78,22 @@ function hasPermission(adminData, section) {
 // redirects must strip the /apn prefix — nginx adds it back, keeping browser
 // URLs clean (e.g. /login instead of /apn/login).
 function adminRedirect(request, path) {
-  const host = request.headers.get('host') || ''
-  const proto = 'https'
+  const host = request.headers.get('x-forwarded-host') || request.headers.get('host')
+  const proto = request.headers.get('x-forwarded-proto') || 'https'
+  const base = `${proto}://${host}`
   if (host === 'appapn.iphexpo.com') {
     const cleanPath = path.replace(/^\/apn/, '') || '/'
-    return NextResponse.redirect(new URL(cleanPath, `${proto}://${host}`))
+    return NextResponse.redirect(new URL(cleanPath, base))
   }
-  return NextResponse.redirect(new URL(path, request.url))
+  return NextResponse.redirect(new URL(path, base))
 }
 
 function forbiddenRedirect(request) {
-  const host = request.headers.get('host') || ''
-  const proto = 'https'
+  const host = request.headers.get('x-forwarded-host') || request.headers.get('host')
+  const proto = request.headers.get('x-forwarded-proto') || 'https'
+  const base = `${proto}://${host}`
   const isAdminSubdomain = host === 'appapn.iphexpo.com'
-  const url = new URL(
-    isAdminSubdomain ? '/' : '/apn',
-    isAdminSubdomain ? `${proto}://${host}` : request.url
-  )
+  const url = new URL(isAdminSubdomain ? '/' : '/apn', base)
   url.searchParams.set('forbidden', '1')
   return NextResponse.redirect(url)
 }
