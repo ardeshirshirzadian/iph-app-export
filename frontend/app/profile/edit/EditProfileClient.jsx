@@ -135,6 +135,18 @@ const UPDATE_ACTIVITY = gql`
   }
 `;
 
+const SEND_MOBILE_OTP = gql`
+  mutation SendMobileOTP($mobile: String) {
+    attendeeUpdateProfileSendMobileOTP(mobile: $mobile)
+  }
+`;
+
+const VALIDATE_MOBILE_OTP = gql`
+  mutation ValidateMobileOTP($mobile: String, $code: String) {
+    attendeeUpdateProfileValidateMobileOTP(mobile: $mobile, code: $code)
+  }
+`;
+
 const INPUT_STYLE = {
   width: "100%",
   borderRadius: 8,
@@ -220,6 +232,17 @@ export default function EditProfileClient() {
   const [contactState,  setContactState]  = useState({ saving: false, saved: false, error: "" });
   const [activityState, setActivityState] = useState({ saving: false, saved: false, error: "" });
 
+  // Phone change OTP flow
+  const [phoneStep,          setPhoneStep]          = useState("idle"); // "idle" | "input" | "otp"
+  const [newPhone,           setNewPhone]           = useState("");
+  const [phoneOtp,           setPhoneOtp]           = useState("");
+  const [phoneCountdown,     setPhoneCountdown]     = useState(0);
+  const [phoneSendLoading,   setPhoneSendLoading]   = useState(false);
+  const [phoneSendError,     setPhoneSendError]     = useState("");
+  const [phoneVerifyLoading, setPhoneVerifyLoading] = useState(false);
+  const [phoneVerifyError,   setPhoneVerifyError]   = useState("");
+  const [phoneSuccess,       setPhoneSuccess]       = useState("");
+
   // Profile photo state
   const [profileUrl,       setProfileUrl]       = useState(null);
   const [cropSrc,          setCropSrc]          = useState(null);
@@ -282,6 +305,12 @@ export default function EditProfileClient() {
       .catch(() => {})
       .finally(() => setOptionsLoading(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (phoneCountdown <= 0) return;
+    const id = setTimeout(() => setPhoneCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(id);
+  }, [phoneCountdown]);
 
   function set(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -398,7 +427,7 @@ export default function EditProfileClient() {
       const client = getApolloClient();
       const result = await client.mutate({
         mutation: UPDATE_CONTACT,
-        variables: { email: form.email, phone: form.phone },
+        variables: { email: form.email },
       });
       if (result.errors?.length) throw new Error(result.errors[0].message || "خطا در ذخیره‌سازی");
       const payload = result.data?.attendeeUpdateProfileContact;
@@ -415,6 +444,61 @@ export default function EditProfileClient() {
       setTimeout(() => router.push("/profile"), 1500);
     } catch (err) {
       setContactState({ saving: false, saved: false, error: err.message });
+    }
+  }
+
+  async function sendPhoneOtp() {
+    setPhoneSendLoading(true);
+    setPhoneSendError("");
+    try {
+      const client = getApolloClient();
+      const result = await client.mutate({
+        mutation: SEND_MOBILE_OTP,
+        variables: { mobile: newPhone },
+      });
+      const payload = result.data?.attendeeUpdateProfileSendMobileOTP;
+      if (payload?.status === "invalid") {
+        setPhoneSendError(payload.errors?.mobile?.[0] || "خطا در ارسال کد");
+        return;
+      }
+      setPhoneStep("otp");
+      setPhoneCountdown(120);
+      setPhoneOtp("");
+    } catch (err) {
+      setPhoneSendError(err.message || "خطا در ارسال کد");
+    } finally {
+      setPhoneSendLoading(false);
+    }
+  }
+
+  async function verifyPhoneOtp() {
+    setPhoneVerifyLoading(true);
+    setPhoneVerifyError("");
+    try {
+      const client = getApolloClient();
+      const result = await client.mutate({
+        mutation: VALIDATE_MOBILE_OTP,
+        variables: { mobile: newPhone, code: phoneOtp },
+      });
+      const payload = result.data?.attendeeUpdateProfileValidateMobileOTP;
+      if (payload?.status === "invalid") {
+        setPhoneVerifyError(payload.errors?.code?.[0] || "کد نادرست است");
+        return;
+      }
+      set("phone", newPhone);
+      const client2 = getApolloClient();
+      client2.cache.evict({ fieldName: "getAttendee" });
+      client2.cache.evict({ fieldName: "attendee" });
+      client2.cache.gc();
+      setPhoneStep("idle");
+      setNewPhone("");
+      setPhoneOtp("");
+      setPhoneSuccess("شماره با موفقیت تغییر کرد");
+      setTimeout(() => setPhoneSuccess(""), 3000);
+    } catch (err) {
+      setPhoneVerifyError(err.message || "خطا در تأیید کد");
+    } finally {
+      setPhoneVerifyLoading(false);
     }
   }
 
@@ -678,12 +762,106 @@ export default function EditProfileClient() {
                 onChange={(e) => set("email", e.target.value.trim())} style={INPUT_STYLE} />
             </Field>
             <Field label={t(lang, "edit_phone")}>
-              <input
-                dir="ltr" type="text" inputMode="tel"
-                value={isRTL ? toPersianDigits(form.phone) : form.phone}
-                onChange={(e) => set("phone", toEnglishDigits(e.target.value).replace(/\D/g, ""))}
-                style={INPUT_STYLE}
-              />
+              {phoneStep === "idle" && (
+                <div className="flex items-center gap-2">
+                  <div
+                    className="flex-1 text-sm"
+                    style={{ ...INPUT_STYLE, opacity: 0.7, display: "flex", alignItems: "center" }}
+                  >
+                    {form.phone ? (isRTL ? toPersianDigits(form.phone) : form.phone) : "—"}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setPhoneStep("input"); setPhoneSendError(""); setPhoneSuccess(""); }}
+                    className="text-xs px-3 py-2 rounded-xl font-bold whitespace-nowrap"
+                    style={{ background: "rgba(0,255,179,0.1)", color: "var(--accent)", border: "1px solid rgba(0,255,179,0.2)" }}
+                  >
+                    تغییر شماره
+                  </button>
+                </div>
+              )}
+              {phoneStep === "input" && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex gap-2">
+                    <input
+                      dir="ltr"
+                      type="text"
+                      inputMode="tel"
+                      placeholder="09..."
+                      value={isRTL ? toPersianDigits(newPhone) : newPhone}
+                      onChange={(e) => setNewPhone(toEnglishDigits(e.target.value).replace(/\D/g, ""))}
+                      style={{ ...INPUT_STYLE, flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={sendPhoneOtp}
+                      disabled={phoneSendLoading || !newPhone}
+                      className="text-xs px-3 py-2 rounded-xl font-bold whitespace-nowrap disabled:opacity-50"
+                      style={{ background: "var(--accent)", color: "#021f20" }}
+                    >
+                      {phoneSendLoading ? "..." : "ارسال کد"}
+                    </button>
+                  </div>
+                  {phoneSendError && (
+                    <p className="text-xs" style={{ color: "#ef4444" }}>{phoneSendError}</p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { setPhoneStep("idle"); setPhoneSendError(""); setNewPhone(""); }}
+                    className="text-xs text-right"
+                    style={{ color: "var(--text-dim)" }}
+                  >
+                    انصراف
+                  </button>
+                </div>
+              )}
+              {phoneStep === "otp" && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex gap-2">
+                    <input
+                      dir="ltr"
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="کد تأیید"
+                      value={isRTL ? toPersianDigits(phoneOtp) : phoneOtp}
+                      onChange={(e) => setPhoneOtp(toEnglishDigits(e.target.value).replace(/\D/g, "").slice(0, 6))}
+                      style={{ ...INPUT_STYLE, flex: 1, textAlign: "center", letterSpacing: 4 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={verifyPhoneOtp}
+                      disabled={phoneVerifyLoading || phoneOtp.length < 4}
+                      className="text-xs px-3 py-2 rounded-xl font-bold whitespace-nowrap disabled:opacity-50"
+                      style={{ background: "var(--accent)", color: "#021f20" }}
+                    >
+                      {phoneVerifyLoading ? "..." : "تأیید"}
+                    </button>
+                  </div>
+                  {phoneVerifyError && (
+                    <p className="text-xs" style={{ color: "#ef4444" }}>{phoneVerifyError}</p>
+                  )}
+                  <div className="flex items-center justify-between">
+                    {phoneCountdown > 0 ? (
+                      <p className="text-xs" style={{ color: "var(--text-dim)" }}>
+                        {isRTL ? toPersianDigits(String(phoneCountdown)) : phoneCountdown} ثانیه تا ارسال مجدد
+                      </p>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={sendPhoneOtp}
+                        disabled={phoneSendLoading}
+                        className="text-xs disabled:opacity-50"
+                        style={{ color: "var(--accent)" }}
+                      >
+                        {phoneSendLoading ? "..." : "ارسال مجدد"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+              {phoneSuccess && (
+                <p className="text-xs mt-1" style={{ color: "#22c55e" }}>{phoneSuccess}</p>
+              )}
             </Field>
 
             {contactState.error && (
