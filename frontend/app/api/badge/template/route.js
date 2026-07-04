@@ -2,15 +2,14 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 
-async function fetchLiveTemplate(templateId, adminToken) {
+async function fetchLiveTemplate(templateId, eventOrigin = 'https://2025.iphexpo.com') {
   const res = await fetch('https://api.rasayesh.com/graphql', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-rasayesh-site': 'admin',
-      'origin': 'https://apn.rasayesh.com',
-      'referer': 'https://apn.rasayesh.com/',
-      'authorization': `Bearer ${adminToken}`,
+      'x-rasayesh-site': 'iph',
+      'origin': eventOrigin,
+      'referer': `${eventOrigin}/`,
     },
     body: JSON.stringify({
       query: `{ eventTemplate(id: ${templateId}) { key value } }`,
@@ -34,13 +33,13 @@ export async function GET() {
   if (!userRaw) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const [badgeResult, tokenResult] = await Promise.all([
+    const [badgeResult, originResult] = await Promise.all([
       query("SELECT value FROM app_settings WHERE key = 'badge_page'"),
-      query("SELECT value FROM app_settings WHERE key = 'rasayesh_admin_token'"),
+      query("SELECT value FROM app_settings WHERE key = 'companies_config'"),
     ]);
 
     const badgeSettings = badgeResult.rows[0]?.value ?? {};
-    const adminToken = tokenResult.rows[0]?.value?.token ?? '';
+    const eventOrigin = originResult.rows[0]?.value?.event_origin || 'https://2025.iphexpo.com';
     const templateId = Number(badgeSettings.card_template_id) || 0;
 
     if (!templateId) return NextResponse.json({ template: null });
@@ -52,9 +51,9 @@ export async function GET() {
     }
 
     // Cache miss: attempt a live fetch
-    if (adminToken) {
+    try {
       try {
-        const templateValue = await fetchLiveTemplate(templateId, adminToken);
+        const templateValue = await fetchLiveTemplate(templateId, eventOrigin);
         if (templateValue) {
           // Persist to cache (fire-and-forget — don't block the response)
           const updated = {
