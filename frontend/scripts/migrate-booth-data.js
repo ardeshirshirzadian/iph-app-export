@@ -1,5 +1,5 @@
 /**
- * Migration: add booth location fields to companies table, seed rasayesh_admin_token.
+ * Migration: add booth location fields to companies table, rasayesh_admin_token removed (domain whitelisted, no longer needed).
  * Run once: node scripts/migrate-booth-data.js
  */
 
@@ -21,7 +21,7 @@ async function run() {
 
     await client.query(`
       INSERT INTO app_settings (key, value)
-      VALUES ('rasayesh_admin_token', '{"token": ""}')
+      -- rasayesh_admin_token removed (no longer needed, domain is whitelisted)
       ON CONFLICT (key) DO NOTHING
     `);
     console.log('✓ app_settings.rasayesh_admin_token');
