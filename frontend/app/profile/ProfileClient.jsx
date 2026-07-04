@@ -75,6 +75,12 @@ const PANELS_QUERY = gql`
   }
 `;
 
+const EVENT_PANELS_QUERY = gql`
+  query EventPanels($eventId: Int!) {
+    eventPanels(eventId: $eventId) { id }
+  }
+`;
+
 const IRANPHARMA_EVENT_IDS = new Set([1, 6, 14, 18, 26]);
 
 function parseSnapshot(raw) {
@@ -255,10 +261,20 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en }
       .finally(() => setTxnLoading(false));
 
     setPanelsLoading(true);
-    client.query({ query: PANELS_QUERY })
-      .then(({ data }) => {
-        const items = data?.attendeePanels ?? [];
+    Promise.all([
+      client.query({ query: PANELS_QUERY }),
+      ...[1, 6, 14, 18, 26].map(eventId =>
+        client.query({ query: EVENT_PANELS_QUERY, variables: { eventId } })
+          .catch(() => ({ data: null }))
+      ),
+    ])
+      .then(([panelsResult, ...eventPanelResults]) => {
+        const iranPharmaPanelIds = new Set(
+          eventPanelResults.flatMap(r => (r.data?.eventPanels ?? []).map(p => Number(p.id)))
+        );
+        const items = panelsResult.data?.attendeePanels ?? [];
         const mapped = items
+          .filter(item => iranPharmaPanelIds.has(Number(item.panel?.id)))
           .map(item => ({
             ...item.panel,
             isOnline: false,
