@@ -52,26 +52,24 @@ export async function GET() {
 
     // Cache miss: attempt a live fetch
     try {
-      try {
-        const templateValue = await fetchLiveTemplate(templateId, eventOrigin);
-        if (templateValue) {
-          // Persist to cache (fire-and-forget — don't block the response)
-          const updated = {
-            ...badgeSettings,
-            cached_template: templateValue,
-            cached_template_id: templateId,
-            cached_template_at: new Date().toISOString(),
-          };
-          query(
-            "INSERT INTO app_settings (key, value) VALUES ('badge_page', $1) ON CONFLICT (key) DO UPDATE SET value = $1",
-            [JSON.stringify(updated)]
-          ).catch(err => console.error('[badge/template] cache save:', err.message));
+      const templateValue = await fetchLiveTemplate(templateId, eventOrigin);
+      if (templateValue) {
+        // Persist to cache (fire-and-forget — don't block the response)
+        const updated = {
+          ...badgeSettings,
+          cached_template: templateValue,
+          cached_template_id: templateId,
+          cached_template_at: new Date().toISOString(),
+        };
+        query(
+          "INSERT INTO app_settings (key, value) VALUES ('badge_page', $1) ON CONFLICT (key) DO UPDATE SET value = $1",
+          [JSON.stringify(updated)]
+        ).catch(err => console.error('[badge/template] cache save:', err.message));
 
-          return NextResponse.json({ template: templateValue });
-        }
-      } catch (err) {
-        console.error('[badge/template] live fetch error:', err.message);
+        return NextResponse.json({ template: templateValue });
       }
+    } catch (err) {
+      console.error('[badge/template] live fetch error:', err.message);
     }
 
     // Live fetch failed or no token — fall back to stale cache rather than showing nothing

@@ -27,6 +27,14 @@ const ATTENDEE_QUERY = gql`
       national_code
       email
       phone
+      mobile
+      country_id
+      state_id
+      address_fa
+      address_en
+      postal_code
+      latitude
+      longitude
       profile
       occupation_id
       education_level_id
@@ -388,11 +396,11 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en }
                 </span>
               </div>
             )}
-            {attendeeData?.phone && (
+            {attendeeData?.mobile && (
               <div className="flex justify-between items-center">
                 <span className="text-xs" style={{ color: "var(--text-dim)" }}>{t(lang, "profile_mobile")}</span>
                 <span className="text-sm font-medium" style={{ color: "var(--text)", direction: "ltr" }}>
-                  {normalizePhone(attendeeData.phone, lang)}
+                  {normalizePhone(attendeeData.mobile, lang)}
                 </span>
               </div>
             )}

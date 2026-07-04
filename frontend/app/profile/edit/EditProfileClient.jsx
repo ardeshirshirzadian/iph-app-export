@@ -88,8 +88,29 @@ async function uploadProfileImage(blob, fields) {
 const ATTENDEE_QUERY = gql`
   query GetAttendee {
     getAttendee {
-      firstname_en lastname_en national_code email profile phone
-      occupation_id education_level_id field_of_activities { id } job_title_en
+      id
+      firstname_fa
+      lastname_fa
+      firstname_en
+      lastname_en
+      job_title_fa
+      job_title_en
+      national_code
+      email
+      phone
+      mobile
+      country_id
+      state_id
+      address_fa
+      address_en
+      postal_code
+      latitude
+      longitude
+      profile
+      occupation_id
+      education_level_id
+      field_of_activities { id title_fa title_en }
+      todayEventPresence(eventId: 18)
     }
   }
 `;
@@ -112,26 +133,45 @@ const UPDATE_INFO = gql`
       firstnameFa: $firstnameFa lastnameFa: $lastnameFa
       firstnameEn: $firstnameEn lastnameEn: $lastnameEn
       jobTitleFa: $jobTitleFa jobTitleEn: $jobTitleEn nationalCode: $nationalCode
-    ) { status errors }
+    )
   }
 `;
 
 const UPDATE_CONTACT = gql`
-  mutation UpdateContact($email: String $phone: String) {
-    attendeeUpdateProfileContact(email: $email phone: $phone) { status errors }
+  mutation AttendeeUpdateProfileContact(
+    $mobile: String $email: String $phone: String
+    $countryId: Int $stateId: Int
+    $addressFa: String $addressEn: String $postalCode: String
+    $latitude: Float $longitude: Float $mobileSignature: String
+  ) {
+    attendeeUpdateProfileContact(
+      mobile: $mobile
+      email: $email
+      phone: $phone
+      countryId: $countryId
+      stateId: $stateId
+      addressFa: $addressFa
+      addressEn: $addressEn
+      postalCode: $postalCode
+      latitude: $latitude
+      longitude: $longitude
+      mobileSignature: $mobileSignature
+    )
   }
 `;
 
 const UPDATE_ACTIVITY = gql`
-  mutation UpdateActivity(
-    $occupationId: Int $fieldOfActivities: [Int!]! $educationLevelId: Int
+  mutation AttendeeUpdateProfileActivity(
+    $industryId: Int $occupationId: Int $fieldOfActivities: [Int]
+    $fieldOfStudyId: Int $educationLevelId: Int
   ) {
     attendeeUpdateProfileActivity(
-      industryId: 1
+      industryId: $industryId
       occupationId: $occupationId
       fieldOfActivities: $fieldOfActivities
+      fieldOfStudyId: $fieldOfStudyId
       educationLevelId: $educationLevelId
-    ) { status errors }
+    )
   }
 `;
 
@@ -243,6 +283,9 @@ export default function EditProfileClient() {
   const [phoneVerifyError,   setPhoneVerifyError]   = useState("");
   const [phoneSuccess,       setPhoneSuccess]       = useState("");
 
+  // Fresh attendee data from Rasayesh (network-only fetch)
+  const [attendeeData, setAttendeeData] = useState(null);
+
   // Profile photo state
   const [profileUrl,       setProfileUrl]       = useState(null);
   const [cropSrc,          setCropSrc]          = useState(null);
@@ -252,47 +295,52 @@ export default function EditProfileClient() {
   const [uploadingPhoto,   setUploadingPhoto]   = useState(false);
   const [photoError,       setPhotoError]       = useState("");
 
-  // Pre-fill from user cookie immediately
+  // Pre-fill from user cookie immediately (overwritten by fresh attendeeData when it arrives)
   useEffect(() => {
     if (!user) return;
     setForm((prev) => ({
       ...prev,
-      firstnameFa: prev.firstnameFa || user.firstname_fa || "",
-      lastnameFa:  prev.lastnameFa  || user.lastname_fa  || "",
-      firstnameEn: prev.firstnameEn || user.firstname_en || "",
-      lastnameEn:  prev.lastnameEn  || user.lastname_en  || "",
-      jobTitleFa:  prev.jobTitleFa  || user.job_title_fa || "",
-      email:       prev.email       || user.email        || "",
+      firstnameFa: user.firstname_fa || "",
+      lastnameFa:  user.lastname_fa  || "",
+      firstnameEn: user.firstname_en || "",
+      lastnameEn:  user.lastname_en  || "",
+      jobTitleFa:  user.job_title_fa || "",
+      email:       user.email        || "",
     }));
   }, [user]);
+
+  // Overwrite all form fields with fresh server data whenever attendeeData changes
+  useEffect(() => {
+    if (!attendeeData) return;
+    setForm({
+      firstnameFa:      attendeeData.firstname_fa   || "",
+      lastnameFa:       attendeeData.lastname_fa    || "",
+      firstnameEn:      attendeeData.firstname_en   || "",
+      lastnameEn:       attendeeData.lastname_en    || "",
+      jobTitleFa:       attendeeData.job_title_fa   || "",
+      jobTitleEn:       attendeeData.job_title_en   || "",
+      nationalCode:     attendeeData.national_code  || "",
+      email:            attendeeData.email          || "",
+      phone:            attendeeData.phone          || "",
+      occupationId:     String(attendeeData.occupation_id      ?? ""),
+      educationLevelId: String(attendeeData.education_level_id ?? ""),
+      fieldOfActivities: (attendeeData.field_of_activities ?? []).map(f => f?.id ?? f),
+    });
+  }, [attendeeData]);
 
   // Load profile and form options via Apollo
   useEffect(() => {
     const client = getApolloClient();
 
-    client.query({ query: ATTENDEE_QUERY })
+    client.query({ query: ATTENDEE_QUERY, fetchPolicy: 'network-only' })
       .then(({ data }) => {
         const a = data?.getAttendee;
         if (!a) return;
-        // Set profile image URL from the jpg object returned by the API
         const pSrc = a.profile?.jpg?.["128"]
           ? `${RASAYESH_BASE}${a.profile.jpg["128"]}`
           : null;
         setProfileUrl(pSrc);
-        setForm((prev) => ({
-          ...prev,
-          firstnameEn:      prev.firstnameEn    || a.firstname_en    || "",
-          lastnameEn:       prev.lastnameEn     || a.lastname_en     || "",
-          jobTitleEn:       prev.jobTitleEn     || a.job_title_en    || "",
-          nationalCode:     prev.nationalCode   || a.national_code   || "",
-          email:            prev.email          || a.email           || "",
-          phone:            prev.phone          || a.phone           || "",
-          occupationId:     prev.occupationId   || String(a.occupation_id      ?? ""),
-          educationLevelId: prev.educationLevelId || String(a.education_level_id ?? ""),
-          fieldOfActivities: prev.fieldOfActivities.length
-            ? prev.fieldOfActivities
-            : (a.field_of_activities ?? []).map(f => f?.id ?? f),
-        }));
+        setAttendeeData(a);
       })
       .catch(() => {});
 
@@ -427,7 +475,25 @@ export default function EditProfileClient() {
       const client = getApolloClient();
       const result = await client.mutate({
         mutation: UPDATE_CONTACT,
-        variables: { email: form.email },
+        variables: {
+          mobile: attendeeData?.mobile
+            ? (attendeeData.mobile.startsWith('+98') ? '0' + attendeeData.mobile.slice(3) : attendeeData.mobile)
+            : null,
+          email: form.email,
+          phone: (() => {
+            const p = form.phone || attendeeData?.phone || null;
+            if (!p) return null;
+            return p.startsWith('+98') ? '0' + p.slice(3) : p;
+          })(),
+          countryId: attendeeData?.country_id || 104,
+          stateId: attendeeData?.state_id || 28,
+          addressFa: attendeeData?.address_fa || null,
+          addressEn: attendeeData?.address_en || null,
+          postalCode: attendeeData?.postal_code || null,
+          latitude: attendeeData?.latitude || null,
+          longitude: attendeeData?.longitude || null,
+          mobileSignature: null,
+        },
       });
       if (result.errors?.length) throw new Error(result.errors[0].message || "خطا در ذخیره‌سازی");
       const payload = result.data?.attendeeUpdateProfileContact;
@@ -485,7 +551,7 @@ export default function EditProfileClient() {
         setPhoneVerifyError(payload.errors?.code?.[0] || "کد نادرست است");
         return;
       }
-      set("phone", newPhone);
+      setAttendeeData(prev => ({ ...prev, mobile: newPhone }));
       const client2 = getApolloClient();
       client2.cache.evict({ fieldName: "getAttendee" });
       client2.cache.evict({ fieldName: "attendee" });
@@ -509,8 +575,10 @@ export default function EditProfileClient() {
       const result = await client.mutate({
         mutation: UPDATE_ACTIVITY,
         variables: {
+          industryId: 1,
           occupationId: form.occupationId ? parseInt(form.occupationId) : null,
           fieldOfActivities: form.fieldOfActivities.map(f => Number(f?.id ?? f)).filter(Boolean),
+          fieldOfStudyId: null,
           educationLevelId: form.educationLevelId ? parseInt(form.educationLevelId) : null,
         },
       });
@@ -761,14 +829,14 @@ export default function EditProfileClient() {
               <input dir="ltr" type="email" inputMode="email" value={form.email}
                 onChange={(e) => set("email", e.target.value.trim())} style={INPUT_STYLE} />
             </Field>
-            <Field label={t(lang, "edit_phone")}>
+            <Field label={t(lang, "mobile_label")}>
               {phoneStep === "idle" && (
                 <div className="flex items-center gap-2">
                   <div
                     className="flex-1 text-sm"
                     style={{ ...INPUT_STYLE, opacity: 0.7, display: "flex", alignItems: "center" }}
                   >
-                    {form.phone ? (isRTL ? toPersianDigits(form.phone) : form.phone) : "—"}
+                    {attendeeData?.mobile ? (isRTL ? toPersianDigits(attendeeData.mobile) : attendeeData.mobile) : "—"}
                   </div>
                   <button
                     type="button"
@@ -862,6 +930,16 @@ export default function EditProfileClient() {
               {phoneSuccess && (
                 <p className="text-xs mt-1" style={{ color: "#22c55e" }}>{phoneSuccess}</p>
               )}
+            </Field>
+            <Field label={t(lang, "edit_phone")}>
+              <input
+                dir="ltr"
+                type="text"
+                inputMode="tel"
+                value={form.phone}
+                onChange={(e) => set("phone", e.target.value.trim())}
+                style={INPUT_STYLE}
+              />
             </Field>
 
             {contactState.error && (

@@ -3,6 +3,8 @@ import { Pool } from 'pg'
 import { verifyAdminToken } from '@/lib/adminAuth'
 import { ADMIN_SECTIONS } from '@/lib/adminSections'
 
+const APP_PUBLIC_URL = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://appapn.iphexpo.com'
+
 // Dedicated minimal pool for proxy checks — isolated from app pool per Next.js proxy guidance
 let _proxyPool
 function getProxyPool() {
@@ -74,27 +76,12 @@ function hasPermission(adminData, section) {
   return Array.isArray(adminData.permissions) && adminData.permissions.includes(section)
 }
 
-// On appapn.iphexpo.com, nginx prepends /apn before proxying to Next.js, so
-// redirects must strip the /apn prefix — nginx adds it back, keeping browser
-// URLs clean (e.g. /login instead of /apn/login).
 function adminRedirect(request, path) {
-  const host = request.headers.get('x-forwarded-host') || request.headers.get('host')
-  const proto = request.headers.get('x-forwarded-proto') || 'https'
-  const base = `${proto}://${host}`
-  if (host === 'appapn.iphexpo.com') {
-    const cleanPath = path.replace(/^\/apn/, '') || '/'
-    return NextResponse.redirect(new URL(cleanPath, base))
-  }
-  return NextResponse.redirect(new URL(path, base))
+  return NextResponse.redirect(new URL(path, APP_PUBLIC_URL))
 }
 
 function forbiddenRedirect(request) {
-  const host = request.headers.get('x-forwarded-host') || request.headers.get('host')
-  const proto = request.headers.get('x-forwarded-proto') || 'https'
-  const base = `${proto}://${host}`
-  const isAdminSubdomain = host === 'appapn.iphexpo.com'
-  const url = new URL(isAdminSubdomain ? '/' : '/apn', base)
-  url.searchParams.set('forbidden', '1')
+  const url = new URL('/?forbidden=1', APP_PUBLIC_URL)
   return NextResponse.redirect(url)
 }
 
