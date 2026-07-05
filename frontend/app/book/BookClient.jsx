@@ -10,6 +10,31 @@ import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 import { toPersianDigits } from "@/lib/utils";
 
+const EVENT_EXHIBITION_BOOK = gql`
+  query EventExhibitionBook($eventId: Int) {
+    eventExhibitionBook(eventId: $eventId) {
+      id
+      title_fa
+      title_en
+      description_fa
+      description_en
+      publisher_fa
+      publisher_en
+      cover
+      thumbnail
+      page_count
+      book_price
+      cd_price
+      pdf_price
+      book_capacity
+      cd_capacity
+      pdf_capacity
+    }
+  }
+`;
+
+const RASAYESH_BASE = "https://api.rasayesh.com/";
+
 const ADD_TO_CART = gql`
   mutation AddToCart($bookId: Int!, $bookCount: Int!, $cdCount: Int!, $pdfCount: Int!) {
     addItemToCart(
@@ -108,19 +133,36 @@ export default function BookClient({ title, subtitle, title_en, subtitle_en }) {
   const [cartError,    setCartError]    = useState("");
 
   useEffect(() => {
-    fetch("/api/book")
-      .then((r) => r.json())
-      .then((data) => {
-        setEnabled(data.enabled !== false);
-        if (data.book_id) setBookId(data.book_id);
-        if (data.book) {
-          setBook(data.book);
-          const hasBook = (data.book.book_capacity ?? 0) > 0 || data.book.book_price === 0;
-          setBookCount(hasBook ? 1 : 0);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/book");
+        const data = await res.json();
+        if (data.enabled === false) {
+          if (!cancelled) { setEnabled(false); setLoading(false); }
+          return;
         }
-      })
-      .catch(() => setEnabled(false))
-      .finally(() => setLoading(false));
+        if (data.book_id) setBookId(data.book_id);
+        const client = getApolloClient();
+        const { data: gqlData } = await client.query({
+          query: EVENT_EXHIBITION_BOOK,
+          variables: { eventId: Number(data.event_id) },
+        });
+        const bookData = gqlData?.eventExhibitionBook ?? null;
+        if (!cancelled) {
+          setBook(bookData);
+          if (bookData) {
+            const hasBook = (bookData.book_capacity ?? 0) > 0 || bookData.book_price === 0;
+            setBookCount(hasBook ? 1 : 0);
+          }
+        }
+      } catch {
+        if (!cancelled) setEnabled(false);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   async function handleAddToCart() {
@@ -141,7 +183,11 @@ export default function BookClient({ title, subtitle, title_en, subtitle_en }) {
     }
   }
 
-  const cover = book?.cover || book?.thumbnail;
+  const coverUrl = book?.cover?.jpg?.["640"]
+    ? `${RASAYESH_BASE}${book.cover.jpg["640"]}`
+    : (book?.thumbnail?.jpg?.["512"]
+      ? `${RASAYESH_BASE}${book.thumbnail.jpg["512"]}`
+      : null);
   const displayTitle = (lang === "en" && book?.title_en) ? book.title_en : (book?.title_fa ?? "");
   const displayDesc  = (lang === "en" && book?.description_en) ? book.description_en : (book?.description_fa ?? "");
   const displayPublisher = (lang === "en" && book?.publisher_en) ? book.publisher_en : (book?.publisher_fa ?? "");
@@ -198,17 +244,17 @@ export default function BookClient({ title, subtitle, title_en, subtitle_en }) {
           <div className="flex flex-col gap-4">
             {/* Book display card */}
             <div className="rounded-3xl overflow-hidden" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
-              {cover && (
+              {coverUrl && (
                 <div className="w-full" style={{ background: "#ffffff" }}>
                   <img
-                    src={cover}
+                    src={coverUrl}
                     alt={displayTitle}
                     className="w-full object-cover"
                     style={{ maxHeight: 300, objectPosition: "top" }}
                   />
                 </div>
               )}
-              {!cover && (
+              {!coverUrl && (
                 <div className="w-full flex items-center justify-center" style={{ height: 180, background: "rgba(0,255,179,0.06)" }}>
                   <span style={{ fontSize: 72 }}>📚</span>
                 </div>

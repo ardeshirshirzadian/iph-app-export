@@ -19,6 +19,12 @@ const CART_QUERY = gql`
   }
 `;
 
+const DELETE_ITEM = gql`
+  mutation DeleteItem($id: Int!) {
+    deleteCartItem(id: $id)
+  }
+`;
+
 const APPLY_COUPON = gql`
   mutation ApplyCoupon($code: String!) {
     applyDiscountCodeToAttendeeCart(discount_code: $code)
@@ -31,7 +37,6 @@ const REQUEST_PAYMENT = gql`
   }
 `;
 
-const CANCEL_CART = gql`mutation CancelCart { cancelAttendeeCart }`;
 
 function formatPrice(price, lang) {
   if (price === undefined || price === null) return "";
@@ -144,7 +149,8 @@ export default function CartClient() {
     setCancelLoading(true);
     try {
       const client = getApolloClient();
-      await client.mutate({ mutation: CANCEL_CART });
+      const items = cart?.items ?? [];
+      await Promise.all(items.map(item => client.mutate({ mutation: DELETE_ITEM, variables: { id: item.id } })));
       router.push("/book?cart=cancelled");
     } catch {
       setCancelLoading(false);

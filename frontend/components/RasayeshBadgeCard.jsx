@@ -66,8 +66,8 @@ export default function RasayeshBadgeCard({ template, attendee, eventName }) {
                 fontWeight: el.isBold ? 900 : 400,
                 fontStyle: el.isItalic ? "italic" : "normal",
                 textDecoration: el.isUnderlined ? "underline" : "none",
-                writingMode: isVertical ? "vertical-rl" : "horizontal-tb",
-                transform: isVertical ? "rotate(180deg)" : "none",
+                transform: isVertical ? "rotate(-90deg)" : "none",
+                transformOrigin: isVertical ? "top left" : "initial",
                 whiteSpace: "nowrap",
                 lineHeight: 1.2,
               }}
@@ -90,7 +90,8 @@ export default function RasayeshBadgeCard({ template, attendee, eventName }) {
                 width: `${widthPct}%`,
                 aspectRatio: "1",
                 background: "#fff",
-                padding: "4%",
+                padding: 4,
+                boxSizing: "border-box",
                 borderRadius: 4,
               }}
             >

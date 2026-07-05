@@ -137,7 +137,7 @@ function ServiceItem({ icon_type, icon_value, title, title_en, link, link_en, is
   const size = icon_size ?? 48;
   const iconBox = (
     <div
-      className="w-14 h-14 rounded-2xl flex items-center justify-center relative"
+      className="w-16 h-16 rounded-[16px] flex items-center justify-center relative"
       style={{
         background: "color-mix(in srgb, var(--accent) 12%, transparent)",
         border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
@@ -437,18 +437,10 @@ export default function HomeClient({ services, banners = [], defaultNotification
               >
                 {t(lang, 'services_heading')}
               </h2>
-              <div
-                className="rounded-3xl p-5 backdrop-blur-xl"
-                style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                }}
-              >
-                <div className="grid grid-cols-4 gap-3">
-                  {visibleServices.map((svc) => (
-                    <ServiceItem key={svc.id} {...svc} lang={lang} />
-                  ))}
-                </div>
+              <div className="grid grid-cols-4 gap-4">
+                {visibleServices.map((svc) => (
+                  <ServiceItem key={svc.id} {...svc} lang={lang} />
+                ))}
               </div>
             </section>
           );

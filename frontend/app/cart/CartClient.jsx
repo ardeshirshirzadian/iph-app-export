@@ -40,11 +40,6 @@ const REQUEST_PAYMENT = gql`
   }
 `;
 
-const CANCEL_CART = gql`
-  mutation CancelCart {
-    cancelAttendeeCart
-  }
-`;
 
 function formatPrice(price, lang) {
   if (price === undefined || price === null) return "";
@@ -208,7 +203,8 @@ export default function CartClient() {
     setCancelLoading(true);
     try {
       const client = getApolloClient();
-      await client.mutate({ mutation: CANCEL_CART });
+      const items = cart?.items ?? [];
+      await Promise.all(items.map(item => client.mutate({ mutation: DELETE_ITEM, variables: { id: item.id } })));
       router.push("/");
     } catch {
       setCancelLoading(false);
