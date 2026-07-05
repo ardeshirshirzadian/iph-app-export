@@ -344,7 +344,7 @@ export default function HomeClient({ services, banners = [], defaultNotification
           <section className="mb-5">
             <div
               dir="ltr"
-              className={`relative overflow-hidden rounded-3xl h-[140px] cursor-pointer transition-transform duration-150 select-none ${
+              className={`relative overflow-hidden rounded-[28px] h-[104px] cursor-pointer transition-transform duration-150 select-none ${
                 isPressed ? "scale-[1.02]" : "scale-100"
               }`}
               style={{ border: "1px solid var(--border-accent)" }}
@@ -431,12 +431,6 @@ export default function HomeClient({ services, banners = [], defaultNotification
           if (visibleServices.length === 0) return null;
           return (
             <section>
-              <h2
-                className="text-sm font-medium mb-3"
-                style={{ color: "var(--text-muted)" }}
-              >
-                {t(lang, 'services_heading')}
-              </h2>
               <div className="grid grid-cols-4 gap-4">
                 {visibleServices.map((svc) => (
                   <ServiceItem key={svc.id} {...svc} lang={lang} />
