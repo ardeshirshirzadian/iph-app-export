@@ -141,6 +141,10 @@ export const translations = {
     push_done: 'اعلان‌ها فعال شد ✓',
     push_denied: 'برای فعال‌سازی، دسترسی اعلان را در تنظیمات مرورگر فعال کنید.',
     push_ios_hint: 'برای دریافت اعلان‌ها در آیفون، لطفاً ابتدا اپ را به صفحه اصلی اضافه کنید.',
+    // Push settings
+    settings_notifications: 'اعلان‌ها',
+    push_notifications_label: 'اعلان‌های پوش',
+    push_enable_btn: 'فعال‌سازی اعلان‌ها',
     // Scan page
     scan_title: 'اسکن غرفه',
     scan_back_aria: 'بازگشت',
@@ -370,6 +374,10 @@ export const translations = {
     push_done: 'Notifications enabled ✓',
     push_denied: 'To enable, turn on notification access in your browser settings.',
     push_ios_hint: 'To receive notifications on iPhone, add this app to your Home Screen first.',
+    // Push settings
+    settings_notifications: 'Notifications',
+    push_notifications_label: 'Push Notifications',
+    push_enable_btn: 'Enable Notifications',
     // Scan page
     scan_title: 'Scan Booth',
     scan_back_aria: 'Back',

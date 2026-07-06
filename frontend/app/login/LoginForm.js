@@ -158,6 +158,14 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
           body: JSON.stringify({ user: u }),
         });
 
+        if (
+          !localStorage.getItem('push_banner_dismissed') &&
+          'Notification' in window &&
+          Notification.permission === 'default'
+        ) {
+          localStorage.setItem('show_push_popup', '1');
+        }
+
         if (!quickMode) {
           sessionStorage.setItem(
             "iph_show_welcome",

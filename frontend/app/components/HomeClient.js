@@ -14,7 +14,7 @@ function isExternal(link) {
   return /^https?:\/\//.test(link);
 }
 
-function PushBanner({ pushPrompt, lang }) {
+function PushPopup({ pushPrompt, lang }) {
   const [visible, setVisible] = useState(false);
   const [status, setStatus] = useState('idle'); // idle | loading | done | denied
   const ios = typeof window !== 'undefined' && isIOS();
@@ -33,98 +33,105 @@ function PushBanner({ pushPrompt, lang }) {
   useEffect(() => {
     if (!prompt.enabled) return;
     if (!isPushSupported()) return;
-    if (localStorage.getItem('push_banner_dismissed')) return;
-    if (Notification.permission === 'granted') return;
-    if (Notification.permission === 'denied') return;
+    if (!localStorage.getItem('show_push_popup')) return;
     setVisible(true);
   }, [prompt.enabled]);
 
   async function handleEnable() {
     setStatus('loading');
     const perm = await requestNotificationPermission();
+    localStorage.removeItem('show_push_popup');
+    localStorage.setItem('push_banner_dismissed', '1');
     if (perm !== 'granted') {
       setStatus('denied');
+      setTimeout(() => setVisible(false), 2500);
       return;
     }
     const result = await subscribeToPush();
     setStatus(result.ok ? 'done' : 'denied');
-    if (result.ok) {
-      localStorage.setItem('push_banner_dismissed', '1');
-      setTimeout(() => setVisible(false), 1800);
-    }
+    setTimeout(() => setVisible(false), result.ok ? 1800 : 2500);
   }
 
   function handleDismiss() {
+    localStorage.removeItem('show_push_popup');
     localStorage.setItem('push_banner_dismissed', '1');
     setVisible(false);
   }
 
   if (!visible) return null;
 
-  const iconSz = prompt.icon_size ?? 32;
+  const iconSz = prompt.icon_size ?? 40;
   const icon = prompt.icon_type === 'image' && prompt.icon_value
-    ? <img src={prompt.icon_value} alt="" style={{ width: iconSz, height: iconSz, objectFit: 'contain' }} className="flex-shrink-0 mt-0.5" />
-    : <span style={{ fontSize: iconSz, lineHeight: 1 }} className="flex-shrink-0 mt-0.5">{prompt.icon_value || '🔔'}</span>;
+    ? <img src={prompt.icon_value} alt="" style={{ width: iconSz, height: iconSz, objectFit: 'contain' }} />
+    : <span style={{ fontSize: iconSz, lineHeight: 1 }}>{prompt.icon_value || '🔔'}</span>;
 
   return (
     <div
-      className="rounded-2xl p-4 mb-4 flex items-start gap-3"
-      style={{
-        background: "color-mix(in srgb, var(--accent) 8%, var(--surface))",
-        border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
-      }}
+      className="fixed inset-0 z-50 flex items-center justify-center px-4"
+      style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
     >
-      {icon}
-      <div className="flex-1 min-w-0">
-        {status === 'done' ? (
-          <p className="text-sm font-semibold" style={{ color: "var(--accent)" }}>
-            {t(lang, 'push_done')}
-          </p>
-        ) : status === 'denied' ? (
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            {t(lang, 'push_denied')}
-          </p>
-        ) : (
-          <>
-            <p className="text-sm font-semibold mb-1" style={{ color: "var(--text)" }}>
-              {prompt.title}
-            </p>
-            {prompt.description && (
-              <p className="text-xs leading-relaxed mb-2.5" style={{ color: "var(--text-muted)" }}>
-                {prompt.description}
+      <div
+        className="w-full max-w-sm rounded-3xl p-6"
+        style={{
+          background: "color-mix(in srgb, var(--accent) 8%, var(--surface))",
+          border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
+          backdropFilter: 'blur(24px)',
+        }}
+      >
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0 mt-0.5">{icon}</div>
+          <div className="flex-1 min-w-0">
+            {status === 'done' ? (
+              <p className="text-sm font-semibold" style={{ color: "var(--accent)" }}>
+                {t(lang, 'push_done')}
               </p>
-            )}
-            {ios && !standalone && (
-              <p className="text-xs mb-2.5 leading-relaxed" style={{ color: "color-mix(in srgb, var(--accent) 80%, var(--text-muted))" }}>
-                {t(lang, 'push_ios_hint')}
+            ) : status === 'denied' ? (
+              <p className="text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                {t(lang, 'push_denied')}
               </p>
+            ) : (
+              <>
+                <p className="text-base font-semibold mb-1.5" style={{ color: "var(--text)" }}>
+                  {prompt.title}
+                </p>
+                {prompt.description && (
+                  <p className="text-sm leading-relaxed mb-3" style={{ color: "var(--text-muted)" }}>
+                    {prompt.description}
+                  </p>
+                )}
+                {ios && !standalone && (
+                  <p className="text-xs mb-3 leading-relaxed" style={{ color: "color-mix(in srgb, var(--accent) 80%, var(--text-muted))" }}>
+                    {t(lang, 'push_ios_hint')}
+                  </p>
+                )}
+                <div className="flex gap-2 mt-1">
+                  <button
+                    onClick={handleEnable}
+                    disabled={status === 'loading'}
+                    className="text-sm font-bold rounded-xl px-5 py-2"
+                    style={{
+                      background: "var(--accent)",
+                      color: "var(--bg)",
+                      opacity: status === 'loading' ? 0.7 : 1,
+                    }}
+                  >
+                    {status === 'loading' ? '...' : prompt.confirm_button}
+                  </button>
+                  <button
+                    onClick={handleDismiss}
+                    className="text-sm rounded-xl px-5 py-2"
+                    style={{
+                      border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)",
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    {prompt.dismiss_button}
+                  </button>
+                </div>
+              </>
             )}
-            <div className="flex gap-2">
-              <button
-                onClick={handleEnable}
-                disabled={status === 'loading'}
-                className="text-xs font-bold rounded-xl px-4 py-1.5"
-                style={{
-                  background: "var(--accent)",
-                  color: "var(--bg)",
-                  opacity: status === 'loading' ? 0.7 : 1,
-                }}
-              >
-                {status === 'loading' ? '...' : prompt.confirm_button}
-              </button>
-              <button
-                onClick={handleDismiss}
-                className="text-xs rounded-xl px-4 py-1.5"
-                style={{
-                  border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)",
-                  color: "var(--text-muted)",
-                }}
-              >
-                {prompt.dismiss_button}
-              </button>
-            </div>
-          </>
-        )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -419,8 +426,6 @@ export default function HomeClient({ services, banners = [], defaultNotification
           </section>
         )}
 
-        <PushBanner pushPrompt={pushPrompt} lang={lang} />
-
         {/* Service grid */}
         {services.length > 0 && (() => {
           const visibleServices = services.filter(svc =>
@@ -442,6 +447,7 @@ export default function HomeClient({ services, banners = [], defaultNotification
       </div>
 
       <BottomNav />
+      <PushPopup pushPrompt={pushPrompt} lang={lang} />
     </main>
   );
 }

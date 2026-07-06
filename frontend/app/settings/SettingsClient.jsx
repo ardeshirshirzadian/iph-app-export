@@ -4,14 +4,45 @@ import { useState, useEffect } from "react";
 import PageHeader from "@/components/PageHeader";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
+import { isPushSupported, requestNotificationPermission, subscribeToPush } from "@/lib/pushClient";
 
 export default function SettingsClient({ title, subtitle, title_en, subtitle_en }) {
   const [isDark, setIsDark] = useState(true);
   const { lang, switchLang, isRTL } = useLang();
+  const [pushPermission, setPushPermission] = useState('loading');
+  const [pushActionStatus, setPushActionStatus] = useState('idle'); // idle | loading | done | error
 
   useEffect(() => {
     queueMicrotask(() => setIsDark(localStorage.getItem("iph-theme") !== "light"));
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!isPushSupported()) {
+      setPushPermission('unsupported');
+    } else {
+      setPushPermission(Notification.permission);
+    }
+  }, []);
+
+  async function handleEnablePush() {
+    setPushActionStatus('loading');
+    const perm = await requestNotificationPermission();
+    if (perm !== 'granted') {
+      setPushPermission(perm);
+      setPushActionStatus('error');
+      return;
+    }
+    const result = await subscribeToPush();
+    if (result.ok) {
+      setPushPermission('granted');
+      setPushActionStatus('done');
+      localStorage.setItem('push_banner_dismissed', '1');
+      localStorage.removeItem('show_push_popup');
+    } else {
+      setPushActionStatus('error');
+    }
+  }
 
   function toggleTheme() {
     const next = isDark ? "light" : "dark";
@@ -104,6 +135,54 @@ export default function SettingsClient({ title, subtitle, title_en, subtitle_en 
               </button>
             </div>
           </div>
+
+          {/* Push notifications section */}
+          {pushPermission !== 'unsupported' && pushPermission !== 'loading' && (
+            <div
+              className="backdrop-blur-xl border border-[var(--border)] rounded-3xl p-5"
+              style={{ background: "var(--surface)" }}
+            >
+              <p className="text-xs font-medium mb-4" style={{ color: "var(--text-dim)" }}>
+                {t(lang, "settings_notifications")}
+              </p>
+
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm leading-7" style={{ color: "var(--text)" }}>
+                    {t(lang, "push_notifications_label")}
+                  </p>
+                  <p className="text-xs leading-relaxed" style={{ color: pushPermission === 'granted' ? "var(--accent)" : "var(--text-dim)" }}>
+                    {pushPermission === 'granted'
+                      ? t(lang, 'push_done')
+                      : pushPermission === 'denied'
+                      ? t(lang, 'push_denied')
+                      : pushActionStatus === 'error'
+                      ? t(lang, 'push_denied')
+                      : ''}
+                  </p>
+                </div>
+
+                {pushPermission === 'default' && pushActionStatus !== 'done' && (
+                  <button
+                    onClick={handleEnablePush}
+                    disabled={pushActionStatus === 'loading'}
+                    className="flex-shrink-0 text-xs font-bold rounded-xl px-4 py-2 transition-opacity"
+                    style={{
+                      background: "var(--accent)",
+                      color: "var(--bg)",
+                      opacity: pushActionStatus === 'loading' ? 0.6 : 1,
+                    }}
+                  >
+                    {pushActionStatus === 'loading' ? '...' : t(lang, 'push_enable_btn')}
+                  </button>
+                )}
+
+                {(pushPermission === 'granted' || pushActionStatus === 'done') && (
+                  <span className="flex-shrink-0 text-lg" style={{ color: "var(--accent)" }}>✓</span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </main>
