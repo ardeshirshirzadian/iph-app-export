@@ -46,8 +46,8 @@ export default function PostClient({ slug }) {
     <main
       dir={isRTL ? "rtl" : "ltr"}
       lang={lang}
-      className="min-h-screen pb-32"
-      style={{ background: "var(--bg)", color: "var(--text)" }}
+      className="relative flex flex-col pb-28"
+      style={{ background: "var(--bg)", color: "var(--text)", minHeight: "100dvh" }}
     >
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[#00ffb3]/5 rounded-full blur-3xl" />
@@ -121,8 +121,14 @@ export default function PostClient({ slug }) {
 
               {post.body ? (
                 <div
-                  className="prose-news text-sm leading-8"
-                  style={{ color: "var(--text-muted)" }}
+                  className="news-body"
+                  style={{
+                    color: "var(--text-muted)",
+                    lineHeight: 1.8,
+                    fontSize: 14,
+                    overflowWrap: "break-word",
+                    wordBreak: "break-word",
+                  }}
                   dangerouslySetInnerHTML={{ __html: post.body }}
                 />
               ) : post.excerpt ? (

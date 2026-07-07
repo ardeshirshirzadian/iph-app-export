@@ -13,6 +13,7 @@ import { gql } from "@apollo/client";
 import { getApolloClient } from "@/lib/apolloClient";
 import { useAuth } from "../../hooks/useAuth";
 import { toPersianDigits } from "@/lib/utils";
+import { hapticLight } from "@/lib/haptics";
 
 const RASAYESH_BASE = "https://api.rasayesh.com/";
 
@@ -299,6 +300,7 @@ function ServiceItem({ icon_type, icon_value, title, title_en, link, link_en, is
         target="_blank"
         rel="noopener noreferrer"
         className="flex flex-col items-center active:scale-95 transition-transform duration-150"
+        onClick={hapticLight}
       >
         {inner}
       </a>
@@ -313,6 +315,7 @@ function ServiceItem({ icon_type, icon_value, title, title_en, link, link_en, is
     <Link
       href={displayLink}
       className="flex flex-col items-center active:scale-95 transition-transform duration-150"
+      onClick={hapticLight}
     >
       {inner}
     </Link>
@@ -417,6 +420,42 @@ export default function HomeClient({ services, banners = [], defaultNotification
   const [toastQueue, setToastQueue] = useState([]);
   const [currentToast, setCurrentToast] = useState(null);
 
+  // Pull-to-refresh state
+  const [pullDist, setPullDist] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const pullStartY = useRef(null);
+  const PULL_THRESHOLD = 80;
+
+  const onPullStart = useCallback((e) => {
+    if (window.scrollY === 0) {
+      pullStartY.current = e.touches[0].clientY;
+    }
+  }, []);
+
+  const onPullMove = useCallback((e) => {
+    if (pullStartY.current === null || isRefreshing) return;
+    const dy = e.touches[0].clientY - pullStartY.current;
+    if (dy > 0) {
+      e.preventDefault();
+      setPullDist(Math.min(dy, PULL_THRESHOLD + 20));
+    } else {
+      pullStartY.current = null;
+      setPullDist(0);
+    }
+  }, [isRefreshing]);
+
+  const onPullEnd = useCallback(() => {
+    if (pullDist >= PULL_THRESHOLD) {
+      setIsRefreshing(true);
+      setPullDist(0);
+      pullStartY.current = null;
+      setTimeout(() => window.location.reload(), 300);
+    } else {
+      setPullDist(0);
+      pullStartY.current = null;
+    }
+  }, [pullDist]);
+
   useEffect(() => {
     const currentLang = localStorage.getItem('iph-lang') || 'fa';
     const queue = [];
@@ -496,7 +535,24 @@ export default function HomeClient({ services, banners = [], defaultNotification
       lang={lang}
       className="min-h-screen pb-28"
       style={{ background: "var(--bg)", color: "var(--text)" }}
+      onTouchStart={onPullStart}
+      onTouchMove={onPullMove}
+      onTouchEnd={onPullEnd}
     >
+      {/* Pull-to-refresh indicator */}
+      {(pullDist > 0 || isRefreshing) && (
+        <div
+          className="fixed top-0 left-0 right-0 flex items-center justify-center z-50 transition-all duration-150"
+          style={{ height: isRefreshing ? 48 : Math.max(pullDist * 0.6, 0), overflow: "hidden" }}
+        >
+          <span className="text-xs font-semibold" style={{ color: "var(--accent)" }}>
+            {isRefreshing
+              ? (lang === "fa" ? "در حال بارگذاری..." : "Refreshing...")
+              : (lang === "fa" ? "↓ برای بارگذاری مجدد بکشید" : "↓ Pull to refresh")}
+          </span>
+        </div>
+      )}
+
       {/* Background glows */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[#00ffb3]/5 rounded-full blur-3xl" />

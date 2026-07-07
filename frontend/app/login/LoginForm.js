@@ -9,6 +9,7 @@ import { toPersianDigits, toEnglishDigits, toLocalMobile } from "@/lib/utils";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 import LangToggle from "@/components/LangToggle";
+import { hapticError } from "@/lib/haptics";
 
 const SEND_OTP = gql`
   mutation SendOtp($mobile: String, $email: String) {
@@ -81,6 +82,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
       const { data, errors } = await client.mutate({ mutation: SEND_OTP, variables });
 
       if (errors?.length) {
+        hapticError();
         setError(isEmail ? "Failed to send code" : "خطا در ارسال کد");
         return;
       }
@@ -92,9 +94,11 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
         setStep(2);
         setResendCooldown(60);
       } else {
+        hapticError();
         setError(result?.message || (isEmail ? "Failed to send code" : "خطا در ارسال کد"));
       }
     } catch {
+      hapticError();
       setError(t(lang, "server_error"));
     } finally {
       setLoading(false);
@@ -134,6 +138,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
         const { data, errors } = await client.mutate({ mutation: VERIFY_OTP, variables });
 
         if (errors?.length) {
+          hapticError();
           setError(isEmail ? "Incorrect code" : "کد وارد شده اشتباه است");
           return;
         }
@@ -142,6 +147,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
         const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
 
         if (result?.status !== 'success') {
+          hapticError();
           setError(result?.message || (isEmail ? "Incorrect code" : "کد وارد شده اشتباه است"));
           return;
         }
@@ -177,6 +183,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
         }
         router.push(quickMode ? fromPath : "/");
       } catch {
+        hapticError();
         setError(t(lang, "server_error"));
       } finally {
         setLoading(false);
@@ -232,6 +239,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
       const { data, errors } = await client.mutate({ mutation: SEND_OTP, variables });
 
       if (errors?.length) {
+        hapticError();
         setError(t(lang, "server_error"));
         return;
       }
@@ -244,9 +252,11 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
         setOtpDigits(["", "", "", "", ""]);
         setTimeout(() => otpRefs.current[0]?.focus(), 0);
       } else {
+        hapticError();
         setError(result?.message || t(lang, "server_error"));
       }
     } catch {
+      hapticError();
       setError(t(lang, "server_error"));
     } finally {
       setLoading(false);

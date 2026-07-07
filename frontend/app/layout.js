@@ -4,6 +4,7 @@ import LangSync from "./components/LangSync";
 import ServiceWorkerRegistrar from "./components/ServiceWorkerRegistrar";
 import SessionExpiredToast from "@/components/SessionExpiredToast";
 import ApolloClientProvider from "./components/ApolloProvider";
+import PageWrapper from "./components/PageWrapper";
 import { getActiveFont, getActiveFontEn } from "@/lib/getActiveFont";
 import { getThemeColors } from "@/lib/getThemeColors";
 import { getAppIdentity } from "@/lib/getAppIdentity";
@@ -132,7 +133,7 @@ export default async function RootLayout({ children }) {
         <LangSync />
         <ServiceWorkerRegistrar />
         <SessionExpiredToast />
-        <ApolloClientProvider>{children}</ApolloClientProvider>
+        <ApolloClientProvider><PageWrapper>{children}</PageWrapper></ApolloClientProvider>
       </body>
     </html>
   );

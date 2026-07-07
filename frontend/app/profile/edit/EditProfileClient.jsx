@@ -11,6 +11,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 import { toPersianDigits, toEnglishDigits } from "@/lib/utils";
+import { hapticSuccess, hapticError } from "@/lib/haptics";
 
 const RASAYESH_BASE   = "https://api.rasayesh.com/";
 const RASAYESH_GQL    = "https://api.rasayesh.com/graphql";
@@ -455,6 +456,7 @@ export default function EditProfileClient() {
       const payload = result.data?.attendeeUpdateProfileInfo;
       if (payload?.status === 'invalid') {
         const msg = payload.errors ? Object.values(payload.errors).flat().join(', ') : "خطا در ذخیره‌سازی";
+        hapticError();
         setInfoState({ saving: false, saved: false, error: msg });
         return;
       }
@@ -462,9 +464,11 @@ export default function EditProfileClient() {
       client.cache.evict({ fieldName: 'attendee' });
       client.cache.gc();
       await client.query({ query: ATTENDEE_QUERY, fetchPolicy: 'network-only' });
+      hapticSuccess();
       setInfoState({ saving: false, saved: true, error: "" });
       setTimeout(() => router.push("/profile"), 1500);
     } catch (err) {
+      hapticError();
       setInfoState({ saving: false, saved: false, error: err.message });
     }
   }
@@ -499,6 +503,7 @@ export default function EditProfileClient() {
       const payload = result.data?.attendeeUpdateProfileContact;
       if (payload?.status === 'invalid') {
         const msg = payload.errors ? Object.values(payload.errors).flat().join(', ') : "خطا در ذخیره‌سازی";
+        hapticError();
         setContactState({ saving: false, saved: false, error: msg });
         return;
       }
@@ -506,9 +511,11 @@ export default function EditProfileClient() {
       client.cache.evict({ fieldName: 'attendee' });
       client.cache.gc();
       await client.query({ query: ATTENDEE_QUERY, fetchPolicy: 'network-only' });
+      hapticSuccess();
       setContactState({ saving: false, saved: true, error: "" });
       setTimeout(() => router.push("/profile"), 1500);
     } catch (err) {
+      hapticError();
       setContactState({ saving: false, saved: false, error: err.message });
     }
   }
@@ -586,6 +593,7 @@ export default function EditProfileClient() {
       const payload = result.data?.attendeeUpdateProfileActivity;
       if (payload?.status === 'invalid') {
         const msg = payload.errors ? Object.values(payload.errors).flat().join(', ') : "خطا در ذخیره‌سازی";
+        hapticError();
         setActivityState({ saving: false, saved: false, error: msg });
         return;
       }
@@ -593,9 +601,11 @@ export default function EditProfileClient() {
       client.cache.evict({ fieldName: 'attendee' });
       client.cache.gc();
       await client.query({ query: ATTENDEE_QUERY, fetchPolicy: 'network-only' });
+      hapticSuccess();
       setActivityState({ saving: false, saved: true, error: "" });
       setTimeout(() => router.push("/profile"), 1500);
     } catch (err) {
+      hapticError();
       setActivityState({ saving: false, saved: false, error: err.message });
     }
   }

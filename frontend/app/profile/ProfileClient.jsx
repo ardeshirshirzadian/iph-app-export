@@ -420,11 +420,11 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en }
                 </span>
               </div>
             )}
-            {attendeeData?.job_title_fa && (
+            {(lang === "en" ? attendeeData?.job_title_en : attendeeData?.job_title_fa) && (
               <div className="flex justify-between items-center">
                 <span className="text-xs" style={{ color: "var(--text-dim)" }}>{t(lang, "profile_job")}</span>
                 <span className="text-sm font-medium" style={{ color: "var(--text)" }}>
-                  {attendeeData.job_title_fa}
+                  {lang === "en" ? attendeeData.job_title_en : attendeeData.job_title_fa}
                 </span>
               </div>
             )}

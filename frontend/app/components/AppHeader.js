@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 import { useState, useCallback, useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
@@ -176,24 +177,28 @@ export default function AppHeader({ leftActions, rightActions }) {
 
             <div className="flex items-center gap-2 shrink-0">
               {rightActions}
-              <span className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
-                {t(lang, "app_name")}
-              </span>
-              <div className="h-8 w-8 flex items-center justify-center">
-                <Logo className="h-8 w-auto object-contain" />
-              </div>
+              <Link href="/" className="flex items-center gap-2" style={{ textDecoration: "none" }}>
+                <span className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
+                  {t(lang, "app_name")}
+                </span>
+                <div className="h-8 w-8 flex items-center justify-center">
+                  <Logo className="h-8 w-auto object-contain" />
+                </div>
+              </Link>
             </div>
           </>
         ) : (
           <>
             {/* EN: Logo on LEFT, Icons on RIGHT */}
             <div className="flex items-center gap-2 shrink-0">
-              <div className="h-8 w-8 flex items-center justify-center">
-                <Logo className="h-8 w-auto object-contain" />
-              </div>
-              <span className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
-                {t(lang, "app_name")}
-              </span>
+              <Link href="/" className="flex items-center gap-2" style={{ textDecoration: "none" }}>
+                <div className="h-8 w-8 flex items-center justify-center">
+                  <Logo className="h-8 w-auto object-contain" />
+                </div>
+                <span className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
+                  {t(lang, "app_name")}
+                </span>
+              </Link>
               {rightActions}
             </div>
 
