@@ -98,8 +98,26 @@ function BadgeIcon({ settings, maxSize }) {
 async function downloadCard() {
   const el = document.getElementById("rasayesh-badge-card");
   if (!el) return;
+
+  const { default: html2canvas } = await import("html2canvas").catch(() => ({ default: null }));
+  if (!html2canvas) return;
+
+  // html2canvas doesn't support writing-mode; swap to transform-based rotation before capture
+  const verticalEls = [...el.querySelectorAll('[data-vertical-text="true"]')];
+  const savedStyles = verticalEls.map((vEl) => ({
+    writingMode: vEl.style.writingMode,
+    transform: vEl.style.transform,
+    transformOrigin: vEl.style.transformOrigin,
+    display: vEl.style.display,
+  }));
+  verticalEls.forEach((vEl) => {
+    vEl.style.writingMode = "initial";
+    vEl.style.transform = "rotate(-90deg)";
+    vEl.style.transformOrigin = "center center";
+    vEl.style.display = "inline-block";
+  });
+
   try {
-    const { default: html2canvas } = await import("html2canvas");
     const canvas = await html2canvas(el, { scale: 3, useCORS: true, allowTaint: false });
     const link = document.createElement("a");
     link.download = "badge.png";
@@ -107,6 +125,13 @@ async function downloadCard() {
     link.click();
   } catch (err) {
     console.error("[download badge]", err);
+  } finally {
+    verticalEls.forEach((vEl, i) => {
+      vEl.style.writingMode = savedStyles[i].writingMode;
+      vEl.style.transform = savedStyles[i].transform;
+      vEl.style.transformOrigin = savedStyles[i].transformOrigin;
+      vEl.style.display = savedStyles[i].display;
+    });
   }
 }
 

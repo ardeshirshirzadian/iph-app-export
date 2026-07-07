@@ -146,8 +146,8 @@ function ServiceItem({ icon_type, icon_value, title, title_en, link, link_en, is
     <div
       className="w-16 h-16 rounded-[16px] flex items-center justify-center relative"
       style={{
-        background: "color-mix(in srgb, var(--accent) 12%, transparent)",
-        border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
+        background: "var(--surface-alt)",
+        border: "1px solid color-mix(in srgb, var(--surface-alt) 200%, transparent)",
       }}
     >
       {icon_type === 'image' ? (

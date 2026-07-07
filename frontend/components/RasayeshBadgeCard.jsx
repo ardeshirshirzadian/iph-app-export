@@ -57,6 +57,7 @@ export default function RasayeshBadgeCard({ template, attendee, eventName }) {
           return (
             <div
               key={el.id ?? `${el.left}-${el.top}`}
+              data-vertical-text={isVertical ? "true" : undefined}
               style={{
                 position: "absolute",
                 left: `${leftPct}%`,
@@ -66,8 +67,8 @@ export default function RasayeshBadgeCard({ template, attendee, eventName }) {
                 fontWeight: el.isBold ? 900 : 400,
                 fontStyle: el.isItalic ? "italic" : "normal",
                 textDecoration: el.isUnderlined ? "underline" : "none",
-                transform: isVertical ? "rotate(-90deg)" : "none",
-                transformOrigin: isVertical ? "top left" : "initial",
+                writingMode: isVertical ? "vertical-rl" : "initial",
+                transform: isVertical ? "rotate(180deg)" : "none",
                 whiteSpace: "nowrap",
                 lineHeight: 1.2,
               }}

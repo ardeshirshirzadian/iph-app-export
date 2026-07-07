@@ -5,7 +5,7 @@ import ServiceWorkerRegistrar from "./components/ServiceWorkerRegistrar";
 import SessionExpiredToast from "@/components/SessionExpiredToast";
 import ApolloClientProvider from "./components/ApolloProvider";
 import { getActiveFont, getActiveFontEn } from "@/lib/getActiveFont";
-import { getThemeColors, buildColorStyle } from "@/lib/getThemeColors";
+import { getThemeColors } from "@/lib/getThemeColors";
 import { getAppIdentity } from "@/lib/getAppIdentity";
 import { existsSync } from "fs";
 import { join } from "path";
@@ -91,7 +91,6 @@ export default async function RootLayout({ children }) {
   ]);
   const fontStyle = buildFontStyle(activeFont);
   const fontEnStyle = buildFontEnStyle(activeFontEn);
-  const colorStyle = buildColorStyle(themeColors);
   const isGoogleFont = activeFont.source === 'google';
   const isGoogleFontEn = activeFontEn.source === 'google';
   const themeInitScript = buildThemeInitScript(themeColors.dark.bg, themeColors.light.bg);
@@ -124,10 +123,9 @@ export default async function RootLayout({ children }) {
         <style dangerouslySetInnerHTML={{ __html: fontStyle }} />
         {/* eslint-disable-next-line react/no-danger */}
         <style dangerouslySetInnerHTML={{ __html: fontEnStyle }} />
-        {/* DB-driven theme colors: :root (dark) and html.light — overrides globals.css defaults.
-            Changing colors in /apn/appearance takes effect on next page load, no restart. */}
-        {/* eslint-disable-next-line react/no-danger */}
-        <style dangerouslySetInnerHTML={{ __html: colorStyle }} />
+        {/* DB-driven theme colors served from /api/theme.css — no-store so changes in
+            /apn/appearance take effect on next page load without a rebuild. */}
+        <link rel="stylesheet" href="/api/theme.css" />
       </head>
       <body>
         <ThemeSync />
