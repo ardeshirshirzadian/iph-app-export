@@ -9,6 +9,101 @@ import Toast from "@/components/Toast";
 import { isPushSupported, isIOS, isStandalone, requestNotificationPermission, subscribeToPush } from "@/lib/pushClient";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
+import { gql } from "@apollo/client";
+import { getApolloClient } from "@/lib/apolloClient";
+import { useAuth } from "../../hooks/useAuth";
+import { toPersianDigits } from "@/lib/utils";
+
+const RASAYESH_BASE = "https://api.rasayesh.com/";
+
+function thumbUrl(thumbnail, size) {
+  if (!thumbnail) return null;
+  const fmt = thumbnail.jpg || thumbnail.png || thumbnail.webp;
+  if (!fmt) return null;
+  return RASAYESH_BASE + (fmt[size] || fmt["256"] || fmt["128"] || Object.values(fmt)[0]);
+}
+
+function NewsStrip({ lang }) {
+  const [posts, setPosts] = useState([]);
+
+  useEffect(() => {
+    fetch("/api/news?latest=true")
+      .then((r) => r.json())
+      .then((d) => { if (d.posts?.length) setPosts(d.posts); })
+      .catch(() => {});
+  }, []);
+
+  if (posts.length === 0) return null;
+
+  return (
+    <section className="mt-5">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-sm font-bold" style={{ color: "var(--text)" }}>
+          {t(lang, "news_latest")}
+        </span>
+        <Link href="/news" className="text-xs" style={{ color: "var(--accent)" }}>
+          {t(lang, "news_all")}
+        </Link>
+      </div>
+      <div
+        className="flex gap-3 overflow-x-auto pb-2"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+      >
+        {posts.map((post) => {
+          const img = thumbUrl(post.thumbnail, "256");
+          const date = post.created_at
+            ? new Date(post.created_at).toLocaleDateString(
+                lang === "fa" ? "fa-IR-u-ca-persian" : "en-US",
+                { month: "short", day: "numeric" }
+              )
+            : "";
+          return (
+            <Link
+              key={post.id}
+              href={`/news/${post.slug}`}
+              className="flex-shrink-0 rounded-2xl overflow-hidden active:scale-95 transition-transform duration-150"
+              style={{
+                width: 180,
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+              }}
+            >
+              {img ? (
+                <div style={{ width: "100%", height: 120, overflow: "hidden", flexShrink: 0 }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={img}
+                    alt={post.title}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                </div>
+              ) : (
+                <div style={{ width: "100%", height: 120, background: "var(--surface-alt)", flexShrink: 0 }} />
+              )}
+              <div className="p-2">
+                <p
+                  className="text-xs font-medium leading-snug"
+                  style={{
+                    color: "var(--text)",
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                  }}
+                >
+                  {post.title}
+                </p>
+                <p className="text-[10px] mt-1" style={{ color: "var(--text-dim)" }}>
+                  {date}
+                </p>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 function isExternal(link) {
   return /^https?:\/\//.test(link);
@@ -221,6 +316,86 @@ function ServiceItem({ icon_type, icon_value, title, title_en, link, link_en, is
     >
       {inner}
     </Link>
+  );
+}
+
+const PROFILE_QUERY = gql`
+  query {
+    getAttendee {
+      id firstname_fa national_code occupation_id
+      education_level_id field_of_activities { id } profile
+    }
+  }
+`;
+
+const PROFILE_FIELDS = [
+  (a) => !!a.firstname_fa,
+  (a) => !!a.national_code,
+  (a) => !!a.occupation_id,
+  (a) => !!a.education_level_id,
+  (a) => Array.isArray(a.field_of_activities) && a.field_of_activities.length > 0,
+  (a) => !!a.profile,
+];
+
+function ProfileCompletionBar({ lang, isRTL }) {
+  const { user } = useAuth();
+  const [pct, setPct] = useState(null);
+  const [completed, setCompleted] = useState(0);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const client = getApolloClient();
+    if (!client) return;
+    client.query({ query: PROFILE_QUERY, fetchPolicy: 'network-only' })
+      .then(({ data }) => {
+        const a = data?.getAttendee;
+        if (!a) return;
+        const done = PROFILE_FIELDS.filter((fn) => fn(a)).length;
+        setCompleted(done);
+        setPct(Math.round((done / PROFILE_FIELDS.length) * 100));
+      })
+      .catch(() => {});
+  }, [user?.id]);
+
+  if (pct === null || pct >= 100) return null;
+
+  const pctLabel = lang === 'fa' ? `٪${toPersianDigits(pct)}` : `${pct}%`;
+  const countLabel = lang === 'fa'
+    ? `${toPersianDigits(completed)} مورد از ${toPersianDigits(PROFILE_FIELDS.length)} مورد تکمیل شده`
+    : `${completed} of ${PROFILE_FIELDS.length} fields completed`;
+
+  return (
+    <div
+      className="mt-5 rounded-2xl px-4 py-3"
+      style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold" style={{ color: "var(--text)" }}>
+            {lang === 'fa' ? 'تکمیل پروفایل' : 'Complete Profile'}
+          </span>
+          <span className="text-xs font-bold" style={{ color: "var(--accent)" }}>
+            {pctLabel}
+          </span>
+        </div>
+        <Link
+          href="/profile/edit"
+          className="text-xs font-bold px-3 py-1 rounded-lg"
+          style={{ background: "var(--surface-alt)", color: "var(--accent)" }}
+        >
+          {lang === 'fa' ? 'ویرایش' : 'Edit'}
+        </Link>
+      </div>
+      <div className="rounded-full overflow-hidden" style={{ height: 4, background: "var(--border)" }}>
+        <div
+          className="h-full rounded-full transition-all duration-500"
+          style={{ width: `${pct}%`, background: "var(--accent)" }}
+        />
+      </div>
+      <p className="text-xs mt-2" style={{ color: "var(--text-dim)" }}>
+        {countLabel}
+      </p>
+    </div>
   );
 }
 
@@ -444,6 +619,8 @@ export default function HomeClient({ services, banners = [], defaultNotification
             </section>
           );
         })()}
+        <ProfileCompletionBar lang={lang} isRTL={isRTL} />
+        <NewsStrip lang={lang} />
       </div>
 
       <BottomNav />

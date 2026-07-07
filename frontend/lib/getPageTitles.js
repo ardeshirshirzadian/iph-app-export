@@ -10,6 +10,8 @@ const DEFAULTS = {
   chat:          { title: 'دستیار هوش مصنوعی',     subtitle: 'چطور می‌تونم کمکتون کنم؟' },
   companies:     { title: 'شرکت‌های نمایشگاه',     subtitle: 'دهمین نمایشگاه ایران فارما ۱۴۰۴' },
   panels:        { title: 'پنل‌ها و کارگاه‌ها',    subtitle: 'دهمین نمایشگاه ایران فارما ۱۴۰۴' },
+  news:          { title: 'اخبار',                  subtitle: 'آخرین اخبار نمایشگاه ایران‌فارما', title_en: 'News', subtitle_en: 'Latest IranPharma Exhibition News' },
+  gallery:       { title: 'گالری تصاویر',           subtitle: 'عکس‌های نمایشگاه‌های برگزار شده', title_en: 'Photo Gallery', subtitle_en: 'IranPharma Exhibition Photos' },
 };
 
 export async function getPageTitle(pageKey) {
