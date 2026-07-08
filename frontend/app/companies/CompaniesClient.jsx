@@ -1,21 +1,83 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import BottomNav from "../components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { toPersianDigits } from "@/lib/utils";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
+import { fetchPublicGraphQL } from "@/lib/publicRasayeshClient";
 
 const LIMIT = 10;
 
+const COMPANIES_QUERY = `
+  query EventCompanies($search: String, $orderBy: String, $eventId: Int) {
+    eventCompanies(search: $search, orderBy: $orderBy, order: "asc", all: true) {
+      id slug legal_name_fa legal_name_en brand_name_fa brand_name_en
+      logo description_fa description_en website
+      booths(eventId: $eventId) { id }
+      eventOptions { show_profile }
+      sponsorshipLevels { icon color is_digital }
+    }
+    eventCompaniesCount(search: $search)
+  }
+`;
+
+const HALLS_QUERY = `
+  query WebsiteEventHalls {
+    websiteEvent {
+      halls {
+        id
+        name
+        booths { id no hall { id name } }
+      }
+    }
+  }
+`;
+
+const FEATURE_QUERY = `
+  query EventFeatureCompanies {
+    eventFeatureCompanies {
+      company {
+        id slug legal_name_fa legal_name_en brand_name_fa brand_name_en logo
+      }
+    }
+  }
+`;
+
+function getOrderBy(sort, lang) {
+  if (sort === "name_en" || (lang === "en" && !sort)) return "brand_name_en";
+  return "brand_name_fa";
+}
+
+function mapCompany(raw, boothMap) {
+  const firstBooth = raw.booths?.[0];
+  const boothInfo = firstBooth ? boothMap[String(firstBooth.id)] : null;
+  return {
+    id: raw.id,
+    slug: raw.slug,
+    brand_name_fa: raw.brand_name_fa,
+    brand_name_en: raw.brand_name_en,
+    legal_name_fa: raw.legal_name_fa,
+    logo: raw.logo,
+    website: raw.website,
+    description_fa: raw.description_fa,
+    description_en: raw.description_en,
+    hall_name: boothInfo?.hallName ?? null,
+    booth_no: boothInfo?.boothNo ?? null,
+    is_sponsor: (raw.sponsorshipLevels?.length ?? 0) > 0,
+    sponsor_level_obj: raw.sponsorshipLevels?.[0] ?? null,
+  };
+}
+
 function getLogoUrl(logo, logoBaseUrl) {
   if (!logo) return null;
-  const src = logo?.jpg?.["128"] || logo?.jpg?.["64"] || logo?.jpg?.["32"]
-    || logo?.png?.["128"] || logo?.png?.["64"] || logo?.png?.["32"]
-    || logo?.webp?.["128"] || logo?.webp?.["64"] || logo?.webp?.["32"]
-    || logo?.["128"] || logo?.["64"] || logo?.["32"];
+  const src =
+    logo?.jpg?.["128"] || logo?.jpg?.["64"] || logo?.jpg?.["32"] ||
+    logo?.png?.["128"] || logo?.png?.["64"] || logo?.png?.["32"] ||
+    logo?.webp?.["128"] || logo?.webp?.["64"] || logo?.webp?.["32"] ||
+    logo?.["128"] || logo?.["64"] || logo?.["32"];
   if (!src) return null;
   const base = logoBaseUrl || "https://api.rasayesh.com/";
   return base + src;
@@ -40,13 +102,11 @@ function CompanyCard({ company, visibleFields, visibleFieldsEn, logoBaseUrl, lan
   const tappable = Boolean(company.slug);
   const letter = company.brand_name_fa?.charAt(0) || company.brand_name_en?.charAt(0) || "؟";
 
-  // Single primary name with language-priority fallback
   const displayName = isEN
     ? (company.brand_name_en || company.brand_name_fa)
     : (company.brand_name_fa || company.brand_name_en);
   const showName = isEN ? (vf.brand_name_en || vf.brand_name_fa) : (vf.brand_name_fa || vf.brand_name_en);
 
-  // Description with language-priority fallback
   const displayDesc = isEN
     ? (company.description_en || company.description_fa)
     : company.description_fa;
@@ -75,10 +135,7 @@ function CompanyCard({ company, visibleFields, visibleFieldsEn, logoBaseUrl, lan
         ) : (
           <span
             className="font-bold"
-            style={{
-              fontSize: "clamp(24px, 8vw, 40px)",
-              color: "var(--accent)",
-            }}
+            style={{ fontSize: "clamp(24px, 8vw, 40px)", color: "var(--accent)" }}
           >
             {letter}
           </span>
@@ -103,11 +160,7 @@ function CompanyCard({ company, visibleFields, visibleFieldsEn, logoBaseUrl, lan
         </div>
         {vf.website && company.website && (
           <a
-            href={
-              company.website.startsWith("http")
-                ? company.website
-                : `https://${company.website}`
-            }
+            href={company.website.startsWith("http") ? company.website : `https://${company.website}`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs mt-0.5"
@@ -143,20 +196,19 @@ function CompanyCard({ company, visibleFields, visibleFieldsEn, logoBaseUrl, lan
           <div className="mt-1.5">
             <span
               className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs font-bold"
-              style={{ background: "#f59e0b", color: "#1c1007" }}
+              style={{
+                background: company.sponsor_level_obj?.color || "#f59e0b",
+                color: "#1c1007",
+              }}
             >
-              🌟 {company.sponsor_level || (isEN ? "Sponsor" : "حامی")}
+              {company.sponsor_level_obj?.icon || "🌟"} {isEN ? "Sponsor" : "حامی"}
             </span>
           </div>
         )}
         {company.hall_name && company.booth_no && (
           <div
             className="mt-1.5 flex items-center gap-1 text-xs font-medium"
-            style={{
-              color: "var(--accent)",
-              direction: "ltr",
-              textAlign: "left",
-            }}
+            style={{ color: "var(--accent)", direction: "ltr", textAlign: "left" }}
           >
             <span>📍</span>
             <span>
@@ -208,23 +260,22 @@ function CardSkeleton() {
 }
 
 export default function CompaniesClient({ title, subtitle, title_en, subtitle_en }) {
-  const [companies, setCompanies] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [halls, setHalls] = useState([]);
+  const [config, setConfig] = useState(null);
+  const [boothMap, setBoothMap] = useState({});
+  const [allCompanies, setAllCompanies] = useState([]);
+  // eslint-disable-next-line no-unused-vars
+  const [featureCompanies, setFeatureCompanies] = useState([]);
   const [selectedHall, setSelectedHall] = useState("");
   const [sort, setSort] = useState("");
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
+  const [configLoading, setConfigLoading] = useState(true);
+  const [companiesLoading, setCompaniesLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [visibleFields, setVisibleFields] = useState({});
-  const [visibleFieldsEn, setVisibleFieldsEn] = useState({});
-  const [logoBaseUrl, setLogoBaseUrl] = useState("");
-  const [eventNameEn, setEventNameEn] = useState("");
   const { lang, isRTL } = useLang();
   const router = useRouter();
 
-  const totalPages = Math.max(1, Math.ceil(total / LIMIT));
+  const loading = configLoading || companiesLoading;
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 400);
@@ -234,24 +285,116 @@ export default function CompaniesClient({ title, subtitle, title_en, subtitle_en
   useEffect(() => { setSort(""); }, [lang]);
   useEffect(() => { setPage(1); }, [debouncedSearch, lang, selectedHall, sort]);
 
+  // Load config + hall lookup map + featured companies once on mount.
+  // Each fetch is independent — one failing must not block the others.
   useEffect(() => {
-    setLoading(true);
-    const effectiveSort = sort || (lang === "en" ? "name_en" : "name_fa");
-    const params = new URLSearchParams({ page, limit: LIMIT, search: debouncedSearch, lang, hall: selectedHall, sort: effectiveSort });
-    fetch(`/api/companies?${params}`)
-      .then(r => r.json())
-      .then(data => {
-        setCompanies(data.companies ?? []);
-        setTotal(data.total ?? 0);
-        setHalls(data.halls ?? []);
-        setVisibleFields(data.visibleFields ?? {});
-        setVisibleFieldsEn(data.visibleFieldsEn ?? {});
-        setLogoBaseUrl(data.logoBaseUrl ?? "");
-        setEventNameEn(data.eventNameEn ?? "");
+    let cancelled = false;
+    async function init() {
+      setConfigLoading(true);
+
+      // 1. Config — blocking: companies effect waits for this
+      let cfg = {};
+      try {
+        cfg = await fetch("/api/companies/config").then(r => r.json());
+      } catch (err) {
+        console.error("Companies config fetch error:", err);
+      }
+      if (cancelled) return;
+
+      // 2. Halls + featured — fire in parallel, each isolated
+      const [hallsOutcome, featOutcome] = await Promise.allSettled([
+        fetchPublicGraphQL(HALLS_QUERY, {}, cfg.eventOrigin),
+        fetchPublicGraphQL(FEATURE_QUERY, {}, cfg.eventOrigin),
+      ]);
+      if (cancelled) return;
+
+      // Build booth map (empty on failure — cards just omit hall/booth info)
+      const map = {};
+      if (hallsOutcome.status === "fulfilled") {
+        for (const hall of hallsOutcome.value?.data?.websiteEvent?.halls ?? []) {
+          for (const booth of hall.booths ?? []) {
+            map[String(booth.id)] = { hallName: hall.name, boothNo: booth.no };
+          }
+        }
+      } else {
+        console.error("WebsiteEventHalls error:", hallsOutcome.reason?.graphQLErrors ?? hallsOutcome.reason);
+      }
+
+      if (featOutcome.status === "rejected") {
+        console.error("EventFeatureCompanies error:", featOutcome.reason?.graphQLErrors ?? featOutcome.reason);
+      }
+
+      // Batch all state together so companies effect sees a consistent snapshot
+      setBoothMap(map);
+      setFeatureCompanies(featOutcome.value?.data?.eventFeatureCompanies ?? []);
+      setConfig(cfg);
+      setConfigLoading(false);
+    }
+    init();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Fetch companies from Rasayesh whenever config/search/sort/lang changes
+  useEffect(() => {
+    if (!config) return;
+    let cancelled = false;
+    setCompaniesLoading(true);
+
+    const variables = {
+      orderBy: getOrderBy(sort, lang),
+      ...(debouncedSearch ? { search: debouncedSearch } : {}),
+      ...(config.eventId != null ? { eventId: Number(config.eventId) } : {}),
+    };
+
+    fetchPublicGraphQL(COMPANIES_QUERY, variables, config.eventOrigin)
+      .then(result => {
+        if (cancelled) return;
+        const raw = result?.data?.eventCompanies ?? [];
+        setAllCompanies(raw.map(c => mapCompany(c, boothMap)));
       })
-      .catch(() => setCompanies([]))
-      .finally(() => setLoading(false));
-  }, [page, debouncedSearch, lang, selectedHall, sort]);
+      .catch(err => {
+        if (cancelled) return;
+        console.error("Companies fetch error:", err.graphQLErrors ?? err);
+        setAllCompanies([]);
+      })
+      .finally(() => { if (!cancelled) setCompaniesLoading(false); });
+
+    return () => { cancelled = true; };
+  // boothMap intentionally omitted — it is always current at render time
+  // when config triggers this effect (both are set in the same React batch)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config, debouncedSearch, sort, lang]);
+
+  // Distinct hall names derived from the current search results
+  const halls = useMemo(
+    () => [...new Set(allCompanies.map(c => c.hall_name).filter(Boolean))].sort(),
+    [allCompanies]
+  );
+
+  // Clear selected hall if it disappears from the current result set
+  useEffect(() => {
+    if (selectedHall && halls.length > 0 && !halls.includes(selectedHall)) {
+      setSelectedHall("");
+    }
+  }, [halls, selectedHall]);
+
+  // Hall filter + client-side sort for booth/hall modes
+  const filteredAndSorted = useMemo(() => {
+    let list = selectedHall ? allCompanies.filter(c => c.hall_name === selectedHall) : allCompanies;
+    if (sort === "booth") {
+      list = [...list].sort((a, b) => (parseInt(a.booth_no) || 0) - (parseInt(b.booth_no) || 0));
+    } else if (sort === "hall") {
+      list = [...list].sort((a, b) =>
+        (a.hall_name || "").localeCompare(b.hall_name || "", "fa") ||
+        (a.brand_name_fa || "").localeCompare(b.brand_name_fa || "", "fa")
+      );
+    }
+    return list;
+  }, [allCompanies, selectedHall, sort]);
+
+  const total = filteredAndSorted.length;
+  const totalPages = Math.max(1, Math.ceil(total / LIMIT));
+  const companies = filteredAndSorted.slice((page - 1) * LIMIT, page * LIMIT);
 
   function goToPage(p) {
     setPage(p);
@@ -259,6 +402,10 @@ export default function CompaniesClient({ title, subtitle, title_en, subtitle_en
   }
 
   const isEmpty = !loading && companies.length === 0;
+  const eventNameEn = config?.eventNameEn ?? "";
+  const visibleFields = config?.visibleFields ?? {};
+  const visibleFieldsEn = config?.visibleFieldsEn ?? {};
+  const logoBaseUrl = config?.logoBaseUrl ?? "";
 
   const totalCountLabel = lang === "fa"
     ? `${toPersianDigits(total)} ${t(lang, "companies_count_suffix")}`
@@ -382,7 +529,6 @@ export default function CompaniesClient({ title, subtitle, title_en, subtitle_en
           </div>
         )}
 
-        {/* Pagination */}
         {!loading && totalPages > 1 && (
           <div className="flex items-center justify-center gap-1.5 mt-6 flex-wrap">
             <button
