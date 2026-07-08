@@ -223,7 +223,14 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en }
 
     setProfileLoading(true);
     client.query({ query: ATTENDEE_QUERY, fetchPolicy: 'network-only' })
-      .then(({ data }) => { if (data?.getAttendee) setAttendeeData(data.getAttendee); })
+      .then(({ data }) => {
+        if (data?.getAttendee) {
+          setAttendeeData(data.getAttendee);
+          if (data.getAttendee.todayEventPresence) {
+            fetch('/api/attendance/log', { method: 'POST' }).catch(() => {});
+          }
+        }
+      })
       .catch(() => {})
       .finally(() => setProfileLoading(false));
 

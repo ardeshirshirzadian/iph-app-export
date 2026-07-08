@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
+import { ensureBadgeProgressTable } from '@/lib/initQuestBadges';
 
 export async function POST(request) {
   const cookieStore = await cookies();
@@ -46,7 +47,8 @@ export async function POST(request) {
 
     const companyResult = await query(
       `SELECT id, brand_name_fa, brand_name_en, logo, hall_name, booth_no,
-              is_sponsor, website, booth_uuid, booth_xp
+              is_sponsor, website, booth_uuid, booth_xp,
+              is_manual, linked_mission_id, linked_badge_id
        FROM companies WHERE booth_uuid = $1`,
       [uuid]
     );
@@ -74,6 +76,27 @@ export async function POST(request) {
        VALUES ($1, $2, $3, $4)`,
       [userUuid, company.id, uuid, xpEarned]
     );
+
+    // Manual rewards: upsert mission progress and/or badge progress
+    if (company.is_manual) {
+      if (company.linked_mission_id) {
+        await query(
+          `INSERT INTO quest_user_progress (mission_id, user_uuid, completed, completed_at)
+           VALUES ($1, $2, true, NOW())
+           ON CONFLICT (mission_id, user_uuid) DO UPDATE SET completed = true, completed_at = NOW()`,
+          [company.linked_mission_id, userUuid]
+        ).catch(() => {});
+      }
+      if (company.linked_badge_id) {
+        await ensureBadgeProgressTable();
+        await query(
+          `INSERT INTO quest_badge_progress (badge_id, user_uuid, earned, earned_at)
+           VALUES ($1, $2, true, NOW())
+           ON CONFLICT (badge_id, user_uuid) DO UPDATE SET earned = true, earned_at = NOW()`,
+          [company.linked_badge_id, userUuid]
+        ).catch(() => {});
+      }
+    }
 
     return NextResponse.json({ success: true, points: xpEarned, company });
   } catch (err) {

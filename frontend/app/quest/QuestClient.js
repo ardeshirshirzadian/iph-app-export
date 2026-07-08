@@ -27,11 +27,11 @@ const LEVEL_COLORS_BY_IDX = ["#64748b", "#22c55e", "#f59e0b"];
 
 const RANK_ICONS = { 1: "🥇", 2: "🥈", 3: "🥉" };
 
-// ── Fallback content (used if DB table not yet seeded) ─────────────────────
+// ── Fallback content (used only if /api/quest fails) ──────────────────────
 
 const FALLBACK_MISSIONS = [
-  { id: 1, icon: "🏛️", title: "بازدید از ۳ غرفه",          description: "از ۳ غرفه مختلف نمایشگاه بازدید کن",   xpReward: 60,  progress: 1, total: 3 },
-  { id: 2, icon: "💬", title: "اولین مکالمه",               description: "با دستیار هوش مصنوعی چت کن",           xpReward: 30,  progress: 1, total: 1 },
+  { id: 1, icon: "🏛️", title: "بازدید از ۳ غرفه",          description: "از ۳ غرفه مختلف نمایشگاه بازدید کن",   xpReward: 60,  progress: 0, total: 3 },
+  { id: 2, icon: "💬", title: "اولین مکالمه",               description: "با دستیار هوش مصنوعی چت کن",           xpReward: 30,  progress: 0, total: 1 },
   { id: 3, icon: "⭐", title: "غرفه برتر",                  description: "از غرفه ویژه نمایشگاه بازدید کن",       xpReward: 50,  progress: 0, total: 1 },
   { id: 4, icon: "🎤", title: "شرکت در مراسم افتتاحیه",    description: "در مراسم افتتاحیه شرکت کن",             xpReward: 300, progress: 0, total: 1 },
 ];
@@ -585,6 +585,8 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
   const [logoBaseUrl, setLogoBaseUrl] = useState('');
 
   const [questStats, setQuestStats] = useState({ name_fa: '', name_en: '', xp: 0, total_scans: 0, today_scans: 0 });
+  const [liveMissions, setLiveMissions] = useState(null);
+  const [liveBadges, setLiveBadges] = useState(null);
 
   useEffect(() => {
     fetch('/api/quest/booths')
@@ -605,6 +607,20 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    fetch('/api/quest')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d.missions)) setLiveMissions(d.missions); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/quest/badges')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d.badges)) setLiveBadges(d.badges); })
+      .catch(() => {});
+  }, []);
+
   const c = useMemo(() => ({
     ...(content?.main || {}),
     ...(lang === 'en' ? (content?.main_en || {}) : {}),
@@ -617,9 +633,32 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     { name: c.level_2_name || FALLBACK_LEVEL_NAMES[2], icon: iconOf(c.icon_level_2) || FALLBACK_LEVEL_ICONS[2], iconSize: iconSizeOf(c.icon_level_2, 14), ...BASE_THRESHOLDS[2] },
   ], [c]);
 
-  const missions    = content?.missions?.length    > 0 ? content.missions    : FALLBACK_MISSIONS;
+  const missions = useMemo(() => {
+    // Prefer live missions from /api/quest (real DB + real progress)
+    if (liveMissions && liveMissions.length > 0) {
+      return liveMissions.map(m => ({
+        ...m,
+        title: lang === 'en' ? (m.title_en || m.title) : m.title,
+        description: lang === 'en' ? (m.description_en || m.description) : m.description,
+      }));
+    }
+    // Fall back to static CMS blocks if present
+    if (content?.missions?.length > 0) return content.missions;
+    return FALLBACK_MISSIONS;
+  }, [liveMissions, content?.missions, lang]);
+
   const leaderboard = content?.leaderboard?.length > 0 ? content.leaderboard : FALLBACK_LEADERBOARD;
-  const badges      = content?.badges?.length      > 0 ? content.badges      : FALLBACK_BADGES;
+  const badges = useMemo(() => {
+    if (liveBadges && liveBadges.length > 0) {
+      return liveBadges.map(b => ({
+        ...b,
+        name: lang === 'en' ? (b.name_en || b.name_fa) : b.name_fa,
+        description: lang === 'en' ? (b.description_en || b.description_fa) : b.description_fa,
+      }));
+    }
+    if (content?.badges?.length > 0) return content.badges;
+    return FALLBACK_BADGES;
+  }, [liveBadges, content?.badges, lang]);
 
   const tabs = useMemo(() => [
     { id: "missions",    icon: iconOf(c.icon_tab_missions)    || "🎯", iconSize: iconSizeOf(c.icon_tab_missions,    18), text: c.tab_missions    || "مأموریت‌ها" },
