@@ -12,15 +12,15 @@ import { fetchPublicGraphQL } from "@/lib/publicRasayeshClient";
 const LIMIT = 10;
 
 const COMPANIES_QUERY = `
-  query EventCompanies($search: String, $orderBy: String) {
-    eventCompanies(search: $search, orderBy: $orderBy, order: "asc", all: true) {
+  query EventCompanies($search: String, $orderBy: String, $eventId: Int) {
+    eventCompanies(search: $search, orderBy: $orderBy, order: "asc", all: true, eventId: $eventId) {
       id slug legal_name_fa legal_name_en brand_name_fa brand_name_en
       logo description_fa description_en website
       booths { id }
       eventOptions { show_profile }
       sponsorshipLevels { icon color is_digital }
     }
-    eventCompaniesCount(search: $search)
+    eventCompaniesCount(search: $search, eventId: $eventId)
   }
 `;
 
@@ -343,6 +343,7 @@ export default function CompaniesClient({ title, subtitle, title_en, subtitle_en
     const variables = {
       orderBy: getOrderBy(sort, lang),
       ...(debouncedSearch ? { search: debouncedSearch } : {}),
+      ...(config.eventId != null ? { eventId: Number(config.eventId) } : {}),
     };
 
     fetchPublicGraphQL(COMPANIES_QUERY, variables, config.eventOrigin)
