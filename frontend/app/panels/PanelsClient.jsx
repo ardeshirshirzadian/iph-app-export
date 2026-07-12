@@ -1,11 +1,48 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import BottomNav from "../components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { toPersianDigits } from "@/lib/utils";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
+import { fetchPublicGraphQL } from "@/lib/publicRasayeshClient";
+
+const EVENT_PANELS_QUERY = `
+  query EventPanels($order: String, $orderBy: String, $search: String, $kind: String, $eventId: Int) {
+    eventPanels(order: $order, orderBy: $orderBy, search: $search, all: true, kind: $kind, eventId: $eventId) {
+      id
+      event_id
+      price
+      discount
+      slug
+      retraining_id
+      retraining_score
+      hall_fa
+      hall_en
+      capacity
+      usage_count
+      kind
+      title_fa
+      title_en
+      description_fa
+      description_en
+      thumbnail
+      starts_at
+      ends_at
+      disabled
+      speakers {
+        id
+        firstname_fa
+        firstname_en
+        lastname_fa
+        lastname_en
+        job_title_fa
+      }
+    }
+    eventPanelsCount(search: $search, eventId: $eventId)
+  }
+`;
 
 // ── Date helpers ─────────────────────────────────────────────────────────────
 
@@ -289,54 +326,111 @@ function FilterPill({ label, active, onClick }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function PanelsClient({ title, subtitle, title_en, subtitle_en }) {
-  const [panels, setPanels] = useState([]);
-  const [halls, setHalls] = useState([]);
-  const [dates, setDates] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [config, setConfig] = useState(null);
+  const [allPanels, setAllPanels] = useState([]);
+  const [configLoading, setConfigLoading] = useState(true);
+  const [panelsLoading, setPanelsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedHall, setSelectedHall] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
-  const [visibleFields, setVisibleFields] = useState({});
-  const [visibleFieldsEn, setVisibleFieldsEn] = useState({});
-  const [logoBaseUrl, setLogoBaseUrl] = useState("");
-  const [eventNameEn, setEventNameEn] = useState("");
   const { lang, isRTL } = useLang();
+
+  const loading = configLoading || panelsLoading;
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 400);
     return () => clearTimeout(timer);
   }, [search]);
 
+  // Load config once on mount
   useEffect(() => {
-    setLoading(true);
-    const params = new URLSearchParams({
-      search: debouncedSearch,
-      hall: selectedHall,
-      date: selectedDate,
-    });
-    fetch(`/api/panels?${params}`)
+    let cancelled = false;
+    setConfigLoading(true);
+    fetch("/api/panels/config")
       .then(r => r.json())
-      .then(data => {
-        setPanels(data.panels ?? []);
-        setHalls(data.halls ?? []);
-        setDates(data.dates ?? []);
-        setVisibleFields(data.visibleFields ?? {});
-        setVisibleFieldsEn(data.visibleFieldsEn ?? {});
-        setLogoBaseUrl(data.logoBaseUrl ?? "");
-        setEventNameEn(data.eventNameEn ?? "");
-      })
-      .catch(() => setPanels([]))
-      .finally(() => setLoading(false));
-  }, [debouncedSearch, selectedHall, selectedDate]);
+      .then(cfg => { if (!cancelled) { setConfig(cfg); setConfigLoading(false); } })
+      .catch(err => {
+        console.error("Panels config fetch error:", err);
+        if (!cancelled) setConfigLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
-  const isEmpty = !loading && panels.length === 0;
+  // Fetch panels from Rasayesh whenever config or search changes
+  useEffect(() => {
+    if (!config) return;
+    let cancelled = false;
+    setPanelsLoading(true);
+
+    const variables = {
+      order: "asc",
+      orderBy: "starts_at",
+      ...(debouncedSearch ? { search: debouncedSearch } : {}),
+      ...(config.eventId != null ? { eventId: Number(config.eventId) } : {}),
+    };
+
+    fetchPublicGraphQL(EVENT_PANELS_QUERY, variables, config.eventOrigin)
+      .then(result => {
+        if (cancelled) return;
+        setAllPanels(result?.data?.eventPanels ?? []);
+      })
+      .catch(err => {
+        if (cancelled) return;
+        console.error("Panels fetch error:", err?.graphQLErrors ?? err);
+        setAllPanels([]);
+      })
+      .finally(() => { if (!cancelled) setPanelsLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [config, debouncedSearch]);
+
+  // Distinct halls and dates derived client-side from the fetched list
+  const halls = useMemo(
+    () => [...new Set(allPanels.map(p => p.hall_fa).filter(Boolean))].sort(),
+    [allPanels]
+  );
+
+  const dates = useMemo(
+    () => [...new Set(allPanels.map(p => isoDateOnly(p.starts_at)).filter(Boolean))].sort(),
+    [allPanels]
+  );
+
+  // Clear selected filters when they no longer exist in the current result set
+  useEffect(() => {
+    if (selectedHall && halls.length > 0 && !halls.includes(selectedHall)) {
+      setSelectedHall("");
+    }
+  }, [halls, selectedHall]);
+
+  useEffect(() => {
+    if (selectedDate && dates.length > 0 && !dates.includes(selectedDate)) {
+      setSelectedDate("");
+    }
+  }, [dates, selectedDate]);
+
+  // Apply hall + date filters client-side over the full fetched list
+  const filteredPanels = useMemo(() => {
+    return allPanels.filter(p => {
+      if (selectedHall && p.hall_fa !== selectedHall) return false;
+      if (selectedDate && isoDateOnly(p.starts_at) !== selectedDate) return false;
+      return true;
+    });
+  }, [allPanels, selectedHall, selectedDate]);
+
+  const isEmpty = !loading && filteredPanels.length === 0;
   const showDateFilter = dates.length > 1;
   const showHallFilter = halls.length > 1;
 
+  const visibleFields = config
+    ? (lang === "en" ? config.visibleFieldsEn : config.visibleFields)
+    : {};
+  const logoBaseUrl = config?.logoBaseUrl ?? "";
+  const eventNameEn = config?.eventNameEn ?? "";
+
   const panelCountLabel = lang === "fa"
-    ? `${toPersianDigits(panels.length)} ${t(lang, "panels_count_suffix")}`
-    : `${panels.length} ${t(lang, "panels_count_suffix")}`;
+    ? `${toPersianDigits(filteredPanels.length)} ${t(lang, "panels_count_suffix")}`
+    : `${filteredPanels.length} ${t(lang, "panels_count_suffix")}`;
 
   return (
     <div
@@ -413,7 +507,7 @@ export default function PanelsClient({ title, subtitle, title_en, subtitle_en })
           </div>
         )}
 
-        {!loading && panels.length > 0 && (
+        {!loading && filteredPanels.length > 0 && (
           <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
             {panelCountLabel}
           </p>
@@ -446,11 +540,11 @@ export default function PanelsClient({ title, subtitle, title_en, subtitle_en })
           </div>
         ) : (
           <div className="flex flex-col gap-4">
-            {panels.map(p => (
+            {filteredPanels.map(p => (
               <PanelCard
                 key={p.id}
                 panel={p}
-                visibleFields={lang === "en" ? visibleFieldsEn : visibleFields}
+                visibleFields={visibleFields}
                 logoBaseUrl={logoBaseUrl}
                 lang={lang}
               />
