@@ -4,9 +4,41 @@ import { useState, useEffect, useCallback } from "react";
 import BottomNav from "../components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { useLang } from "@/lib/useLang";
+import { fetchPublicGraphQL } from "@/lib/publicRasayeshClient";
 
 const RASAYESH_BASE = "https://api.rasayesh.com/";
 const PER_PAGE = 20;
+const EVENT_ORIGIN = "https://2025.iphexpo.com";
+
+const EVENT_GALLERY_CATEGORIES_QUERY = `
+  query EventGalleryCategories($mainEventId: Int) {
+    eventGalleryCategories(mainEventId: $mainEventId, all: true) {
+      id
+      name_fa
+      name_en
+    }
+  }
+`;
+
+const EVENT_GALLERY_SUBCATEGORIES_QUERY = `
+  query EventGallerySubCategories($categoryId: Int) {
+    eventGallerySubCategories(categoryId: $categoryId, all: true) {
+      id
+      name_fa
+      name_en
+    }
+  }
+`;
+
+const EVENT_GALLERY_PICTURES_QUERY = `
+  query EventGalleryPictures($id: Int!, $page: Int) {
+    eventGalleryPictures(subCategoryId: $id, page: $page, rowsPerPage: 20, orderBy: "id", order: "asc") {
+      id
+      picture
+      sub_category_id
+    }
+  }
+`;
 
 function picUrl(picture, size) {
   if (!picture) return null;
@@ -116,10 +148,9 @@ export default function GalleryClient({ title, subtitle, title_en, subtitle_en }
 
   // Load categories once
   useEffect(() => {
-    fetch("/api/gallery?type=categories")
-      .then((r) => r.json())
-      .then((d) => {
-        const cats = d.categories ?? [];
+    fetchPublicGraphQL(EVENT_GALLERY_CATEGORIES_QUERY, { mainEventId: 1 }, EVENT_ORIGIN)
+      .then((result) => {
+        const cats = result.data?.eventGalleryCategories ?? [];
         setCategories(cats);
         if (cats.length > 0) setActiveCatId(cats[cats.length - 1].id);
       })
@@ -135,10 +166,9 @@ export default function GalleryClient({ title, subtitle, title_en, subtitle_en }
     setActiveSubId(null);
     setPhotos([]);
     setHasMore(false);
-    fetch(`/api/gallery?type=subcategories&categoryId=${activeCatId}`)
-      .then((r) => r.json())
-      .then((d) => {
-        const subs = d.subCategories ?? [];
+    fetchPublicGraphQL(EVENT_GALLERY_SUBCATEGORIES_QUERY, { categoryId: activeCatId }, EVENT_ORIGIN)
+      .then((result) => {
+        const subs = result.data?.eventGallerySubCategories ?? [];
         setSubCategories(subs);
         if (subs.length > 0) setActiveSubId(subs[0].id);
       })
@@ -153,10 +183,9 @@ export default function GalleryClient({ title, subtitle, title_en, subtitle_en }
     setPhotos([]);
     setPage(1);
     setHasMore(false);
-    fetch(`/api/gallery?type=pictures&subCategoryId=${activeSubId}&page=1`)
-      .then((r) => r.json())
-      .then((d) => {
-        const pics = d.pictures ?? [];
+    fetchPublicGraphQL(EVENT_GALLERY_PICTURES_QUERY, { id: activeSubId, page: 1 }, EVENT_ORIGIN)
+      .then((result) => {
+        const pics = result.data?.eventGalleryPictures ?? [];
         setPhotos(pics);
         setHasMore(pics.length === PER_PAGE);
       })
@@ -167,10 +196,9 @@ export default function GalleryClient({ title, subtitle, title_en, subtitle_en }
   function loadMore() {
     const nextPage = page + 1;
     setPhotosLoading(true);
-    fetch(`/api/gallery?type=pictures&subCategoryId=${activeSubId}&page=${nextPage}`)
-      .then((r) => r.json())
-      .then((d) => {
-        const pics = d.pictures ?? [];
+    fetchPublicGraphQL(EVENT_GALLERY_PICTURES_QUERY, { id: activeSubId, page: nextPage }, EVENT_ORIGIN)
+      .then((result) => {
+        const pics = result.data?.eventGalleryPictures ?? [];
         setPhotos((prev) => [...prev, ...pics]);
         setHasMore(pics.length === PER_PAGE);
         setPage(nextPage);
