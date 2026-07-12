@@ -16,23 +16,11 @@ const COMPANIES_QUERY = `
     eventCompanies(search: $search, orderBy: $orderBy, order: "asc", all: true, eventId: $eventId) {
       id slug legal_name_fa legal_name_en brand_name_fa brand_name_en
       logo description_fa description_en website
-      booths { id }
+      booths(eventId: $eventId) { id no hall { id name } }
       eventOptions { show_profile }
       sponsorshipLevels { icon color is_digital }
     }
     eventCompaniesCount(search: $search, eventId: $eventId)
-  }
-`;
-
-const HALLS_QUERY = `
-  query WebsiteEventHalls {
-    websiteEvent {
-      halls {
-        id
-        name
-        booths { id no hall { id name } }
-      }
-    }
   }
 `;
 
@@ -51,9 +39,8 @@ function getOrderBy(sort, lang) {
   return "brand_name_fa";
 }
 
-function mapCompany(raw, boothMap) {
+function mapCompany(raw) {
   const firstBooth = raw.booths?.[0];
-  const boothInfo = firstBooth ? boothMap[String(firstBooth.id)] : null;
   return {
     id: raw.id,
     slug: raw.slug,
@@ -64,8 +51,8 @@ function mapCompany(raw, boothMap) {
     website: raw.website,
     description_fa: raw.description_fa,
     description_en: raw.description_en,
-    hall_name: boothInfo?.hallName ?? null,
-    booth_no: boothInfo?.boothNo ?? null,
+    hall_name: firstBooth?.hall?.name ?? null,
+    booth_no: firstBooth?.no ?? null,
     is_sponsor: (raw.sponsorshipLevels?.length ?? 0) > 0,
     sponsor_level_obj: raw.sponsorshipLevels?.[0] ?? null,
   };
@@ -261,7 +248,6 @@ function CardSkeleton() {
 
 export default function CompaniesClient({ title, subtitle, title_en, subtitle_en }) {
   const [config, setConfig] = useState(null);
-  const [boothMap, setBoothMap] = useState({});
   const [allCompanies, setAllCompanies] = useState([]);
   // eslint-disable-next-line no-unused-vars
   const [featureCompanies, setFeatureCompanies] = useState([]);
@@ -285,8 +271,7 @@ export default function CompaniesClient({ title, subtitle, title_en, subtitle_en
   useEffect(() => { setSort(""); }, [lang]);
   useEffect(() => { setPage(1); }, [debouncedSearch, lang, selectedHall, sort]);
 
-  // Load config + hall lookup map + featured companies once on mount.
-  // Each fetch is independent — one failing must not block the others.
+  // Load config + featured companies once on mount.
   useEffect(() => {
     let cancelled = false;
     async function init() {
@@ -301,32 +286,15 @@ export default function CompaniesClient({ title, subtitle, title_en, subtitle_en
       }
       if (cancelled) return;
 
-      // 2. Halls + featured — fire in parallel, each isolated
-      const [hallsOutcome, featOutcome] = await Promise.allSettled([
-        fetchPublicGraphQL(HALLS_QUERY, {}, cfg.eventOrigin),
-        fetchPublicGraphQL(FEATURE_QUERY, {}, cfg.eventOrigin),
-      ]);
+      // 2. Featured companies
+      try {
+        const featResult = await fetchPublicGraphQL(FEATURE_QUERY, {}, cfg.eventOrigin);
+        if (!cancelled) setFeatureCompanies(featResult?.data?.eventFeatureCompanies ?? []);
+      } catch (err) {
+        console.error("EventFeatureCompanies error:", err?.graphQLErrors ?? err);
+      }
       if (cancelled) return;
 
-      // Build booth map (empty on failure — cards just omit hall/booth info)
-      const map = {};
-      if (hallsOutcome.status === "fulfilled") {
-        for (const hall of hallsOutcome.value?.data?.websiteEvent?.halls ?? []) {
-          for (const booth of hall.booths ?? []) {
-            map[String(booth.id)] = { hallName: hall.name, boothNo: booth.no };
-          }
-        }
-      } else {
-        console.error("WebsiteEventHalls error:", hallsOutcome.reason?.graphQLErrors ?? hallsOutcome.reason);
-      }
-
-      if (featOutcome.status === "rejected") {
-        console.error("EventFeatureCompanies error:", featOutcome.reason?.graphQLErrors ?? featOutcome.reason);
-      }
-
-      // Batch all state together so companies effect sees a consistent snapshot
-      setBoothMap(map);
-      setFeatureCompanies(featOutcome.value?.data?.eventFeatureCompanies ?? []);
       setConfig(cfg);
       setConfigLoading(false);
     }
@@ -350,7 +318,7 @@ export default function CompaniesClient({ title, subtitle, title_en, subtitle_en
       .then(result => {
         if (cancelled) return;
         const raw = result?.data?.eventCompanies ?? [];
-        setAllCompanies(raw.map(c => mapCompany(c, boothMap)));
+        setAllCompanies(raw.map(c => mapCompany(c)));
       })
       .catch(err => {
         if (cancelled) return;
@@ -360,9 +328,6 @@ export default function CompaniesClient({ title, subtitle, title_en, subtitle_en
       .finally(() => { if (!cancelled) setCompaniesLoading(false); });
 
     return () => { cancelled = true; };
-  // boothMap intentionally omitted — it is always current at render time
-  // when config triggers this effect (both are set in the same React batch)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config, debouncedSearch, sort, lang]);
 
   // Distinct hall names derived from the current search results
