@@ -1,11 +1,44 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import BottomNav from "@/app/components/BottomNav";
 import AppHeader from "@/app/components/AppHeader";
 import { useLang } from "@/lib/useLang";
 import { toPersianDigits } from "@/lib/utils";
+import { fetchPublicGraphQL } from "@/lib/publicRasayeshClient";
+
+const EVENT_COMPANY_QUERY = `
+  query EventCompany($slug: String, $eventId: Int) {
+    eventCompany(slug: $slug, eventId: $eventId) {
+      id
+      slug
+      legal_name_fa
+      legal_name_en
+      brand_name_fa
+      brand_name_en
+      logo
+      description_fa
+      description_en
+      phones
+      emails
+      website
+      address_fa
+      address_en
+      booths(eventId: $eventId) {
+        id
+        no
+        hall { id name }
+      }
+      sponsorshipLevels {
+        icon
+        color
+        title_fa
+        title_en
+      }
+    }
+  }
+`;
 
 function getLogoUrl(logo, logoBaseUrl) {
   if (!logo) return null;
@@ -51,12 +84,148 @@ function Section({ title, children }) {
   );
 }
 
-export default function CompanyDetailClient({ company, logoBaseUrl }) {
+function LoadingSkeleton() {
+  return (
+    <div className="animate-pulse">
+      <div className="rounded-3xl mx-auto mb-5" style={{ width: 256, height: 256, background: "rgba(255,255,255,0.05)" }} />
+      <div className="rounded-3xl p-5 mb-4" style={{ background: "rgba(5,64,65,0.4)", border: "1px solid rgba(0,255,179,0.1)" }}>
+        <div className="rounded mb-3" style={{ height: 12, width: "40%", background: "rgba(255,255,255,0.06)" }} />
+        <div className="rounded mb-2" style={{ height: 16, width: "70%", background: "rgba(255,255,255,0.08)" }} />
+        <div className="rounded" style={{ height: 14, width: "55%", background: "rgba(255,255,255,0.06)" }} />
+      </div>
+      <div className="rounded-3xl p-5 mb-4" style={{ background: "rgba(5,64,65,0.4)", border: "1px solid rgba(0,255,179,0.1)" }}>
+        <div className="rounded mb-3" style={{ height: 12, width: "30%", background: "rgba(255,255,255,0.06)" }} />
+        <div className="rounded mb-2" style={{ height: 14, background: "rgba(255,255,255,0.05)" }} />
+        <div className="rounded mb-2" style={{ height: 14, width: "85%", background: "rgba(255,255,255,0.05)" }} />
+        <div className="rounded" style={{ height: 14, width: "60%", background: "rgba(255,255,255,0.05)" }} />
+      </div>
+      <div className="rounded-3xl p-5 mb-4" style={{ background: "rgba(5,64,65,0.4)", border: "1px solid rgba(0,255,179,0.1)" }}>
+        <div className="rounded mb-3" style={{ height: 12, width: "25%", background: "rgba(255,255,255,0.06)" }} />
+        <div className="rounded" style={{ height: 14, width: "50%", background: "rgba(255,255,255,0.05)" }} />
+      </div>
+    </div>
+  );
+}
+
+export default function CompanyDetailClient({ slug }) {
   const { lang, isRTL } = useLang();
   const router = useRouter();
   const [imgError, setImgError] = useState(false);
+  const [company, setCompany] = useState(null);
+  const [logoBaseUrl, setLogoBaseUrl] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [notFoundState, setNotFoundState] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setNotFoundState(false);
+    setImgError(false);
+
+    fetch("/api/companies/config")
+      .then((r) => r.json())
+      .then(async (cfg) => {
+        if (cancelled) return;
+
+        const eventId = cfg.eventId != null ? Number(cfg.eventId) : null;
+        const origin = cfg.eventOrigin || "https://2025.iphexpo.com";
+        const base = cfg.logoBaseUrl || "https://api.rasayesh.com/";
+
+        const variables = { slug, ...(eventId != null ? { eventId } : {}) };
+        const result = await fetchPublicGraphQL(EVENT_COMPANY_QUERY, variables, origin);
+        if (cancelled) return;
+
+        const raw = result?.data?.eventCompany;
+        if (!raw) {
+          setNotFoundState(true);
+          return;
+        }
+
+        setLogoBaseUrl(base);
+        setCompany({
+          ...raw,
+          hall_name: raw.booths?.[0]?.hall?.name ?? null,
+          booth_no: raw.booths?.[0]?.no ?? null,
+          is_sponsor: (raw.sponsorshipLevels?.length ?? 0) > 0,
+          sponsor_level: raw.sponsorshipLevels?.[0]?.title_fa || null,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setNotFoundState(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [slug]);
 
   const isEN = lang === "en";
+
+  if (loading) {
+    return (
+      <div
+        className="min-h-screen pb-28"
+        style={{ background: "var(--bg)", color: "var(--text)" }}
+        dir={isRTL ? "rtl" : "ltr"}
+        lang={lang}
+      >
+        <div className="fixed top-0 right-0 w-72 h-72 rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(0,255,179,0.04)", zIndex: 0 }} />
+        <div className="fixed bottom-0 left-0 w-80 h-80 rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(5,64,65,0.5)", zIndex: 0 }} />
+        <div className="relative z-10 max-w-lg mx-auto px-4 pt-4">
+          <AppHeader />
+          <div className="flex items-center gap-3 mb-5">
+            <div className="rounded-xl" style={{ width: 38, height: 38, background: "var(--surface)", border: "1px solid var(--border)" }} />
+            <div className="flex-1">
+              <div className="rounded animate-pulse" style={{ height: 18, width: "55%", background: "rgba(255,255,255,0.08)" }} />
+            </div>
+          </div>
+          <LoadingSkeleton />
+        </div>
+        <BottomNav />
+      </div>
+    );
+  }
+
+  if (notFoundState) {
+    return (
+      <div
+        className="min-h-screen pb-28"
+        style={{ background: "var(--bg)", color: "var(--text)" }}
+        dir={isRTL ? "rtl" : "ltr"}
+        lang={lang}
+      >
+        <div className="fixed top-0 right-0 w-72 h-72 rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(0,255,179,0.04)", zIndex: 0 }} />
+        <div className="fixed bottom-0 left-0 w-80 h-80 rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(5,64,65,0.5)", zIndex: 0 }} />
+        <div className="relative z-10 max-w-lg mx-auto px-4 pt-4">
+          <AppHeader />
+          <div className="flex items-center gap-3 mb-5">
+            <button
+              onClick={() => router.push("/companies")}
+              className="flex-shrink-0 flex items-center justify-center rounded-xl transition-all active:scale-95"
+              style={{ width: 38, height: 38, background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 20 }}
+            >
+              ‹
+            </button>
+          </div>
+          <div
+            className="rounded-3xl p-10 text-center mt-6"
+            style={{ background: "rgba(5,64,65,0.4)", border: "1px solid rgba(0,255,179,0.2)", backdropFilter: "blur(12px)" }}
+          >
+            <div className="text-4xl mb-3">🏢</div>
+            <p className="text-sm font-medium mb-1" style={{ color: "var(--text)" }}>
+              {isEN ? "Company not found" : "شرکت یافت نشد"}
+            </p>
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+              {isEN ? "The company page you're looking for doesn't exist." : "صفحه شرکت مورد نظر وجود ندارد."}
+            </p>
+          </div>
+        </div>
+        <BottomNav />
+      </div>
+    );
+  }
+
   const logoUrl = !imgError ? getLogoUrl(company.logo, logoBaseUrl) : null;
   const brandName = (isEN && company.brand_name_en) ? company.brand_name_en : company.brand_name_fa;
   const brandNameAlt = isEN ? company.brand_name_fa : company.brand_name_en;
