@@ -14,6 +14,20 @@ import { getApolloClient } from "@/lib/apolloClient";
 import { useAuth } from "../../hooks/useAuth";
 import { toPersianDigits } from "@/lib/utils";
 import { hapticLight } from "@/lib/haptics";
+import { fetchPublicGraphQL } from "@/lib/publicRasayeshClient";
+
+const LATEST_NEWS_QUERY = `
+  query EventLatestBlogPosts($mainEventId: Int, $count: Int) {
+    eventLatestBlogPosts(mainEventId: $mainEventId, count: $count) {
+      id
+      title
+      excerpt
+      thumbnail
+      slug
+      created_at
+    }
+  }
+`;
 
 const RASAYESH_BASE = "https://api.rasayesh.com/";
 
@@ -28,9 +42,15 @@ function NewsStrip({ lang }) {
   const [posts, setPosts] = useState([]);
 
   useEffect(() => {
-    fetch("/api/news?latest=true")
-      .then((r) => r.json())
-      .then((d) => { if (d.posts?.length) setPosts(d.posts); })
+    fetchPublicGraphQL(
+      LATEST_NEWS_QUERY,
+      { mainEventId: 1, count: 5 },
+      'https://2025.iphexpo.com'
+    )
+      .then((result) => {
+        const items = result?.data?.eventLatestBlogPosts ?? [];
+        if (items.length) setPosts(items);
+      })
       .catch(() => {});
   }, []);
 

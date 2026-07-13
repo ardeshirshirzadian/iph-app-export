@@ -5,8 +5,25 @@ import Link from "next/link";
 import BottomNav from "../../components/BottomNav";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
+import { fetchPublicGraphQL } from "@/lib/publicRasayeshClient";
 
 const RASAYESH_BASE = "https://api.rasayesh.com/";
+
+const POST_QUERY = `
+  query EventBlogPost($slug: String) {
+    eventBlogPost(slug: $slug) {
+      id
+      title
+      slug
+      body
+      excerpt
+      thumbnail
+      created_at
+      categories { id name }
+      tags { id name }
+    }
+  }
+`;
 
 function thumbUrl(thumbnail, size) {
   if (!thumbnail) return null;
@@ -32,13 +49,13 @@ export default function PostClient({ slug }) {
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
-    fetch(`/api/news/${encodeURIComponent(slug)}`)
-      .then((r) => {
-        if (r.status === 404) { setNotFound(true); return null; }
-        return r.json();
+    fetchPublicGraphQL(POST_QUERY, { slug }, "https://2025.iphexpo.com")
+      .then((result) => {
+        const p = result.data?.eventBlogPost ?? null;
+        if (!p) setNotFound(true);
+        else setPost(p);
       })
-      .then((d) => { if (d) setPost(d.post ?? null); })
-      .catch(() => {})
+      .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
   }, [slug]);
 

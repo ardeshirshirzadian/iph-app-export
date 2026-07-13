@@ -6,8 +6,24 @@ import BottomNav from "../components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
+import { fetchPublicGraphQL } from "@/lib/publicRasayeshClient";
 
 const RASAYESH_BASE = "https://api.rasayesh.com/";
+const EVENT_ORIGIN = "https://2025.iphexpo.com";
+
+const NEWS_QUERY = `
+  query EventBlogPosts($page: Int, $rowsPerPage: Int, $order: String, $orderBy: String, $search: String, $mainEventId: Int) {
+    eventBlogPosts(mainEventId: $mainEventId, page: $page, rowsPerPage: $rowsPerPage, order: $order, orderBy: $orderBy, search: $search) {
+      id
+      slug
+      excerpt
+      thumbnail
+      title
+      created_at
+    }
+    eventBlogPostsCount(mainEventId: $mainEventId, search: $search)
+  }
+`;
 const PER_PAGE = 12;
 
 function thumbUrl(thumbnail, size) {
@@ -90,12 +106,14 @@ export default function NewsClient({ title, subtitle, title_en, subtitle_en }) {
 
   function loadNews(p, s, o) {
     setLoading(true);
-    const params = new URLSearchParams({ page: String(p), search: s, order: o });
-    fetch(`/api/news?${params}`)
-      .then((r) => r.json())
-      .then((d) => {
-        setPosts(d.posts ?? []);
-        setTotal(d.total ?? 0);
+    fetchPublicGraphQL(
+      NEWS_QUERY,
+      { mainEventId: 1, page: p, rowsPerPage: PER_PAGE, order: o, orderBy: "created_at", search: s },
+      EVENT_ORIGIN
+    )
+      .then((result) => {
+        setPosts(result.data?.eventBlogPosts ?? []);
+        setTotal(result.data?.eventBlogPostsCount ?? 0);
       })
       .catch(() => { setPosts([]); setTotal(0); })
       .finally(() => setLoading(false));
