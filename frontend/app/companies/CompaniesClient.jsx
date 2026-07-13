@@ -201,7 +201,9 @@ function CompanyCard({ company, visibleFields, visibleFieldsEn, logoBaseUrl, lan
                 color: "#1c1007",
               }}
             >
-              {company.sponsor_level_obj?.icon || "🌟"}{" "}
+              {company.sponsor_level_obj?.icon?.startsWith("<svg")
+                ? <span dangerouslySetInnerHTML={{ __html: company.sponsor_level_obj.icon }} style={{ width: 14, height: 14, display: "inline-flex", alignItems: "center", verticalAlign: "middle", flexShrink: 0, overflow: "hidden" }} />
+                : (company.sponsor_level_obj?.icon || "🌟")}{" "}
               {isEN
                 ? (company.sponsor_level_obj?.title_en || company.sponsor_level_obj?.title_fa || "Sponsor")
                 : (company.sponsor_level_obj?.title_fa || "حامی")}

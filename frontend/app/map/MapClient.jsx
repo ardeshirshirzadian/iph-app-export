@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import BottomNav from "../components/BottomNav";
 import { useLang } from "@/lib/useLang";
@@ -55,9 +55,45 @@ function polyCenter(points) {
   return { cx: (Math.min(...xs) + Math.max(...xs)) / 2, cy: (Math.min(...ys) + Math.max(...ys)) / 2 };
 }
 
+function buildBoothGroups(booths) {
+  const companyMap = new Map();
+  const result = [];
+  for (const booth of booths) {
+    if (!booth.company) {
+      result.push({ type: "vacant", booths: [booth], company: null });
+      continue;
+    }
+    const cid = booth.company.id;
+    if (!companyMap.has(cid)) companyMap.set(cid, []);
+    companyMap.get(cid).push(booth);
+  }
+  for (const [, bths] of companyMap) {
+    const sorted = [...bths].sort((a, b) => {
+      const na = parseInt(a.no, 10), nb = parseInt(b.no, 10);
+      return isNaN(na) || isNaN(nb) ? String(a.no).localeCompare(String(b.no)) : na - nb;
+    });
+    result.push({ type: sorted.length > 1 ? "merged" : "single", booths: sorted, company: sorted[0].company });
+  }
+  return result;
+}
+
+function boothRangeLabel(nos) {
+  const strs = (nos ?? []).map(String).filter(Boolean);
+  if (!strs.length) return "";
+  if (strs.length === 1) return strs[0];
+  const nums = strs.map((s) => parseInt(s, 10));
+  if (nums.every((n) => !isNaN(n))) {
+    const sorted = [...nums].sort((a, b) => a - b);
+    if (sorted.every((n, i) => i === 0 || n === sorted[i - 1] + 1))
+      return `${sorted[0]}-${sorted[sorted.length - 1]}`;
+    return sorted.join(", ");
+  }
+  return [...strs].sort().join(", ");
+}
+
 // ── Booth Bottom Sheet ─────────────────────────────────────────────────────────
 
-function BoothSheet({ booth, hall, lang, isRTL, onClose }) {
+function BoothSheet({ booth, hall, mergedLabel, lang, isRTL, onClose }) {
   const isEN = lang === "en";
   const co = booth.company;
   const logoUrl = getLogoUrl(co?.logo);
@@ -67,9 +103,10 @@ function BoothSheet({ booth, hall, lang, isRTL, onClose }) {
   const sponsor = co?.sponsorshipLevels?.[0];
   const fields = (co?.field_of_activities ?? []).slice(0, 3);
   const canProfile = co?.slug && co?.eventOptions?.show_profile !== false;
+  const displayNo = mergedLabel || String(booth.no);
   const hallBooth = isEN
-    ? `Hall ${hall.name} · Booth ${booth.no}`
-    : `سالن ${hall.name} · غرفه ${toPersianDigits(String(booth.no))}`;
+    ? `Hall ${hall.name} · Booth${mergedLabel ? "s" : ""} ${displayNo}`
+    : `سالن ${hall.name} · غرفه ${toPersianDigits(displayNo)}`;
 
   return (
     <div
@@ -123,7 +160,9 @@ function BoothSheet({ booth, hall, lang, isRTL, onClose }) {
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold mt-1.5"
                 style={{ background: sponsor.color || "#f59e0b", color: "#1c1007" }}
               >
-                {sponsor.icon || "🌟"}{" "}
+                {sponsor.icon?.startsWith("<svg")
+                  ? <span dangerouslySetInnerHTML={{ __html: sponsor.icon }} style={{ width: 14, height: 14, display: "inline-flex", alignItems: "center", verticalAlign: "middle", flexShrink: 0, overflow: "hidden" }} />
+                  : (sponsor.icon || "🌟")}{" "}
                 {isEN ? (sponsor.title_en || sponsor.title_fa || "Sponsor") : (sponsor.title_fa || "حامی")}
               </span>
             )}
@@ -249,9 +288,6 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
 
   // label rendering refs
   const fitScaleRef = useRef(1);
-  const mapDataRef = useRef(null);
-  const hallCentroidsRef = useRef([]);
-  const hallLabelEls = useRef([]);
   const boothLabelsWrapRef = useRef(null);
 
   // ── Transform helpers ──────────────────────────────────────────────────────
@@ -267,14 +303,6 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
       const show = fitScaleRef.current > 0 && scale > fitScaleRef.current * 1.8;
       boothLabelsWrapRef.current.style.opacity = show ? "1" : "0";
     }
-    // Hall labels: reposition in screen space (outside wrapper, not scaled)
-    const halls = mapDataRef.current?.halls ?? [];
-    hallLabelEls.current.forEach((el, i) => {
-      if (!el) return;
-      const c = hallCentroidsRef.current[i];
-      if (!c) return;
-      el.style.transform = `translate(${x + c.cx * scale}px,${y + c.cy * scale}px) translate(-50%,-50%)`;
-    });
   }
 
   function clampPan(x, y, scale) {
@@ -325,11 +353,9 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
       .finally(() => setLoading(false));
   }, []);
 
-  // fit map to screen once data + DOM are ready; precompute label positions
+  // fit map to screen once data + DOM are ready
   useEffect(() => {
     if (!mapData) return;
-    mapDataRef.current = mapData;
-    hallCentroidsRef.current = (mapData.halls ?? []).map((h) => polyCenter(h.map_bounds));
     requestAnimationFrame(() => resetView(dimRef.current));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapData]);
@@ -450,11 +476,18 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
     applyT(c.x, c.y, newScale);
   }
 
+  function onGroupClick(e, group, hall) {
+    e.stopPropagation();
+    if (dragRef.current.moved) return;
+    const label = boothRangeLabel(group.booths.map((b) => b.no));
+    setSelectedBooth({ booth: group.booths[0], hall, mergedLabel: label || null });
+  }
+
   function onBoothClick(e, booth, hall) {
     e.stopPropagation();
     if (dragRef.current.moved) return;
     if (!booth.company) return; // vacant — no sheet
-    setSelectedBooth({ booth, hall });
+    setSelectedBooth({ booth, hall, mergedLabel: null });
   }
 
   function onSignClick(e, sign) {
@@ -464,6 +497,16 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
       prev?.sign.id === sign.id ? null : { sign, sx: e.clientX, sy: e.clientY }
     );
   }
+
+  // ── Booth groups (merged companies share multiple adjacent polygons) ─────────
+
+  const hallGroups = useMemo(() => {
+    if (!mapData) return [];
+    return (mapData.halls ?? []).map((hall) => ({
+      ...hall,
+      groups: buildBoothGroups(hall.booths ?? []),
+    }));
+  }, [mapData]);
 
   // ── Derived map geometry ───────────────────────────────────────────────────
 
@@ -605,36 +648,74 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
                 );
               })}
 
+              {/* Hall name watermarks — large faint text behind all booth polygons */}
+              {(mapData.halls ?? []).map((hall) => {
+                const c = polyCenter(hall.map_bounds);
+                if (!c) return null;
+                const pts = hall.map_bounds;
+                if (!Array.isArray(pts) || !pts.length) return null;
+                const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+                const hw = Math.max(...xs) - Math.min(...xs);
+                const hh = Math.max(...ys) - Math.min(...ys);
+                const fs = Math.min(hw, hh) * 0.38;
+                return (
+                  <text
+                    key={`hl-${hall.id}`}
+                    x={c.cx}
+                    y={c.cy}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fontSize={fs}
+                    fontWeight="900"
+                    fill={hall.color || "#ffffff"}
+                    fillOpacity={0.18}
+                    style={{ userSelect: "none", pointerEvents: "none" }}
+                  >
+                    {hall.name}
+                  </text>
+                );
+              })}
+
               {/* Booths */}
-              {(mapData.halls ?? []).flatMap((hall) =>
-                (hall.booths ?? []).map((booth) => {
-                  const pts = toPoints(booth.bounds);
-                  if (!pts) return null;
-                  const occupied = !!booth.company;
-                  const active = selectedBooth?.booth.id === booth.id;
-                  return (
-                    <polygon
-                      key={`b-${booth.id}`}
-                      points={pts}
-                      fill={
-                        active
-                          ? `${hall.color}cc`
-                          : occupied
-                          ? `${hall.color}60`
-                          : "rgba(255,255,255,0.04)"
-                      }
-                      stroke={
-                        active
-                          ? hall.color
-                          : occupied
-                          ? `${hall.color}99`
-                          : "rgba(255,255,255,0.1)"
-                      }
-                      strokeWidth={active ? 3 : 1}
-                      style={{ cursor: occupied ? "pointer" : "default" }}
-                      onClick={(e) => onBoothClick(e, booth, hall)}
-                    />
-                  );
+              {hallGroups.flatMap((hall) =>
+                hall.groups.flatMap((group) => {
+                  const isMerged = group.type === "merged";
+                  const isVacant = group.type === "vacant";
+                  const active = !isVacant && selectedBooth
+                    && selectedBooth.booth.company?.id === group.company?.id;
+                  return group.booths.map((booth) => {
+                    const pts = toPoints(booth.bounds);
+                    if (!pts) return null;
+                    return (
+                      <polygon
+                        key={`b-${booth.id}`}
+                        points={pts}
+                        fill={
+                          active
+                            ? `${hall.color}cc`
+                            : !isVacant
+                            ? `${hall.color}60`
+                            : "rgba(255,255,255,0.04)"
+                        }
+                        stroke={
+                          isMerged && !active
+                            ? "none"
+                            : active
+                            ? hall.color
+                            : !isVacant
+                            ? `${hall.color}99`
+                            : "rgba(255,255,255,0.1)"
+                        }
+                        strokeWidth={active ? (isMerged ? 2 : 3) : 1}
+                        style={{ cursor: !isVacant ? "pointer" : "default" }}
+                        onClick={(e) =>
+                          isMerged
+                            ? onGroupClick(e, group, hall)
+                            : onBoothClick(e, booth, hall)
+                        }
+                      />
+                    );
+                  });
                 })
               )}
 
@@ -680,14 +761,21 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
                 transition: "opacity 0.15s",
               }}
             >
-              {(mapData.halls ?? []).flatMap((hall) =>
-                (hall.booths ?? []).map((booth) => {
-                  if (!booth.no) return null;
-                  const c = polyCenter(booth.bounds);
+              {hallGroups.flatMap((hall) =>
+                hall.groups.map((group, gi) => {
+                  const allPts = group.booths.flatMap((b) =>
+                    Array.isArray(b.bounds) ? b.bounds : []
+                  );
+                  const c = polyCenter(allPts);
                   if (!c) return null;
+                  const label = boothRangeLabel(group.booths.map((b) => b.no));
+                  if (!label) return null;
+                  const key = group.company
+                    ? `gl-${hall.id}-${group.company.id}`
+                    : `vl-${group.booths[0].id}`;
                   return (
                     <span
-                      key={booth.id}
+                      key={key}
                       style={{
                         position: "absolute",
                         left: c.cx,
@@ -697,7 +785,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
                         lineHeight: 1,
                         fontWeight: 700,
                         fontFamily: "inherit",
-                        color: booth.company
+                        color: group.company
                           ? "rgba(255,255,255,0.92)"
                           : "rgba(255,255,255,0.38)",
                         whiteSpace: "nowrap",
@@ -705,7 +793,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
                         pointerEvents: "none",
                       }}
                     >
-                      {booth.no}
+                      {label}
                     </span>
                   );
                 })
@@ -713,46 +801,6 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
             </div>
           </div>
 
-          {/* Hall name labels (outside wrapper — constant screen size, positions updated in applyT) */}
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              pointerEvents: "none",
-              overflow: "hidden",
-              zIndex: 2,
-            }}
-          >
-            {(mapData.halls ?? []).map((hall, i) => (
-              <div
-                key={hall.id}
-                ref={(el) => { hallLabelEls.current[i] = el; }}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  padding: "3px 10px",
-                  borderRadius: 6,
-                  background: "rgba(2,20,21,0.82)",
-                  border: `1px solid ${hall.color ? hall.color + "55" : "rgba(0,255,179,0.3)"}`,
-                  color: hall.color || "var(--accent)",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  fontFamily: "inherit",
-                  whiteSpace: "nowrap",
-                  userSelect: "none",
-                  pointerEvents: "none",
-                  lineHeight: "1.4",
-                  letterSpacing: "0.01em",
-                  boxShadow: hall.color
-                    ? `0 0 10px ${hall.color}33`
-                    : "0 0 10px rgba(0,255,179,0.15)",
-                }}
-              >
-                {hall.name}
-              </div>
-            ))}
-          </div>
           </>
         )}
       </div>
@@ -773,6 +821,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
           <BoothSheet
             booth={selectedBooth.booth}
             hall={selectedBooth.hall}
+            mergedLabel={selectedBooth.mergedLabel}
             lang={lang}
             isRTL={isRTL}
             onClose={() => setSelectedBooth(null)}
