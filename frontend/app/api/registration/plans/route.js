@@ -11,7 +11,11 @@ export async function GET() {
       return NextResponse.json({ enabled: false });
     }
 
-    return NextResponse.json({ enabled: true, event_id: Number(config.event_id) });
+    return NextResponse.json({
+      enabled: true,
+      event_id: Number(config.event_id),
+      eventOrigin: config.event_origin ?? 'https://2025.iphexpo.com',
+    });
   } catch {
     return NextResponse.json({ enabled: false });
   }

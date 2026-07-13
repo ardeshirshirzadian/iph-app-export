@@ -7,6 +7,32 @@ import PageHeader from "@/components/PageHeader";
 import { useLang } from "@/lib/useLang";
 import { toPersianDigits } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
+import { fetchPublicGraphQL } from "@/lib/publicRasayeshClient";
+
+const EVENT_REGISTRATION_PLANS_QUERY = `
+  query EventRegistrationPlans($eventId: Int, $orderBy: String, $order: String) {
+    eventRegistrationPlans(eventId: $eventId, orderBy: $orderBy, order: $order, all: true) {
+      id
+      event_id
+      title_fa
+      title_en
+      description_fa
+      description_en
+      features_fa
+      features_en
+      icon
+      color
+      price
+      discount
+      capacity
+      usage_count
+      disable_wizard
+      is_retraining
+      force_selection
+      disabled
+    }
+  }
+`;
 
 function formatPrice(price, lang) {
   if (!price || price === 0) return lang === "fa" ? "رایگان" : "Free";
@@ -162,23 +188,33 @@ export default function RegisterClient({ title, subtitle, title_en, subtitle_en 
       .then(([plansData, badgeData]) => {
         if (plansData.enabled === false) {
           setEnabled(false);
-        } else {
-          const fetchedPlans = plansData.plans || [];
+          return;
+        }
+
+        // Check already registered
+        if (badgeData?.data?.attendee) {
+          setAlreadyRegistered(true);
+        }
+
+        return fetchPublicGraphQL(
+          EVENT_REGISTRATION_PLANS_QUERY,
+          { eventId: plansData.event_id, orderBy: "order", order: "ASC" },
+          plansData.eventOrigin
+        ).then((result) => {
+          const fetchedPlans = result?.data?.eventRegistrationPlans ?? [];
           setPlans(fetchedPlans);
-          // Pre-select force_selection plans
           const preSelected = new Set(
             fetchedPlans
               .filter((p) => p.force_selection && !p.disabled)
               .map((p) => p.id)
           );
           setSelectedPlanIds(preSelected);
-        }
-        // Check already registered
-        if (badgeData?.data?.attendee) {
-          setAlreadyRegistered(true);
-        }
+        });
       })
-      .catch(() => setEnabled(false))
+      .catch((err) => {
+        console.error("Registration plans error:", err?.graphQLErrors ?? err);
+        setEnabled(false);
+      })
       .finally(() => setLoading(false));
   }, []);
 
