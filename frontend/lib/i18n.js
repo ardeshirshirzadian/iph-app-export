@@ -171,6 +171,14 @@ export const translations = {
     news_next: 'بعدی ›',
     news_back: '← بازگشت به اخبار',
     news_categories: 'دسته‌بندی‌ها',
+    // Map
+    map_title: 'نقشه نمایشگاه',
+    map_loading: 'در حال بارگذاری نقشه...',
+    map_error: 'نقشه در دسترس نیست',
+    map_vacant: 'غرفه خالی',
+    map_view_profile: 'مشاهده پروفایل',
+    map_close: 'بستن',
+    map_fit: 'نمای کامل',
     // Common
     back: 'بازگشت',
     search: 'جستجو',
@@ -424,6 +432,14 @@ export const translations = {
     save: 'Save',
     cancel: 'Cancel',
     server_error: 'Server connection error',
+    // Map
+    map_title: 'Exhibition Map',
+    map_loading: 'Loading map...',
+    map_error: 'Map unavailable',
+    map_vacant: 'Vacant',
+    map_view_profile: 'View Profile',
+    map_close: 'Close',
+    map_fit: 'Fit to screen',
   },
 };
 

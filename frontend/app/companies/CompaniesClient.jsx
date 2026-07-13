@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import BottomNav from "../components/BottomNav";
 import PageHeader from "@/components/PageHeader";
@@ -18,9 +18,21 @@ const COMPANIES_QUERY = `
       logo description_fa description_en website
       booths(eventId: $eventId) { id no hall { id name } }
       eventOptions { show_profile }
-      sponsorshipLevels { icon color is_digital }
     }
     eventCompaniesCount(search: $search, eventId: $eventId)
+  }
+`;
+
+const SPONSORSHIP_LEVELS_QUERY = `
+  query SponsorshipLevels($eventId: Int) {
+    sponsorshipLevels(eventId: $eventId, orderBy: "order", order: "asc", all: true) {
+      id
+      title_fa
+      title_en
+      icon
+      color
+      sponsors { id }
+    }
   }
 `;
 
@@ -39,8 +51,9 @@ function getOrderBy(sort, lang) {
   return "brand_name_fa";
 }
 
-function mapCompany(raw) {
+function mapCompany(raw, sponsorMap) {
   const firstBooth = raw.booths?.[0];
+  const sponsorLevel = sponsorMap[raw.id] ?? null;
   return {
     id: raw.id,
     slug: raw.slug,
@@ -53,8 +66,8 @@ function mapCompany(raw) {
     description_en: raw.description_en,
     hall_name: firstBooth?.hall?.name ?? null,
     booth_no: firstBooth?.no ?? null,
-    is_sponsor: (raw.sponsorshipLevels?.length ?? 0) > 0,
-    sponsor_level_obj: raw.sponsorshipLevels?.[0] ?? null,
+    is_sponsor: sponsorLevel !== null,
+    sponsor_level_obj: sponsorLevel,
   };
 }
 
@@ -188,7 +201,10 @@ function CompanyCard({ company, visibleFields, visibleFieldsEn, logoBaseUrl, lan
                 color: "#1c1007",
               }}
             >
-              {company.sponsor_level_obj?.icon || "🌟"} {isEN ? "Sponsor" : "حامی"}
+              {company.sponsor_level_obj?.icon || "🌟"}{" "}
+              {isEN
+                ? (company.sponsor_level_obj?.title_en || company.sponsor_level_obj?.title_fa || "Sponsor")
+                : (company.sponsor_level_obj?.title_fa || "حامی")}
             </span>
           </div>
         )}
@@ -260,6 +276,7 @@ export default function CompaniesClient({ title, subtitle, title_en, subtitle_en
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const { lang, isRTL } = useLang();
   const router = useRouter();
+  const sponsorMapRef = useRef({});
 
   const loading = configLoading || companiesLoading;
 
@@ -286,12 +303,27 @@ export default function CompaniesClient({ title, subtitle, title_en, subtitle_en
       }
       if (cancelled) return;
 
-      // 2. Featured companies
+      // 2. Featured companies + sponsorship levels in parallel
       try {
-        const featResult = await fetchPublicGraphQL(FEATURE_QUERY, {}, cfg.eventOrigin);
-        if (!cancelled) setFeatureCompanies(featResult?.data?.eventFeatureCompanies ?? []);
+        const [featResult, levelsResult] = await Promise.all([
+          fetchPublicGraphQL(FEATURE_QUERY, {}, cfg.eventOrigin),
+          cfg.eventId != null
+            ? fetchPublicGraphQL(SPONSORSHIP_LEVELS_QUERY, { eventId: Number(cfg.eventId) }, cfg.eventOrigin)
+            : Promise.resolve(null),
+        ]);
+        if (!cancelled) {
+          setFeatureCompanies(featResult?.data?.eventFeatureCompanies ?? []);
+          const levels = levelsResult?.data?.sponsorshipLevels ?? [];
+          const map = {};
+          for (const level of levels) {
+            for (const s of level.sponsors ?? []) {
+              map[s.id] = { title_fa: level.title_fa, title_en: level.title_en, icon: level.icon, color: level.color };
+            }
+          }
+          sponsorMapRef.current = map;
+        }
       } catch (err) {
-        console.error("EventFeatureCompanies error:", err?.graphQLErrors ?? err);
+        console.error("Init parallel fetch error:", err?.graphQLErrors ?? err);
       }
       if (cancelled) return;
 
@@ -318,7 +350,7 @@ export default function CompaniesClient({ title, subtitle, title_en, subtitle_en
       .then(result => {
         if (cancelled) return;
         const raw = result?.data?.eventCompanies ?? [];
-        setAllCompanies(raw.map(c => mapCompany(c)));
+        setAllCompanies(raw.map(c => mapCompany(c, sponsorMapRef.current)));
       })
       .catch(err => {
         if (cancelled) return;

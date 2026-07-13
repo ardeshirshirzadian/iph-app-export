@@ -12,6 +12,7 @@ const DEFAULTS = {
   panels:        { title: 'پنل‌ها و کارگاه‌ها',    subtitle: 'دهمین نمایشگاه ایران فارما ۱۴۰۴' },
   news:          { title: 'اخبار',                  subtitle: 'آخرین اخبار نمایشگاه ایران‌فارما', title_en: 'News', subtitle_en: 'Latest IranPharma Exhibition News' },
   gallery:       { title: 'گالری تصاویر',           subtitle: 'عکس‌های نمایشگاه‌های برگزار شده', title_en: 'Photo Gallery', subtitle_en: 'IranPharma Exhibition Photos' },
+  map:           { title: 'نقشه نمایشگاه',          subtitle: 'مکان‌یابی غرفه‌ها و سالن‌ها', title_en: 'Exhibition Map', subtitle_en: 'Locate halls and booths' },
 };
 
 export async function getPageTitle(pageKey) {
