@@ -47,6 +47,27 @@ function toPoints(bounds) {
   return bounds.map((p) => `${p.x},${p.y}`).join(" ");
 }
 
+// Safe version for hall boundaries: handles 2-point bounding-box format (→ rectangle)
+// and angle-sorts 3+ points from centroid to prevent self-intersecting diagonal strokes.
+function hallToPoints(bounds) {
+  if (!Array.isArray(bounds) || bounds.length === 0) return "";
+  if (bounds.length === 1) return "";
+  if (bounds.length === 2) {
+    // Two-point format → expand into proper rectangle (eliminates the diagonal line)
+    const [a, b] = bounds;
+    const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x);
+    const y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
+    return `${x0},${y0} ${x1},${y0} ${x1},${y1} ${x0},${y1}`;
+  }
+  // 3+ points: sort by angle from centroid to ensure correct convex winding order
+  const cx = bounds.reduce((s, p) => s + p.x, 0) / bounds.length;
+  const cy = bounds.reduce((s, p) => s + p.y, 0) / bounds.length;
+  const sorted = [...bounds].sort(
+    (a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx)
+  );
+  return sorted.map((p) => `${p.x},${p.y}`).join(" ");
+}
+
 function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
 
 function polyCenter(points) {
@@ -89,6 +110,20 @@ function boothRangeLabel(nos) {
     return sorted.join(", ");
   }
   return [...strs].sort().join(", ");
+}
+
+// CHANGE 3-B: Module-level constants/helpers (no hooks — safe outside component)
+const PRESET_ICONS = {
+  exit: "🚪", entrance: "🚶", wc: "🚻", cafe: "☕",
+  restaurant: "🍽️", prayer: "🕌", mic: "🎤", info: "ℹ️",
+  medical: "🏥", parking: "🅿️",
+};
+function getElementEmoji(el) {
+  if (el.icon_type === "preset") return PRESET_ICONS[el.icon_value] || "📍";
+  return el.icon_value || "📍";
+}
+function getHallColor(hall, hallColors) {
+  return hallColors[hall.name] || hall.color || "#00ffb3";
 }
 
 // ── Booth Bottom Sheet ─────────────────────────────────────────────────────────
@@ -243,6 +278,68 @@ function SignTooltip({ sign, sx, sy, lang }) {
   );
 }
 
+// CHANGE 4-C: Map Element Tooltip
+function MapElementTooltip({ el, sx, sy, lang }) {
+  const isEN = lang === "en";
+  const title = isEN ? (el.title_en || el.title_fa) : (el.title_fa || el.title_en);
+  const safeX = typeof window !== "undefined" ? clamp(sx, 8, window.innerWidth - 160) : sx;
+  const safeY = Math.max(sy - 52, 8);
+  return (
+    <div
+      className="fixed z-[57] px-3 py-2 rounded-xl text-sm font-medium pointer-events-none whitespace-nowrap"
+      style={{
+        left: safeX, top: safeY,
+        background: "rgba(2,31,32,0.96)",
+        border: "1px solid rgba(59,130,246,0.45)",
+        color: "var(--text)",
+        backdropFilter: "blur(16px)",
+        boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
+      }}
+    >
+      {getElementEmoji(el)} {title}
+    </div>
+  );
+}
+
+// CHANGE 4-E: Map Legend component
+function MapLegend({ elements, lang }) {
+  const [open, setOpen] = useState(false);
+  const isEN = lang === "en";
+  return (
+    <div
+      className="absolute z-[15] rounded-xl overflow-hidden"
+      style={{
+        bottom: 56, left: 12,
+        background: "rgba(2,20,21,0.92)",
+        border: "1px solid rgba(0,255,179,0.2)",
+        backdropFilter: "blur(12px)",
+        minWidth: 120,
+        maxWidth: 200,
+      }}
+    >
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold"
+        style={{ color: "var(--accent)", fontFamily: "inherit", cursor: "pointer", background: "none", border: "none" }}
+      >
+        <span>🗺</span>
+        <span>{isEN ? "Legend" : "راهنما"}</span>
+        <span style={{ marginRight: "auto", opacity: 0.6 }}>{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="px-3 pb-3 flex flex-col gap-1.5">
+          {elements.map((el) => (
+            <div key={el.id} className="flex items-center gap-2 text-xs" style={{ color: "var(--text)" }}>
+              <span style={{ fontSize: 14 }}>{getElementEmoji(el)}</span>
+              <span>{isEN ? (el.title_en || el.title_fa) : (el.title_fa || el.title_en)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Loading Skeleton ───────────────────────────────────────────────────────────
 
 function MapSkeleton() {
@@ -274,6 +371,10 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
   const [error, setError] = useState(null); // null | string
   const [selectedBooth, setSelectedBooth] = useState(null); // { booth, hall }
   const [signTooltip, setSignTooltip] = useState(null); // { sign, sx, sy }
+  // CHANGE 3-A: new state for hall colors, map elements, element tooltip
+  const [hallColors, setHallColors] = useState({});
+  const [mapElements, setMapElements] = useState([]);
+  const [elementTooltip, setElementTooltip] = useState(null); // { el, sx, sy }
 
   const containerRef = useRef(null);
   const wrapperRef = useRef(null); // receives CSS transform
@@ -339,6 +440,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
     fetch("/api/map")
       .then((r) => r.json())
       .then((d) => {
+        // CHANGE 3-C: also extract hallColors and mapElements
         if (d.errors?.length) {
           console.error("[MapClient] GraphQL errors:", d.errors);
           setError("GraphQL: " + d.errors[0].message);
@@ -348,6 +450,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
         const dim = getMapDim(d.websiteEvent.map_bounds);
         dimRef.current = dim;
         setMapData(d.websiteEvent);
+        if (d.hallColors) setHallColors(d.hallColors);
+        if (d.mapElements) setMapElements(d.mapElements);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -360,12 +464,37 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapData]);
 
-  // ── Non-passive event listeners (touchmove + wheel) ───────────────────────
+  // CHANGE 1: Consolidated non-passive event listeners (pointer + touchmove + wheel)
+  // [] dependency — all handlers read only refs, no stale closures
 
   useEffect(() => {
     const el = containerRef.current;
-    if (!el || !mapData) return;
+    if (!el) return;
 
+    function onPointerDown(e) {
+      if (e.pointerType === "touch") return;
+      dragRef.current = { on: true, lx: e.clientX, ly: e.clientY, sx: e.clientX, sy: e.clientY, moved: false };
+      el.setPointerCapture(e.pointerId);
+      setSignTooltip(null);
+      if (wrapperRef.current) wrapperRef.current.style.willChange = "transform";
+    }
+    function onPointerMove(e) {
+      if (e.pointerType === "touch" || !dragRef.current.on) return;
+      const dx = e.clientX - dragRef.current.lx;
+      const dy = e.clientY - dragRef.current.ly;
+      dragRef.current.lx = e.clientX;
+      dragRef.current.ly = e.clientY;
+      if (Math.hypot(e.clientX - dragRef.current.sx, e.clientY - dragRef.current.sy) > DRAG_THRESHOLD)
+        dragRef.current.moved = true;
+      const { x, y, scale } = tRef.current;
+      const c = clampPan(x + dx, y + dy, scale);
+      applyT(c.x, c.y, scale);
+    }
+    function onPointerUp(e) {
+      if (e.pointerType === "touch") return;
+      dragRef.current.on = false;
+      if (wrapperRef.current) wrapperRef.current.style.willChange = "auto";
+    }
     function onTouchMove(e) {
       e.preventDefault();
       if (e.touches.length === 1 && dragRef.current.on) {
@@ -394,7 +523,6 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
         dragRef.current.moved = true;
       }
     }
-
     function onWheel(e) {
       e.preventDefault();
       const { x, y, scale } = tRef.current;
@@ -407,13 +535,21 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
       applyT(c.x, c.y, newScale);
     }
 
+    el.addEventListener("pointerdown", onPointerDown);
+    el.addEventListener("pointermove", onPointerMove);
+    el.addEventListener("pointerup", onPointerUp);
+    el.addEventListener("pointercancel", onPointerUp);
     el.addEventListener("touchmove", onTouchMove, { passive: false });
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => {
+      el.removeEventListener("pointerdown", onPointerDown);
+      el.removeEventListener("pointermove", onPointerMove);
+      el.removeEventListener("pointerup", onPointerUp);
+      el.removeEventListener("pointercancel", onPointerUp);
       el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("wheel", onWheel);
     };
-  }, [mapData]);
+  }, []); // [] — all handlers use refs only, no stale closures
 
   // ── React event handlers (passive) ────────────────────────────────────────
 
@@ -421,6 +557,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
     setSignTooltip(null);
     if (e.touches.length === 1) {
       dragRef.current = { on: true, lx: e.touches[0].clientX, ly: e.touches[0].clientY, sx: e.touches[0].clientX, sy: e.touches[0].clientY, moved: false };
+      if (wrapperRef.current) wrapperRef.current.style.willChange = "transform";
     } else if (e.touches.length >= 2) {
       dragRef.current.on = false;
       const dx = e.touches[1].clientX - e.touches[0].clientX;
@@ -433,34 +570,12 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
     if (e.touches.length === 0) {
       dragRef.current.on = false;
       pinchRef.current.on = false;
+      // CHANGE 1 Fix-B: clear willChange when gesture fully ends
+      if (wrapperRef.current) wrapperRef.current.style.willChange = "auto";
     } else if (e.touches.length === 1) {
       pinchRef.current.on = false;
       dragRef.current = { on: true, lx: e.touches[0].clientX, ly: e.touches[0].clientY, sx: e.touches[0].clientX, sy: e.touches[0].clientY, moved: false };
     }
-  }
-
-  function onPointerDown(e) {
-    if (e.pointerType === "touch") return;
-    dragRef.current = { on: true, lx: e.clientX, ly: e.clientY, sx: e.clientX, sy: e.clientY, moved: false };
-    setSignTooltip(null);
-    e.currentTarget.setPointerCapture(e.pointerId);
-  }
-
-  function onPointerMove(e) {
-    if (e.pointerType === "touch" || !dragRef.current.on) return;
-    const dx = e.clientX - dragRef.current.lx;
-    const dy = e.clientY - dragRef.current.ly;
-    dragRef.current.lx = e.clientX;
-    dragRef.current.ly = e.clientY;
-    if (Math.hypot(e.clientX - dragRef.current.sx, e.clientY - dragRef.current.sy) > DRAG_THRESHOLD) dragRef.current.moved = true;
-    const { x, y, scale } = tRef.current;
-    const c = clampPan(x + dx, y + dy, scale);
-    applyT(c.x, c.y, scale);
-  }
-
-  function onPointerUp(e) {
-    if (e.pointerType === "touch") return;
-    dragRef.current.on = false;
   }
 
   function zoomBy(factor) {
@@ -496,6 +611,13 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
     setSignTooltip((prev) =>
       prev?.sign.id === sign.id ? null : { sign, sx: e.clientX, sy: e.clientY }
     );
+  }
+
+  // CHANGE 4-A: map element click handler
+  function onElementClick(e, el) {
+    e.stopPropagation();
+    if (dragRef.current.moved) return;
+    setElementTooltip((prev) => prev?.el.id === el.id ? null : { el, sx: e.clientX, sy: e.clientY });
   }
 
   // ── Booth groups (merged companies share multiple adjacent polygons) ─────────
@@ -571,12 +693,9 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
         ref={containerRef}
         className="flex-1 relative overflow-hidden"
         style={{ touchAction: "none", cursor: "grab", userSelect: "none" }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
-        onClick={() => { setSelectedBooth(null); setSignTooltip(null); }}
+        onClick={() => { setSelectedBooth(null); setSignTooltip(null); setElementTooltip(null); }}
       >
         {/* background glows */}
         <div className="absolute top-0 right-0 w-72 h-72 rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(0,255,179,0.03)", zIndex: 0 }} />
@@ -600,6 +719,11 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
           </div>
         )}
 
+        {/* CHANGE 4-E: map legend */}
+        {mapElements.length > 0 && (
+          <MapLegend elements={mapElements} lang={lang} />
+        )}
+
         {mapData && (
           <>
           <div
@@ -611,7 +735,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
               width: mapW,
               height: mapH,
               transformOrigin: "0 0",
-              willChange: "transform",
+              // CHANGE 1 Fix-A: willChange removed from static style — managed dynamically
             }}
           >
             {/* Floor plan background image */}
@@ -632,17 +756,19 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
               preserveAspectRatio="none"
             >
               {/* Hall boundary fills */}
+              {/* CHANGE 2: strokeWidth 4→1.5, strokeOpacity 0.3→0.2 */}
+              {/* CHANGE 3-D: hall.color → getHallColor(hall, hallColors) */}
               {(mapData.halls ?? []).map((hall) => {
-                const pts = toPoints(hall.map_bounds);
+                const pts = hallToPoints(hall.map_bounds);
                 if (!pts) return null;
                 return (
                   <polygon
                     key={`h-${hall.id}`}
                     points={pts}
-                    fill={`${hall.color}14`}
-                    stroke={hall.color}
-                    strokeWidth={4}
-                    strokeOpacity={0.3}
+                    fill={`${getHallColor(hall, hallColors)}14`}
+                    stroke={getHallColor(hall, hallColors)}
+                    strokeWidth={1.5}
+                    strokeOpacity={0.2}
                     style={{ pointerEvents: "none" }}
                   />
                 );
@@ -667,8 +793,9 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
                     dominantBaseline="central"
                     fontSize={fs}
                     fontWeight="900"
-                    fill={hall.color || "#ffffff"}
+                    fill={getHallColor(hall, hallColors) || "#ffffff"}
                     fillOpacity={0.18}
+                    stroke="none"
                     style={{ userSelect: "none", pointerEvents: "none" }}
                   >
                     {hall.name}
@@ -683,6 +810,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
                   const isVacant = group.type === "vacant";
                   const active = !isVacant && selectedBooth
                     && selectedBooth.booth.company?.id === group.company?.id;
+                  const hc = getHallColor(hall, hallColors);
                   return group.booths.map((booth) => {
                     const pts = toPoints(booth.bounds);
                     if (!pts) return null;
@@ -692,18 +820,18 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
                         points={pts}
                         fill={
                           active
-                            ? `${hall.color}cc`
+                            ? `${hc}cc`
                             : !isVacant
-                            ? `${hall.color}60`
+                            ? `${hc}60`
                             : "rgba(255,255,255,0.04)"
                         }
                         stroke={
                           isMerged && !active
                             ? "none"
                             : active
-                            ? hall.color
+                            ? hc
                             : !isVacant
-                            ? `${hall.color}99`
+                            ? `${hc}99`
                             : "rgba(255,255,255,0.1)"
                         }
                         strokeWidth={active ? (isMerged ? 2 : 3) : 1}
@@ -744,6 +872,36 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
                       style={{ userSelect: "none", pointerEvents: "none" }}
                     >
                       {sign.icon || "📍"}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {/* CHANGE 4-B: Local map elements (admin-managed) */}
+              {mapElements.map((el) => {
+                const isActive = elementTooltip?.el.id === el.id;
+                const emoji = getElementEmoji(el);
+                return (
+                  <g
+                    key={`me-${el.id}`}
+                    transform={`translate(${el.x},${el.y})`}
+                    onClick={(e) => onElementClick(e, el)}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <circle
+                      r={signR * 1.1}
+                      fill={isActive ? (el.color || "#3b82f6") : "rgba(2,31,32,0.88)"}
+                      stroke={el.color || "#3b82f6"}
+                      strokeWidth={isActive ? 3 : 2}
+                      strokeOpacity={0.85}
+                    />
+                    <text
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fontSize={signFs}
+                      style={{ userSelect: "none", pointerEvents: "none" }}
+                    >
+                      {emoji}
                     </text>
                   </g>
                 );
@@ -808,6 +966,11 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
       {/* ── Sign tooltip (above BottomNav) ── */}
       {signTooltip && (
         <SignTooltip sign={signTooltip.sign} sx={signTooltip.sx} sy={signTooltip.sy} lang={lang} />
+      )}
+
+      {/* CHANGE 4-D: Map element tooltip */}
+      {elementTooltip && (
+        <MapElementTooltip el={elementTooltip.el} sx={elementTooltip.sx} sy={elementTooltip.sy} lang={lang} />
       )}
 
       {/* ── Booth sheet + backdrop ── */}

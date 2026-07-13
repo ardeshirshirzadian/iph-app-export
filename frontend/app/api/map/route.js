@@ -78,7 +78,20 @@ export async function GET() {
       return NextResponse.json({ websiteEvent: null, errors: json.errors });
     }
 
-    return NextResponse.json({ websiteEvent: json.data?.websiteEvent ?? null });
+    const hallColorsResult = await query("SELECT value FROM app_settings WHERE key = 'map_hall_colors'");
+    const hallColors = hallColorsResult.rows[0]?.value ?? {};
+
+    let mapElements = [];
+    try {
+      const elementsResult = await query(
+        'SELECT id, title_fa, title_en, icon_type, icon_value, color, x, y, sort_order FROM map_elements WHERE is_active = true ORDER BY sort_order, id'
+      );
+      mapElements = elementsResult.rows;
+    } catch {
+      // table may not exist yet — safe to ignore
+    }
+
+    return NextResponse.json({ websiteEvent: json.data?.websiteEvent ?? null, hallColors, mapElements });
   } catch (err) {
     console.error('[api/map]', err.message);
     return NextResponse.json({ websiteEvent: null });
