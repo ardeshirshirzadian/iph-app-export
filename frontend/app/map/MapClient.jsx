@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
 import BottomNav from "../components/BottomNav";
 import { useLang } from "@/lib/useLang";
 import { toPersianDigits } from "@/lib/utils";
+import { buildWalkableGrid, findGridRoute, pathLength } from "@/lib/mapPathfinding";
 
 const RASAYESH_BASE = "https://api.rasayesh.com/";
 const DRAG_THRESHOLD = 6; // px movement before a touch is treated as a drag (not a tap)
@@ -47,28 +48,48 @@ function toPoints(bounds) {
   return bounds.map((p) => `${p.x},${p.y}`).join(" ");
 }
 
-// Safe version for hall boundaries: handles 2-point bounding-box format (→ rectangle)
-// and angle-sorts 3+ points from centroid to prevent self-intersecting diagonal strokes.
-function hallToPoints(bounds) {
-  if (!Array.isArray(bounds) || bounds.length === 0) return "";
-  if (bounds.length === 1) return "";
+// Returns the corrected polygon points as an array — handles 2-point bounding-box
+// format (expands to rectangle) and angle-sorts 3+ points from centroid.
+function hallToPointsArray(bounds) {
+  if (!Array.isArray(bounds) || bounds.length < 2) return [];
   if (bounds.length === 2) {
-    // Two-point format → expand into proper rectangle (eliminates the diagonal line)
     const [a, b] = bounds;
     const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x);
     const y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
-    return `${x0},${y0} ${x1},${y0} ${x1},${y1} ${x0},${y1}`;
+    return [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
   }
-  // 3+ points: sort by angle from centroid to ensure correct convex winding order
   const cx = bounds.reduce((s, p) => s + p.x, 0) / bounds.length;
   const cy = bounds.reduce((s, p) => s + p.y, 0) / bounds.length;
-  const sorted = [...bounds].sort(
+  return [...bounds].sort(
     (a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx)
   );
-  return sorted.map((p) => `${p.x},${p.y}`).join(" ");
+}
+
+function hallToPoints(bounds) {
+  return hallToPointsArray(bounds).map((p) => `${p.x},${p.y}`).join(" ");
 }
 
 function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+
+// True polygon centroid via shoelace formula — correct for any convex/concave polygon.
+// Falls back to arithmetic mean for degenerate cases.
+function polygonCentroid(pts) {
+  if (!pts || !pts.length) return null;
+  const n = pts.length;
+  let area = 0, cx = 0, cy = 0;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const cross = pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+    area += cross;
+    cx += (pts[i].x + pts[j].x) * cross;
+    cy += (pts[i].y + pts[j].y) * cross;
+  }
+  area /= 2;
+  if (Math.abs(area) < 1e-10) {
+    return { cx: pts.reduce((s, p) => s + p.x, 0) / n, cy: pts.reduce((s, p) => s + p.y, 0) / n };
+  }
+  return { cx: cx / (6 * area), cy: cy / (6 * area) };
+}
 
 function polyCenter(points) {
   if (!Array.isArray(points) || !points.length) return null;
@@ -124,6 +145,258 @@ function getElementEmoji(el) {
 }
 function getHallColor(hall, hallColors) {
   return hallColors[hall.name] || hall.color || "#00ffb3";
+}
+
+// ── Search Bar ────────────────────────────────────────────────────────────────
+
+function MapSearchBar({ query, setQuery, open, setOpen, results, onSelect, destName, onClearDest, lang, isRTL }) {
+  const isEN = lang === "en";
+  return (
+    <div
+      className="absolute z-[25]"
+      style={{ top: 8, left: 8, right: 8 }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div
+        className="flex items-center gap-2"
+        style={{
+          background: "rgba(2,20,21,0.96)", backdropFilter: "blur(20px)",
+          border: "1px solid rgba(0,255,179,0.28)", borderRadius: 14,
+          padding: "10px 14px",
+          boxShadow: "0 4px 24px rgba(0,0,0,0.45)",
+        }}
+      >
+        <span style={{ fontSize: 15, opacity: 0.55 }}>🔍</span>
+        <input
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          placeholder={isEN ? "Search booths and facilities…" : "جستجوی غرفه یا امکانات…"}
+          style={{
+            flex: 1, background: "none", border: "none", outline: "none",
+            color: "var(--text)", fontFamily: "inherit", fontSize: 14,
+            direction: isRTL ? "rtl" : "ltr",
+          }}
+        />
+        {(query || destName) && (
+          <button
+            onClick={() => { setQuery(""); setOpen(false); onClearDest(); }}
+            style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 20, lineHeight: 1, padding: 0, fontFamily: "inherit" }}
+          >×</button>
+        )}
+      </div>
+      {destName && !open && (
+        <div style={{ marginTop: 4, fontSize: 12, color: "var(--accent)", paddingInlineStart: 4 }}>
+          📍 {destName}
+        </div>
+      )}
+      {open && results.length > 0 && (
+        <div
+          style={{
+            marginTop: 4, background: "rgba(2,20,21,0.98)", backdropFilter: "blur(20px)",
+            border: "1px solid rgba(0,255,179,0.18)", borderRadius: 12,
+            maxHeight: 260, overflowY: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.55)",
+          }}
+        >
+          {results.map((r) => (
+            <button
+              key={r.id}
+              onClick={() => onSelect(r)}
+              style={{
+                width: "100%", display: "flex", alignItems: "center", gap: 10,
+                padding: "10px 14px", background: "none", border: "none",
+                borderBottom: "1px solid rgba(255,255,255,0.05)",
+                cursor: "pointer", textAlign: isRTL ? "right" : "left", fontFamily: "inherit",
+              }}
+            >
+              <span style={{ fontSize: 18, flexShrink: 0 }}>
+                {r.type === "element" ? r.emoji : "🏪"}
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {isEN ? (r.nameEn || r.name) : r.name}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                  {r.type === "booth"
+                    ? `${isEN ? "Hall" : "سالن"} ${r.hall} · ${isEN ? "Booth" : "غرفه"} ${r.no}`
+                    : (isEN ? (r.nameEn || r.name) : r.name)}
+                </div>
+              </div>
+              <span style={{ fontSize: 11, color: "var(--accent)", opacity: 0.7, flexShrink: 0 }}>
+                {isEN ? "Route" : "مسیریابی"}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Start Point Panel ─────────────────────────────────────────────────────────
+
+function StartPanel({ lang, isRTL, onTapMode, onScanMode, startQuery, setStartQuery, startResults, onSelectStart, onCancel, scanActive, videoRef }) {
+  const isEN = lang === "en";
+  return (
+    <div className="fixed inset-0 z-[58] flex flex-col justify-end" style={{ direction: isRTL ? "rtl" : "ltr" }}>
+      <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.42)" }} onClick={onCancel} />
+      <div
+        className="relative"
+        style={{
+          background: "rgba(2,20,21,0.98)", backdropFilter: "blur(28px)",
+          borderTop: "1px solid rgba(0,255,179,0.2)", borderRadius: "24px 24px 0 0",
+          padding: "16px 20px", paddingBottom: "calc(1.2rem + env(safe-area-inset-bottom))",
+          maxHeight: "80vh", overflowY: "auto",
+        }}
+      >
+        <div className="flex justify-center mb-4">
+          <div style={{ width: 40, height: 4, background: "rgba(255,255,255,0.18)", borderRadius: 2 }} />
+        </div>
+        <p style={{ fontWeight: 700, fontSize: 16, color: "var(--text)", marginBottom: 4 }}>
+          {isEN ? "Where are you starting from?" : "نقطه شروع را انتخاب کنید"}
+        </p>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>
+          {isEN ? "Pick your current location on the map." : "موقعیت فعلی خود را مشخص کنید."}
+        </p>
+
+        {/* Quick-pick buttons */}
+        <div className="flex gap-3 mb-5">
+          <button
+            onClick={onTapMode}
+            style={{
+              flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+              padding: "14px 8px", background: "rgba(0,255,179,0.07)",
+              border: "1px solid rgba(0,255,179,0.3)", borderRadius: 14,
+              cursor: "pointer", fontFamily: "inherit", color: "var(--accent)",
+            }}
+          >
+            <span style={{ fontSize: 24 }}>📍</span>
+            <span style={{ fontSize: 12, fontWeight: 600 }}>{isEN ? "Tap on map" : "روی نقشه بزنید"}</span>
+          </button>
+          <button
+            onClick={onScanMode}
+            style={{
+              flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+              padding: "14px 8px",
+              background: scanActive ? "rgba(59,130,246,0.12)" : "rgba(255,255,255,0.05)",
+              border: `1px solid ${scanActive ? "rgba(59,130,246,0.6)" : "rgba(255,255,255,0.12)"}`,
+              borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
+              color: scanActive ? "#60a5fa" : "var(--text)",
+            }}
+          >
+            <span style={{ fontSize: 24 }}>📷</span>
+            <span style={{ fontSize: 12, fontWeight: 600 }}>{isEN ? "Scan QR" : "اسکن QR"}</span>
+          </button>
+        </div>
+
+        {/* Inline QR video */}
+        {scanActive && (
+          <div className="mb-4">
+            <video
+              ref={videoRef}
+              style={{ width: "100%", borderRadius: 12, background: "#000", aspectRatio: "4/3", objectFit: "cover", display: "block" }}
+              playsInline muted
+            />
+            <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6, textAlign: "center" }}>
+              {isEN ? "Point camera at a booth QR code" : "دوربین را روی QR غرفه بگیرید"}
+            </p>
+          </div>
+        )}
+
+        {/* Search list */}
+        <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
+          {isEN ? "Or search for a booth / location:" : "یا از لیست انتخاب کنید:"}
+        </p>
+        <input
+          value={startQuery}
+          onChange={(e) => setStartQuery(e.target.value)}
+          placeholder={isEN ? "Search…" : "جستجو…"}
+          style={{
+            width: "100%", boxSizing: "border-box",
+            background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+            borderRadius: 10, padding: "9px 12px", fontSize: 13,
+            color: "var(--text)", fontFamily: "inherit", outline: "none",
+            direction: isRTL ? "rtl" : "ltr", marginBottom: 4,
+          }}
+        />
+        {startResults.map((r) => (
+          <button
+            key={r.id}
+            onClick={() => onSelectStart(r)}
+            style={{
+              width: "100%", display: "flex", alignItems: "center", gap: 10,
+              padding: "9px 4px", background: "none", border: "none",
+              borderBottom: "1px solid rgba(255,255,255,0.06)",
+              cursor: "pointer", textAlign: isRTL ? "right" : "left", fontFamily: "inherit",
+            }}
+          >
+            <span style={{ fontSize: 18 }}>{r.type === "element" ? r.emoji : "🏪"}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
+              {r.type === "booth" && (
+                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{isEN ? "Hall" : "سالن"} {r.hall}</div>
+              )}
+            </div>
+          </button>
+        ))}
+
+        <button
+          onClick={onCancel}
+          style={{
+            marginTop: 14, width: "100%", padding: "11px",
+            background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+            borderRadius: 10, color: "var(--text-muted)", fontFamily: "inherit", fontSize: 13, cursor: "pointer",
+          }}
+        >
+          {isEN ? "Cancel" : "لغو"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Route Info Card ────────────────────────────────────────────────────────────
+
+function RouteInfoCard({ path, lang, isRTL, onClear }) {
+  if (!path || path.length < 2) return null;
+  const dist = pathLength(path);
+  // ~15 SVG units ≈ 1 m (approximate based on typical exhibition booth dimensions)
+  const meters = Math.max(1, Math.round(dist / 15));
+  const minutes = Math.max(1, Math.round(meters / 72)); // 1.2 m/s walking
+  const isEN = lang === "en";
+  return (
+    <div
+      className="absolute z-[20]"
+      style={{
+        bottom: 56, left: 8, right: 8,
+        background: "rgba(2,20,21,0.96)", backdropFilter: "blur(16px)",
+        border: "1px solid rgba(0,255,179,0.3)", borderRadius: 16,
+        padding: "12px 16px", display: "flex", alignItems: "center", gap: 12,
+        boxShadow: "0 4px 24px rgba(0,0,0,0.45)",
+        direction: isRTL ? "rtl" : "ltr",
+      }}
+    >
+      <span style={{ fontSize: 22 }}>🧭</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "var(--accent)" }}>
+          {isEN ? `≈ ${meters} m · ${minutes} min` : `≈ ${meters} متر · ${toPersianDigits(minutes)} دقیقه`}
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+          {isEN ? "Estimated walking time" : "زمان تقریبی پیاده‌روی"}
+        </div>
+      </div>
+      <button
+        onClick={onClear}
+        style={{
+          background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.1)",
+          borderRadius: 8, padding: "6px 12px", color: "var(--text-muted)",
+          fontFamily: "inherit", fontSize: 12, cursor: "pointer",
+        }}
+      >
+        {isEN ? "Clear" : "حذف مسیر"}
+      </button>
+    </div>
+  );
 }
 
 // ── Booth Bottom Sheet ─────────────────────────────────────────────────────────
@@ -376,12 +649,30 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
   const [mapElements, setMapElements] = useState([]);
   const [elementTooltip, setElementTooltip] = useState(null); // { el, sx, sy }
 
+  // Navigation state
+  const [navDest, setNavDest] = useState(null);       // { x, y, name }
+  const [navStart, setNavStart] = useState(null);     // { x, y }
+  const [navPath, setNavPath] = useState(null);       // [{x,y}] computed route
+  const [startPanelOpen, setStartPanelOpen] = useState(false);
+  const [tapStartMode, setTapStartMode] = useState(false);
+
+  // Search
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [startQuery, setStartQuery] = useState("");
+
+  // QR scanner
+  const [scanActive, setScanActive] = useState(false);
+  const qrVideoRef = useRef(null);
+  const qrControlsRef = useRef(null);
+
   const containerRef = useRef(null);
   const wrapperRef = useRef(null); // receives CSS transform
   const tRef = useRef({ x: 0, y: 0, scale: 1 }); // live transform (no state, direct DOM)
   const minScaleRef = useRef(0.05);
   const maxScaleRef = useRef(4);
   const dimRef = useRef({ w: 1000, h: 700 });
+  const gridRef = useRef(null); // walkable grid, built once per map load
 
   // drag / pinch ephemeral state — never in React state
   const dragRef = useRef({ on: false, lx: 0, ly: 0, sx: 0, sy: 0, moved: false });
@@ -461,6 +752,15 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
   useEffect(() => {
     if (!mapData) return;
     requestAnimationFrame(() => resetView(dimRef.current));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapData]);
+
+  // build walkable grid once per map load (fast: O(booths) spatial marking)
+  useEffect(() => {
+    if (!mapData) return;
+    const allBooths = (mapData.halls ?? []).flatMap(h => h.booths ?? []);
+    const { w, h } = dimRef.current;
+    gridRef.current = buildWalkableGrid(w, h, allBooths);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapData]);
 
@@ -630,6 +930,176 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
     }));
   }, [mapData]);
 
+  // ── Search results ─────────────────────────────────────────────────────────
+
+  const searchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    const results = [];
+    const seen = new Set();
+    for (const hall of (mapData?.halls ?? [])) {
+      for (const booth of (hall.booths ?? [])) {
+        if (!booth.company) continue;
+        const co = booth.company;
+        if (seen.has(co.id)) continue;
+        const fa = (co.brand_name_fa || "").toLowerCase();
+        const en = (co.brand_name_en || "").toLowerCase();
+        if (!fa.includes(q) && !en.includes(q)) continue;
+        seen.add(co.id);
+        const pts = booth.bounds ?? [];
+        if (!pts.length) continue;
+        const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+        results.push({ type: "booth", id: `b-${booth.id}`, name: co.brand_name_fa || co.brand_name_en, nameEn: co.brand_name_en, hall: hall.name, no: booth.no, companyId: co.id, x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 });
+        if (results.length >= 12) break;
+      }
+      if (results.length >= 12) break;
+    }
+    for (const el of mapElements) {
+      const t = ((el.title_fa || "") + " " + (el.title_en || "")).toLowerCase();
+      if (!t.includes(q)) continue;
+      results.push({ type: "element", id: `e-${el.id}`, name: el.title_fa, nameEn: el.title_en, emoji: getElementEmoji(el), x: el.x, y: el.y });
+      if (results.length >= 15) break;
+    }
+    return results;
+  }, [searchQuery, mapData, mapElements]);
+
+  const startSearchResults = useMemo(() => {
+    const q = startQuery.trim().toLowerCase();
+    if (!q) return [];
+    const results = [];
+    const seen = new Set();
+    for (const hall of (mapData?.halls ?? [])) {
+      for (const booth of (hall.booths ?? [])) {
+        if (!booth.company) continue;
+        const co = booth.company;
+        if (seen.has(co.id)) continue;
+        const fa = (co.brand_name_fa || "").toLowerCase();
+        const en = (co.brand_name_en || "").toLowerCase();
+        if (!fa.includes(q) && !en.includes(q)) continue;
+        seen.add(co.id);
+        const pts = booth.bounds ?? [];
+        if (!pts.length) continue;
+        const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+        results.push({ type: "booth", id: `b-${booth.id}`, name: co.brand_name_fa || co.brand_name_en, hall: hall.name, no: booth.no, companyId: co.id, x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 });
+        if (results.length >= 8) break;
+      }
+      if (results.length >= 8) break;
+    }
+    for (const el of mapElements) {
+      const t = ((el.title_fa || "") + " " + (el.title_en || "")).toLowerCase();
+      if (!t.includes(q)) continue;
+      results.push({ type: "element", id: `e-${el.id}`, name: el.title_fa, emoji: getElementEmoji(el), x: el.x, y: el.y });
+      if (results.length >= 10) break;
+    }
+    return results;
+  }, [startQuery, mapData, mapElements]);
+
+  // ── Wayfinding helpers ─────────────────────────────────────────────────────
+
+  function panToSvgPoint(svgX, svgY, zoomMult) {
+    const el = containerRef.current;
+    if (!el) return;
+    const fit = fitScaleRef.current;
+    const newScale = clamp(fit * (zoomMult ?? 3), minScaleRef.current, maxScaleRef.current);
+    const nx = el.clientWidth / 2 - svgX * newScale;
+    const ny = el.clientHeight / 2 - svgY * newScale;
+    const c = clampPan(nx, ny, newScale);
+    applyT(c.x, c.y, newScale);
+  }
+
+  function computeRoute(startX, startY, destX, destY) {
+    if (!gridRef.current) return null;
+    return findGridRoute(gridRef.current, startX, startY, destX, destY);
+  }
+
+  function selectDestination(result) {
+    setNavDest({ x: result.x, y: result.y, name: result.name || result.nameEn });
+    setNavPath(null);
+    setNavStart(null);
+    setSearchQuery(result.name || result.nameEn || "");
+    setSearchOpen(false);
+    setStartPanelOpen(true);
+    panToSvgPoint(result.x, result.y);
+  }
+
+  function confirmStart(startX, startY) {
+    setNavStart({ x: startX, y: startY });
+    setStartPanelOpen(false);
+    setTapStartMode(false);
+    setScanActive(false);
+    stopQrScan();
+    if (navDest) {
+      const path = computeRoute(startX, startY, navDest.x, navDest.y);
+      setNavPath(path ?? null);
+      if (path) {
+        const xs = path.map((p) => p.x), ys = path.map((p) => p.y);
+        panToSvgPoint((Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, 1.6);
+      }
+    }
+  }
+
+  function clearNav() {
+    setNavDest(null); setNavStart(null); setNavPath(null);
+    setStartPanelOpen(false); setTapStartMode(false);
+    setSearchQuery(""); setSearchOpen(false);
+    setScanActive(false); stopQrScan();
+  }
+
+  // ── QR scanner ─────────────────────────────────────────────────────────────
+
+  function stopQrScan() {
+    if (qrControlsRef.current) {
+      try { qrControlsRef.current.stop(); } catch (_) {}
+      qrControlsRef.current = null;
+    }
+  }
+
+  const startQrScan = useCallback(async () => {
+    setScanActive(true);
+    try {
+      const { BrowserMultiFormatReader } = await import("@zxing/browser");
+      const reader = new BrowserMultiFormatReader();
+      const controls = await reader.decodeFromConstraints(
+        { video: { facingMode: "environment" } },
+        qrVideoRef.current,
+        (result) => { if (result) handleQrResult(result.getText()); }
+      );
+      qrControlsRef.current = controls;
+    } catch (err) {
+      console.error("[QR scan]", err);
+      setScanActive(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleQrResult(text) {
+    if (!text.startsWith("IPH-BOOTH-")) return;
+    stopQrScan();
+    setScanActive(false);
+    const uuid = text.replace("IPH-BOOTH-", "");
+    try {
+      const res = await fetch(`/api/map/booth-by-qr?uuid=${encodeURIComponent(uuid)}`);
+      const data = await res.json();
+      if (!data.company) return;
+      const companyId = data.company.id;
+      for (const hall of (mapData?.halls ?? [])) {
+        for (const booth of (hall.booths ?? [])) {
+          if (booth.company?.id !== companyId) continue;
+          const pts = booth.bounds ?? [];
+          if (!pts.length) continue;
+          const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+          confirmStart((Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2);
+          return;
+        }
+      }
+    } catch (err) {
+      console.error("[QR lookup]", err);
+    }
+  }
+
+  // Cleanup QR scanner on unmount
+  useEffect(() => () => stopQrScan(), []);
+
   // ── Derived map geometry ───────────────────────────────────────────────────
 
   const { w: mapW, h: mapH } = dimRef.current;
@@ -695,7 +1165,19 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
         style={{ touchAction: "none", cursor: "grab", userSelect: "none" }}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
-        onClick={() => { setSelectedBooth(null); setSignTooltip(null); setElementTooltip(null); }}
+        onClick={(e) => {
+          if (tapStartMode && !dragRef.current.moved) {
+            const rect = containerRef.current?.getBoundingClientRect();
+            if (rect) {
+              const { x: tx, y: ty, scale } = tRef.current;
+              const svgX = (e.clientX - rect.left - tx) / scale;
+              const svgY = (e.clientY - rect.top - ty) / scale;
+              confirmStart(svgX, svgY);
+            }
+            return;
+          }
+          setSelectedBooth(null); setSignTooltip(null); setElementTooltip(null); setSearchOpen(false);
+        }}
       >
         {/* background glows */}
         <div className="absolute top-0 right-0 w-72 h-72 rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(0,255,179,0.03)", zIndex: 0 }} />
@@ -716,6 +1198,41 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
                 {error}
               </code>
             )}
+          </div>
+        )}
+
+        {/* Search bar */}
+        {mapData && (
+          <MapSearchBar
+            query={searchQuery}
+            setQuery={setSearchQuery}
+            open={searchOpen}
+            setOpen={setSearchOpen}
+            results={searchResults}
+            onSelect={selectDestination}
+            destName={navDest && !searchOpen ? navDest.name : null}
+            onClearDest={clearNav}
+            lang={lang}
+            isRTL={isRTL}
+          />
+        )}
+
+        {/* Tap-to-start overlay hint */}
+        {tapStartMode && (
+          <div
+            className="absolute inset-0 z-[22] flex items-end justify-center pointer-events-none"
+            style={{ paddingBottom: 80 }}
+          >
+            <div
+              style={{
+                background: "rgba(2,20,21,0.93)", backdropFilter: "blur(12px)",
+                border: "1px solid rgba(0,255,179,0.4)", borderRadius: 14,
+                padding: "10px 20px", fontSize: 13, color: "var(--accent)",
+                boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
+              }}
+            >
+              {isEN ? "Tap anywhere on the map to set your start point" : "روی نقشه بزنید تا موقعیت شروع تعیین شود"}
+            </div>
           </div>
         )}
 
@@ -755,40 +1272,24 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
               viewBox={`0 0 ${mapW} ${mapH}`}
               preserveAspectRatio="none"
             >
-              {/* Hall boundary fills */}
-              {/* CHANGE 2: strokeWidth 4→1.5, strokeOpacity 0.3→0.2 */}
-              {/* CHANGE 3-D: hall.color → getHallColor(hall, hallColors) */}
-              {(mapData.halls ?? []).map((hall) => {
-                const pts = hallToPoints(hall.map_bounds);
-                if (!pts) return null;
-                return (
-                  <polygon
-                    key={`h-${hall.id}`}
-                    points={pts}
-                    fill={`${getHallColor(hall, hallColors)}14`}
-                    stroke={getHallColor(hall, hallColors)}
-                    strokeWidth={1.5}
-                    strokeOpacity={0.2}
-                    style={{ pointerEvents: "none" }}
-                  />
-                );
-              })}
-
               {/* Hall name watermarks — large faint text behind all booth polygons */}
+              {/* Positioned using booth-bounds union: hall.map_bounds is unreliable —
+                  A/B/C/D/E all share identical y-ranges (outer container strip) and
+                  x-ranges that don't match where booths actually sit. */}
               {(mapData.halls ?? []).map((hall) => {
-                const c = polyCenter(hall.map_bounds);
-                if (!c) return null;
-                const pts = hall.map_bounds;
-                if (!Array.isArray(pts) || !pts.length) return null;
-                const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
-                const hw = Math.max(...xs) - Math.min(...xs);
-                const hh = Math.max(...ys) - Math.min(...ys);
-                const fs = Math.min(hw, hh) * 0.38;
+                const boothPts = (hall.booths ?? []).flatMap((b) => b.bounds ?? []);
+                if (!boothPts.length) return null;
+                const bxs = boothPts.map((p) => p.x), bys = boothPts.map((p) => p.y);
+                const xMin = Math.min(...bxs), xMax = Math.max(...bxs);
+                const yMin = Math.min(...bys), yMax = Math.max(...bys);
+                const cx = (xMin + xMax) / 2, cy = (yMin + yMax) / 2;
+                const hw = xMax - xMin, hh = yMax - yMin;
+                const fs = hh * 0.65;
                 return (
                   <text
                     key={`hl-${hall.id}`}
-                    x={c.cx}
-                    y={c.cy}
+                    x={cx}
+                    y={cy}
                     textAnchor="middle"
                     dominantBaseline="central"
                     fontSize={fs}
@@ -877,6 +1378,35 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
                 );
               })}
 
+              {/* Wayfinding route overlay */}
+              {navPath && navPath.length >= 2 && (() => {
+                const strokeW = mapW / 180;
+                const markerR = signR * 1.5;
+                const start = navPath[0];
+                const dest = navPath[navPath.length - 1];
+                return (
+                  <g style={{ pointerEvents: "none" }}>
+                    {/* Dashed route line */}
+                    <polyline
+                      points={navPath.map((p) => `${p.x},${p.y}`).join(" ")}
+                      fill="none"
+                      stroke="#00ffb3"
+                      strokeWidth={strokeW}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeDasharray={`${mapW / 70} ${mapW / 220}`}
+                      strokeOpacity={0.9}
+                    />
+                    {/* Start pin (blue) */}
+                    <circle cx={start.x} cy={start.y} r={markerR} fill="#3b82f6" stroke="#fff" strokeWidth={strokeW * 0.6} />
+                    <text x={start.x} y={start.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs * 0.85} style={{ userSelect: "none" }}>🔵</text>
+                    {/* Destination pin (orange) */}
+                    <circle cx={dest.x} cy={dest.y} r={markerR * 1.2} fill="#f97316" stroke="#fff" strokeWidth={strokeW * 0.6} />
+                    <text x={dest.x} y={dest.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs} style={{ userSelect: "none" }}>🏁</text>
+                  </g>
+                );
+              })()}
+
               {/* CHANGE 4-B: Local map elements (admin-managed) */}
               {mapElements.map((el) => {
                 const isActive = elementTooltip?.el.id === el.id;
@@ -959,6 +1489,10 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
             </div>
           </div>
 
+          {/* Route info card — floats above bottom nav */}
+          {navPath && (
+            <RouteInfoCard path={navPath} lang={lang} isRTL={isRTL} onClear={clearNav} />
+          )}
           </>
         )}
       </div>
@@ -990,6 +1524,23 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
             onClose={() => setSelectedBooth(null)}
           />
         </>
+      )}
+
+      {/* ── Start point panel ── */}
+      {startPanelOpen && !tapStartMode && (
+        <StartPanel
+          lang={lang}
+          isRTL={isRTL}
+          onTapMode={() => { setTapStartMode(true); setStartPanelOpen(false); setScanActive(false); stopQrScan(); }}
+          onScanMode={() => { if (!scanActive) startQrScan(); else { setScanActive(false); stopQrScan(); } }}
+          startQuery={startQuery}
+          setStartQuery={setStartQuery}
+          startResults={startSearchResults}
+          onSelectStart={(r) => confirmStart(r.x, r.y)}
+          onCancel={clearNav}
+          scanActive={scanActive}
+          videoRef={qrVideoRef}
+        />
       )}
 
       <BottomNav />

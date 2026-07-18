@@ -91,7 +91,11 @@ export async function GET() {
       // table may not exist yet — safe to ignore
     }
 
-    return NextResponse.json({ websiteEvent: json.data?.websiteEvent ?? null, hallColors, mapElements });
+    return NextResponse.json({
+      websiteEvent: json.data?.websiteEvent ?? null,
+      hallColors,
+      mapElements,
+    });
   } catch (err) {
     console.error('[api/map]', err.message);
     return NextResponse.json({ websiteEvent: null });
