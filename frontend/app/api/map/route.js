@@ -84,9 +84,19 @@ export async function GET() {
     let mapElements = [];
     try {
       const elementsResult = await query(
-        'SELECT id, title_fa, title_en, icon_type, icon_value, color, x, y, sort_order FROM map_elements WHERE is_active = true ORDER BY sort_order, id'
+        'SELECT id, title_fa, title_en, icon_type, icon_value, color, x, y, sort_order, floor, linked_element_id FROM map_elements WHERE is_active = true ORDER BY sort_order, id'
       );
       mapElements = elementsResult.rows;
+    } catch {
+      // table may not exist yet — safe to ignore
+    }
+
+    let mapDoors = [];
+    try {
+      const doorsResult = await query(
+        'SELECT id, door_type, x, y, hall_name, width FROM map_doors WHERE is_active = true'
+      );
+      mapDoors = doorsResult.rows;
     } catch {
       // table may not exist yet — safe to ignore
     }
@@ -95,6 +105,7 @@ export async function GET() {
       websiteEvent: json.data?.websiteEvent ?? null,
       hallColors,
       mapElements,
+      mapDoors,
     });
   } catch (err) {
     console.error('[api/map]', err.message);
