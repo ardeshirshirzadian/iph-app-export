@@ -166,6 +166,33 @@ function getHallColor(hall, hallColors) {
   return hallColors[hall.name] || hall.color || "#00ffb3";
 }
 
+// Samples a [{x,y}] polyline at regular arc-length intervals and returns
+// [{x, y, angle}] where angle (degrees) is the tangent direction at each point.
+// The first arrow is placed at interval/2 from the start so arrows are centred
+// within the route rather than piling up at the very beginning.
+function routeArrows(pts, interval) {
+  const out = [];
+  if (pts.length < 2 || interval <= 0) return out;
+  let dist = interval / 2; // countdown to next arrow
+  for (let i = 1; i < pts.length; i++) {
+    const dx = pts[i].x - pts[i - 1].x;
+    const dy = pts[i].y - pts[i - 1].y;
+    const len = Math.hypot(dx, dy);
+    if (len < 0.1) continue;
+    const ang = Math.atan2(dy, dx) * 180 / Math.PI;
+    while (dist <= len) {
+      out.push({
+        x: pts[i - 1].x + dx * dist / len,
+        y: pts[i - 1].y + dy * dist / len,
+        angle: ang,
+      });
+      dist += interval;
+    }
+    dist -= len; // carry remainder into next segment
+  }
+  return out;
+}
+
 // ── Search Bar ────────────────────────────────────────────────────────────────
 
 function MapSearchBar({ query, setQuery, open, setOpen, results, onSelect, destName, onClearDest, lang, isRTL }) {
@@ -392,13 +419,24 @@ function RouteInfoCard({ route, lang, isRTL, onClear }) {
     </button>
   );
   const cardStyle = {
-    bottom: 56, left: 8, right: 8,
+    bottom: "calc(68px + env(safe-area-inset-bottom))", left: 8, right: 8,
     background: "rgba(2,20,21,0.96)", backdropFilter: "blur(16px)",
     borderRadius: 16,
     padding: "12px 16px", display: "flex", alignItems: "center", gap: 12,
     boxShadow: "0 4px 24px rgba(0,0,0,0.45)",
     direction: isRTL ? "rtl" : "ltr",
   };
+
+  if (route.type === "computing") {
+    return (
+      <div className="absolute z-[20]" style={{ ...cardStyle, border: "1px solid rgba(0,255,179,0.15)" }}>
+        <span style={{ fontSize: 20 }}>🧭</span>
+        <div className="animate-pulse" style={{ flex: 1, fontSize: 14, color: "var(--accent)" }}>
+          {isEN ? "Calculating route…" : "در حال محاسبه مسیر…"}
+        </div>
+      </div>
+    );
+  }
 
   if (route.type === "no_connection") {
     return (
@@ -627,9 +665,9 @@ function MapLegend({ elements, lang }) {
   const isEN = lang === "en";
   return (
     <div
-      className="absolute z-[15] rounded-xl overflow-hidden"
+      className="absolute z-[30] rounded-xl overflow-hidden"
       style={{
-        bottom: 56, left: 12,
+        bottom: "calc(68px + env(safe-area-inset-bottom))", left: 12,
         background: "rgba(2,20,21,0.92)",
         border: "1px solid rgba(0,255,179,0.2)",
         backdropFilter: "blur(12px)",
@@ -779,19 +817,24 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
     applyT(x, y, fit);
   }
 
-  // Cancel momentum animation (safe to call any time)
+  // Cancel momentum animation (safe to call any time).
+  // MUST also clear willChange — if momentum is running (willChange="transform")
+  // and a caller cancels it without resetting willChange, the large SVG map
+  // stays permanently composited on GPU, causing iOS Safari memory crashes.
   function cancelMomentum() {
     if (momentumRef.current.rafId) {
       cancelAnimationFrame(momentumRef.current.rafId);
       momentumRef.current.rafId = 0;
+      if (wrapperRef.current) wrapperRef.current.style.willChange = "auto";
     }
   }
 
-  // Cancel smooth-zoom animation
+  // Cancel smooth-zoom animation — same willChange cleanup obligation.
   function cancelZoomAnim() {
     if (zoomAnimRef.current.rafId) {
       cancelAnimationFrame(zoomAnimRef.current.rafId);
       zoomAnimRef.current.rafId = 0;
+      if (wrapperRef.current) wrapperRef.current.style.willChange = "auto";
     }
   }
 
@@ -833,7 +876,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
   // The SVG point under (vpX, vpY) stays visually fixed throughout the animation.
   // Uses cubic ease-out over ~220 ms.
   function smoothZoomToward(vpX, vpY, targetScale, duration = 220) {
-    cancelZoomAnim();
+    cancelZoomAnim(); // clears any prior RAF + resets willChange to "auto"
     const { x: x0, y: y0, scale: s0 } = tRef.current;
     const s1 = clamp(targetScale, minScaleRef.current, maxScaleRef.current);
     // Compute the SVG point under the focal viewport coord
@@ -842,6 +885,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
     // End position: focal SVG point maps back to the same viewport coord
     const { x: x1, y: y1 } = clampPan(vpX - svgFx * s1, vpY - svgFy * s1, s1);
     const t0 = performance.now();
+    if (wrapperRef.current) wrapperRef.current.style.willChange = "transform";
 
     function step(now) {
       const p = Math.min(1, (now - t0) / duration);
@@ -852,6 +896,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
         zoomAnimRef.current.rafId = requestAnimationFrame(step);
       } else {
         zoomAnimRef.current.rafId = 0;
+        if (wrapperRef.current) wrapperRef.current.style.willChange = "auto";
       }
     }
     zoomAnimRef.current.rafId = requestAnimationFrame(step);
@@ -887,18 +932,9 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapData]);
 
-  // Build per-floor walkable grids once per map load.
-  // hallGroups is derived from mapData so mapData as dep is sufficient.
-  useEffect(() => {
-    if (!mapData) return;
-    const { w, h } = dimRef.current;
-    floorGridsRef.current = buildFloorGrids(
-      w, h, hallGroups,
-      mapData.map_signs ?? [],
-      mapData.map_doors ?? [],
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapData]);
+  // Grid is built lazily on first route request (see confirmStart).
+  // Building it eagerly here blocked the main thread for 2-3 s before the
+  // map SVG could paint — moved to lazy to eliminate that delay.
 
   // CHANGE 1: Consolidated non-passive event listeners (pointer + touchmove + wheel)
   // [] dependency — all handlers read only refs, no stale closures
@@ -1033,6 +1069,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
       const dx = e.touches[1].clientX - e.touches[0].clientX;
       const dy = e.touches[1].clientY - e.touches[0].clientY;
       pinchRef.current = { on: true, d0: Math.hypot(dx, dy), s0: tRef.current.scale };
+      if (wrapperRef.current) wrapperRef.current.style.willChange = "transform";
     }
   }
 
@@ -1220,38 +1257,58 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
     setScanActive(false);
     stopQrScan();
     if (navDest) {
-      const startFloor = getFloorAtPoint(startX, startY, hallGroups);
-      const destFloor  = navDest.floor ?? 0;
-      const route = findMultiFloorRoute(
-        floorGridsRef.current,
-        startX, startY, startFloor,
-        navDest.x, navDest.y, destFloor,
-        stairsElements,
-      );
+      // Show "computing" immediately so the UI updates before the synchronous
+      // grid build + A* run (which can take ~1 s the first time).
+      setNavRoute({ type: "computing" });
 
-      if (!route) {
-        // Grids not ready yet — surface error card via no_connection
-        console.warn("[map] confirmStart: grids not ready, cannot route");
-        setNavRoute({ type: "no_connection" });
-      } else {
-        if (route.type === "no_connection" && startFloor !== destFloor) {
-          // Cross-floor failure — emit details so misconfigured stairs are easy to spot
-          console.warn(
-            `[map] No cross-floor route: floor ${startFloor} → ${destFloor}.`,
-            `Stairs on floor ${startFloor}:`,
-            stairsElements.filter(e => (e.floor ?? 0) === startFloor)
-              .map(e => `id=${e.id} linked_to=${e.linked_element_id ?? "null"}`),
+      // Capture closure values now; setTimeout fires after current paint flush.
+      const sx = startX, sy = startY;
+      const dest = navDest;
+      const halls = hallGroups;
+      const stairs = stairsElements;
+      const dim = dimRef.current;
+
+      setTimeout(() => {
+        // Lazy grid build — pays the cost once per map session, then cached.
+        if (!floorGridsRef.current) {
+          floorGridsRef.current = buildFloorGrids(
+            dim.w, dim.h, halls,
+            mapData.map_signs ?? [],
+            mapData.map_doors ?? [],
           );
         }
-        setNavRoute(route);
-      }
 
-      if (route?.type === "single" && route.path.length >= 2) {
-        const xs = route.path.map(p => p.x), ys = route.path.map(p => p.y);
-        panToSvgPoint((Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, 1.6);
-      } else if (route?.type === "multi_floor") {
-        panToSvgPoint(startX, startY, 1.6);
-      }
+        const startFloor = getFloorAtPoint(sx, sy, halls);
+        const destFloor  = dest.floor ?? 0;
+        const route = findMultiFloorRoute(
+          floorGridsRef.current,
+          sx, sy, startFloor,
+          dest.x, dest.y, destFloor,
+          stairs,
+        );
+
+        if (!route) {
+          setNavRoute({ type: "no_connection" });
+        } else {
+          if (route.type === "no_connection" && startFloor !== destFloor) {
+            // Cross-floor failure — emit details so misconfigured stairs are easy to spot
+            console.warn(
+              `[map] No cross-floor route: floor ${startFloor} → ${destFloor}.`,
+              `Stairs on floor ${startFloor}:`,
+              stairs.filter(e => (e.floor ?? 0) === startFloor)
+                .map(e => `id=${e.id} linked_to=${e.linked_element_id ?? "null"}`),
+            );
+          }
+          setNavRoute(route);
+        }
+
+        if (route?.type === "single" && route.path.length >= 2) {
+          const xs = route.path.map(p => p.x), ys = route.path.map(p => p.y);
+          panToSvgPoint((Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, 1.6);
+        } else if (route?.type === "multi_floor") {
+          panToSvgPoint(sx, sy, 1.6);
+        }
+      }, 0);
     }
   }
 
@@ -1607,6 +1664,32 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
                 const markerR = signR * 1.5;
                 const dash = `${mapW / 70} ${mapW / 220}`;
 
+                // Arrow geometry — sized relative to signR so they scale with zoom.
+                const arrowInterval = signR * 9;
+                const aL = signR * 1.05;
+                const aW = signR * 0.52;
+                const triPts = `${aL},0 ${-aL * 0.45},${-aW} ${-aL * 0.45},${aW}`;
+                const arrowStroke = aL * 0.1;
+
+                // Inline helper — returns flat array of <polygon> elements.
+                // NOT a React component (no JSX <ArrowFn>) to avoid React unmounting
+                // and remounting all arrow DOM nodes on every re-render due to unstable
+                // function identity when defined inside a render closure.
+                const arrowPolygons = (pts, color, keyPrefix) =>
+                  routeArrows(pts, arrowInterval).map((a, i) => (
+                    <polygon
+                      key={`${keyPrefix}-${i}`}
+                      points={triPts}
+                      fill={color}
+                      fillOpacity={0.95}
+                      stroke="rgba(2,31,32,0.5)"
+                      strokeWidth={arrowStroke}
+                      strokeLinejoin="round"
+                      transform={`translate(${a.x},${a.y}) rotate(${a.angle})`}
+                      style={{ pointerEvents: "none" }}
+                    />
+                  ));
+
                 if (navRoute.type === "single") {
                   const { path } = navRoute;
                   if (path.length < 2) return null;
@@ -1614,6 +1697,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
                   return (
                     <g style={{ pointerEvents: "none" }}>
                       <polyline points={path.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="#00ffb3" strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash} strokeOpacity={0.9} />
+                      {arrowPolygons(path, "#00ffb3", "a")}
                       <circle cx={start.x} cy={start.y} r={markerR} fill="#3b82f6" stroke="#fff" strokeWidth={strokeW * 0.6} />
                       <text x={start.x} y={start.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs * 0.85} style={{ userSelect: "none" }}>🔵</text>
                       <circle cx={dest.x} cy={dest.y} r={markerR * 1.2} fill="#f97316" stroke="#fff" strokeWidth={strokeW * 0.6} />
@@ -1628,10 +1712,12 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
                   const startPt = pathA[0], destPt = pathB[pathB.length - 1];
                   return (
                     <g style={{ pointerEvents: "none" }}>
-                      {/* Ground-floor segment (green) */}
+                      {/* Ground-floor segment (green) + its arrows */}
                       <polyline points={pathA.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="#00ffb3" strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash} strokeOpacity={0.9} />
-                      {/* Upper-floor segment (amber) */}
+                      {arrowPolygons(pathA, "#00ffb3", "aa")}
+                      {/* Upper-floor segment (amber) + its arrows */}
                       <polyline points={pathB.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="#f59e0b" strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash} strokeOpacity={0.85} />
+                      {arrowPolygons(pathB, "#f59e0b", "ab")}
                       {/* Start pin */}
                       <circle cx={startPt.x} cy={startPt.y} r={markerR} fill="#3b82f6" stroke="#fff" strokeWidth={strokeW * 0.6} />
                       <text x={startPt.x} y={startPt.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs * 0.85} style={{ userSelect: "none" }}>🔵</text>
