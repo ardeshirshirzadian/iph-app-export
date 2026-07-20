@@ -774,6 +774,12 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
   const fitScaleRef = useRef(1);
   const boothLabelsWrapRef = useRef(null);
 
+  // gesture-simplify: active flag (prevents applyT from overriding hidden state),
+  // debounce timer for restoration, and route layer ref
+  const gestureActiveRef = useRef(false);
+  const gestureSettleTimerRef = useRef(null);
+  const routeLayerRef = useRef(null);
+
   // ── Transform helpers ──────────────────────────────────────────────────────
 
   function applyT(x, y, scale) {
@@ -781,11 +787,15 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
     if (wrapperRef.current) {
       wrapperRef.current.style.transform = `translate(${x}px,${y}px) scale(${scale})`;
     }
-    // Booth numbers: update CSS var (font-size cancels scale) + visibility threshold
+    // Booth numbers: update CSS var (font-size cancels scale) + visibility threshold.
+    // Skip opacity write during active gestures — onGestureStart already hid them
+    // and applyT would otherwise override that on every frame.
     if (boothLabelsWrapRef.current) {
       boothLabelsWrapRef.current.style.setProperty("--map-s", scale);
-      const show = fitScaleRef.current > 0 && scale > fitScaleRef.current * 1.8;
-      boothLabelsWrapRef.current.style.opacity = show ? "1" : "0";
+      if (!gestureActiveRef.current) {
+        const show = fitScaleRef.current > 0 && scale > fitScaleRef.current * 1.8;
+        boothLabelsWrapRef.current.style.opacity = show ? "1" : "0";
+      }
     }
   }
 
@@ -838,6 +848,33 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
     }
   }
 
+  // Hide detail SVG layers during active gestures/animations to reduce the
+  // number of nodes the GPU composites. Both layers have lots of elements
+  // (booth labels + route arrows/markers) that are invisible during a fast
+  // pan or pinch anyway. Restored 120 ms after the gesture fully settles.
+  function onGestureStart() {
+    if (gestureSettleTimerRef.current) {
+      clearTimeout(gestureSettleTimerRef.current);
+      gestureSettleTimerRef.current = null;
+    }
+    gestureActiveRef.current = true;
+    if (boothLabelsWrapRef.current) boothLabelsWrapRef.current.style.opacity = "0";
+    if (routeLayerRef.current) routeLayerRef.current.style.visibility = "hidden";
+  }
+  function onGestureSettle() {
+    if (gestureSettleTimerRef.current) clearTimeout(gestureSettleTimerRef.current);
+    gestureSettleTimerRef.current = setTimeout(() => {
+      gestureActiveRef.current = false;
+      gestureSettleTimerRef.current = null;
+      if (routeLayerRef.current) routeLayerRef.current.style.visibility = "";
+      if (boothLabelsWrapRef.current) {
+        const { scale } = tRef.current;
+        const show = fitScaleRef.current > 0 && scale > fitScaleRef.current * 1.8;
+        boothLabelsWrapRef.current.style.opacity = show ? "1" : "0";
+      }
+    }, 120);
+  }
+
   // Start momentum after drag release.  vx/vy are in px/ms.
   // Uses frame-rate-independent exponential friction: 0.94 per 16 ms frame.
   function startMomentum(vx0, vy0) {
@@ -877,6 +914,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
   // Uses cubic ease-out over ~220 ms.
   function smoothZoomToward(vpX, vpY, targetScale, duration = 220) {
     cancelZoomAnim(); // clears any prior RAF + resets willChange to "auto"
+    onGestureStart();
     const { x: x0, y: y0, scale: s0 } = tRef.current;
     const s1 = clamp(targetScale, minScaleRef.current, maxScaleRef.current);
     // Compute the SVG point under the focal viewport coord
@@ -897,6 +935,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
       } else {
         zoomAnimRef.current.rafId = 0;
         if (wrapperRef.current) wrapperRef.current.style.willChange = "auto";
+        onGestureSettle();
       }
     }
     zoomAnimRef.current.rafId = requestAnimationFrame(step);
@@ -961,6 +1000,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
       if (e.pointerType === "touch") return;
       cancelMomentum();
       cancelZoomAnim();
+      onGestureStart();
       dragRef.current = { on: true, lx: e.clientX, ly: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, vx: 0, vy: 0, lt: performance.now() };
       el.setPointerCapture(e.pointerId);
       setSignTooltip(null);
@@ -985,6 +1025,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
       const { vx, vy, moved } = dragRef.current;
       dragRef.current.on = false;
       if (wrapperRef.current) wrapperRef.current.style.willChange = "auto";
+      onGestureSettle();
       if (moved && Math.hypot(vx, vy) > 0.04) startMomentum(vx, vy);
     }
     function onTouchMove(e) {
@@ -1051,6 +1092,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
       el.removeEventListener("dblclick", onDblClick);
       cancelMomentum();
       cancelZoomAnim();
+      if (gestureSettleTimerRef.current) clearTimeout(gestureSettleTimerRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // [] — all handlers use refs only, no stale closures
@@ -1060,6 +1102,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
   function onTouchStart(e) {
     cancelMomentum(); // new touch always cancels in-flight momentum
     cancelZoomAnim();
+    onGestureStart();
     setSignTooltip(null);
     if (e.touches.length === 1) {
       dragRef.current = { on: true, lx: e.touches[0].clientX, ly: e.touches[0].clientY, sx: e.touches[0].clientX, sy: e.touches[0].clientY, moved: false, vx: 0, vy: 0, lt: performance.now() };
@@ -1080,6 +1123,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
       dragRef.current.on = false;
       pinchRef.current.on = false;
       if (wrapperRef.current) wrapperRef.current.style.willChange = "auto";
+      onGestureSettle();
 
       // Momentum: fire if the user was actively dragging (not tapping or pinching)
       if (wasDrag && moved && Math.hypot(vx, vy) > 0.04) {
@@ -1657,7 +1701,9 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
                 );
               })}
 
-              {/* Wayfinding route overlay */}
+              {/* Wayfinding route overlay — wrapped so routeLayerRef can hide it
+                  during active gestures (reduces GPU compositing complexity) */}
+              <g ref={routeLayerRef}>
               {navRoute && (() => {
                 if (navRoute.type === "no_connection") return null;
                 const strokeW = mapW / 180;
@@ -1736,6 +1782,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
 
                 return null;
               })()}
+              </g>
 
               {/* CHANGE 4-B: Local map elements (admin-managed) */}
               {/* Shared clip path for upload-icon markers */}
