@@ -216,11 +216,22 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
     );
   }
 
-  // ── Step 4: block cells on or outside the building perimeter ─────────────
-  // A cell is blocked if:
-  //   a) Outside all building bboxes (the exterior world).
-  //   b) Inside a building bbox but in the outer WALL_PAD-wide ring (solid wall).
-  // Gap cells (both entrance and exit) override this and remain walkable.
+  // ── Step 4: block only the wall ring (outer bbox minus inner bbox) ────────
+  //
+  // IMPORTANT: exterior cells (outside ALL building bboxes) are intentionally
+  // left WALKABLE.  Previously they were blocked, which caused the following
+  // bug: a start point placed outside the building fell in a blocked exterior
+  // cell; nearestWalkable() spiralled outward and — because the wall ring is
+  // only 1 cell thick (WALL_PAD == cellSize) — found the first interior cell
+  // at Chebyshev distance 2 (straight through the wall), causing A* to begin
+  // inside the building without ever passing through a door gap.
+  //
+  // With exterior cells walkable:
+  //   • Outside start points are already on a walkable cell → no snap.
+  //   • A* routes along the exterior to the nearest gap cell, enters there,
+  //     and continues inside to the destination.
+  //
+  // Gap cells override wall-ring blocking and stay walkable regardless.
 
   const innerBboxes = buildings.map((b) => ({
     x0: b.x0 + WALL_PAD,
@@ -231,25 +242,27 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      if (blocked[r * cols + c]) continue;
-      if (gapCells.has(r * cols + c)) continue;
+      if (blocked[r * cols + c]) continue; // already booth-blocked (step 1)
+      if (gapCells.has(r * cols + c)) continue; // door gap: always walkable
 
       const cx = (c + 0.5) * cellSize;
       const cy = (r + 0.5) * cellSize;
 
-      let shouldBlock = true;
+      // Only block cells that fall inside a building bbox but OUTSIDE its
+      // inner bbox (= the wall ring).  Exterior cells (not inside any bbox)
+      // are left walkable so outside-start routing works correctly.
       for (let i = 0; i < buildings.length; i++) {
         const b = buildings[i];
         if (cx >= b.x0 && cx <= b.x1 && cy >= b.y0 && cy <= b.y1) {
           const ib = innerBboxes[i];
-          if (cx >= ib.x0 && cx <= ib.x1 && cy >= ib.y0 && cy <= ib.y1) {
-            shouldBlock = false;
+          if (!(cx >= ib.x0 && cx <= ib.x1 && cy >= ib.y0 && cy <= ib.y1)) {
+            blocked[r * cols + c] = 1; // wall ring cell → blocked
           }
+          // Interior cell: leave walkable (booths already blocked from step 1)
           break;
         }
+        // Exterior cell (no building bbox matched): leave walkable
       }
-
-      if (shouldBlock) blocked[r * cols + c] = 1;
     }
   }
 

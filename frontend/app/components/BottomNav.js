@@ -1,17 +1,41 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useLang } from "@/lib/useLang";
 
-const NAV_ITEMS = [
-  { key: "nav_services", iconPath: "/logo/services-icon.svg", href: "/" },
-  { key: "nav_badge", iconPath: "/logo/id-badge.svg", href: "/badge" },
-  { key: "nav_profile", iconPath: "/logo/user.svg", href: "/profile" },
+const FALLBACK_ITEMS = [
+  { href: "/", icon_path: "/logo/services-icon.svg" },
+  { href: "/badge", icon_path: "/logo/id-badge.svg" },
+  { href: "/profile", icon_path: "/logo/user.svg" },
 ];
+
+// Module-level cache: survives component unmount/remount across navigations.
+// Populated on first mount, reused on all subsequent mounts — zero re-fetches.
+let _navCache = null;
 
 export default function BottomNav() {
   const pathname = usePathname();
+  // Initialise directly from cache so the component renders correctly on
+  // remount without waiting for a new fetch.
+  const [navItems, setNavItems] = useState(_navCache);
+
+  useEffect(() => {
+    if (_navCache) return; // already fetched this session — skip
+    fetch("/api/nav")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data.items) && data.items.length > 0) {
+          _navCache = data.items;
+          setNavItems(data.items);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const items = navItems
+    ? navItems.map((item) => ({ href: item.href, icon_path: item.icon_path }))
+    : FALLBACK_ITEMS;
 
   return (
     <nav
@@ -23,7 +47,7 @@ export default function BottomNav() {
       }}
     >
       <div className="flex">
-        {NAV_ITEMS.map((item) => {
+        {items.map((item) => {
           const active =
             item.href === "/"
               ? pathname === "/"
@@ -39,11 +63,11 @@ export default function BottomNav() {
                 className="w-7 h-7 block"
                 style={{
                   backgroundColor: "currentColor",
-                  WebkitMaskImage: `url('${item.iconPath}')`,
+                  WebkitMaskImage: `url('${item.icon_path}')`,
                   WebkitMaskSize: "contain",
                   WebkitMaskRepeat: "no-repeat",
                   WebkitMaskPosition: "center",
-                  maskImage: `url('${item.iconPath}')`,
+                  maskImage: `url('${item.icon_path}')`,
                   maskSize: "contain",
                   maskRepeat: "no-repeat",
                   maskPosition: "center",

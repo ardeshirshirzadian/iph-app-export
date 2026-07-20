@@ -303,7 +303,7 @@ function MissionCard({ mission }) {
   );
 }
 
-function LeaderboardTab({ users, levelColors, thresholds }) {
+function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid }) {
   const levelNameToColor = useMemo(() => {
     const map = {};
     thresholds.forEach((t, i) => { map[t.name] = levelColors[i] || levelColors[levelColors.length - 1]; });
@@ -313,7 +313,7 @@ function LeaderboardTab({ users, levelColors, thresholds }) {
   return (
     <div className="space-y-2">
       {users.map((user) => {
-        const isMe = false;
+        const isMe = !!currentUserUuid && user.user_uuid === currentUserUuid;
         const color = levelNameToColor[user.level] || levelColors[0];
         return (
           <div
@@ -587,6 +587,9 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
   const [questStats, setQuestStats] = useState({ name_fa: '', name_en: '', xp: 0, total_scans: 0, today_scans: 0 });
   const [liveMissions, setLiveMissions] = useState(null);
   const [liveBadges, setLiveBadges] = useState(null);
+  const [liveLeaderboard, setLiveLeaderboard] = useState(null);
+  const [currentUserUuid, setCurrentUserUuid] = useState(null);
+  const [currentUserRank, setCurrentUserRank] = useState(null);
 
   useEffect(() => {
     fetch('/api/quest/booths')
@@ -621,6 +624,19 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    fetch('/api/quest/leaderboard')
+      .then(r => r.json())
+      .then(d => {
+        if (Array.isArray(d.leaderboard)) setLiveLeaderboard(d.leaderboard);
+        if (d.currentUser) {
+          setCurrentUserUuid(d.currentUser.user_uuid);
+          setCurrentUserRank(d.currentUser.rank);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const c = useMemo(() => ({
     ...(content?.main || {}),
     ...(lang === 'en' ? (content?.main_en || {}) : {}),
@@ -647,7 +663,26 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     return FALLBACK_MISSIONS;
   }, [liveMissions, content?.missions, lang]);
 
-  const leaderboard = content?.leaderboard?.length > 0 ? content.leaderboard : FALLBACK_LEADERBOARD;
+  const leaderboard = useMemo(() => {
+    if (liveLeaderboard && liveLeaderboard.length > 0) {
+      return liveLeaderboard.map((item) => {
+        const { current } = getXpProgress(item.total_xp, levelThresholds);
+        const name = lang === 'en'
+          ? (item.display_name_en || item.display_name_fa)
+          : item.display_name_fa;
+        return {
+          rank:      item.rank,
+          user_uuid: item.user_uuid,
+          name:      name || 'شرکت‌کننده',
+          company:   '',
+          xp:        item.total_xp,
+          level:     current.name,
+        };
+      });
+    }
+    if (content?.leaderboard?.length > 0) return content.leaderboard;
+    return FALLBACK_LEADERBOARD;
+  }, [liveLeaderboard, content?.leaderboard, lang, levelThresholds]);
   const badges = useMemo(() => {
     if (liveBadges && liveBadges.length > 0) {
       return liveBadges.map(b => ({
@@ -753,7 +788,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
                 return [
                   { label: labels.statXpLabel,      value: toFA(questStats.xp),          unit: "XP",   icon: "⚡", onClick: null,                      highlight: false },
                   { label: labels.statScannedLabel, value: toFA(questStats.total_scans), unit: "غرفه", icon: "📍", onClick: () => setBoothsOpen(true), highlight: true  },
-                  { label: labels.statRankLabel,    value: "—",                           unit: "",     icon: "🏅", onClick: null,                      highlight: false },
+                  { label: labels.statRankLabel,    value: currentUserRank ? toFA(currentUserRank) : "—", unit: "", icon: "🏅", onClick: null, highlight: false },
                 ];
               })().map((stat) => (
                 <div
@@ -799,6 +834,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
             users={leaderboard}
             levelColors={LEVEL_COLORS_BY_IDX}
             thresholds={levelThresholds}
+            currentUserUuid={currentUserUuid}
           />
         )}
 

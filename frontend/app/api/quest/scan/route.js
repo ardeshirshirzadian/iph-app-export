@@ -3,13 +3,43 @@ import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { ensureBadgeProgressTable } from '@/lib/initQuestBadges';
 
+async function cacheUserName(userUuid, displayNameFa, displayNameEn) {
+  try {
+    if (!globalThis._questUserNamesReady) {
+      await query(`
+        CREATE TABLE IF NOT EXISTS quest_user_names (
+          user_uuid       VARCHAR(100) PRIMARY KEY,
+          display_name_fa VARCHAR(200),
+          display_name_en VARCHAR(200),
+          updated_at      TIMESTAMP DEFAULT NOW()
+        )
+      `);
+      globalThis._questUserNamesReady = true;
+    }
+    await query(
+      `INSERT INTO quest_user_names (user_uuid, display_name_fa, display_name_en, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (user_uuid) DO UPDATE
+         SET display_name_fa = EXCLUDED.display_name_fa,
+             display_name_en = EXCLUDED.display_name_en,
+             updated_at      = NOW()`,
+      [userUuid, displayNameFa || null, displayNameEn || null]
+    );
+  } catch (err) {
+    console.error('[quest/scan] cacheUserName failed:', err.message);
+  }
+}
+
 export async function POST(request) {
   const cookieStore = await cookies();
   const userRaw = cookieStore.get('iph_user')?.value;
 
-  let userUuid;
+  let userUuid, displayNameFa, displayNameEn;
   try {
-    userUuid = JSON.parse(decodeURIComponent(userRaw))?.uuid;
+    const user = JSON.parse(decodeURIComponent(userRaw));
+    userUuid = user?.uuid || null;
+    displayNameFa = [user?.firstname_fa, user?.lastname_fa].filter(Boolean).join(' ') || null;
+    displayNameEn = [user?.firstname_en, user?.lastname_en].filter(Boolean).join(' ') || null;
   } catch {
     userUuid = null;
   }
@@ -76,6 +106,9 @@ export async function POST(request) {
        VALUES ($1, $2, $3, $4)`,
       [userUuid, company.id, uuid, xpEarned]
     );
+
+    // Cache user display name so leaderboard doesn't need live Rasayesh calls
+    cacheUserName(userUuid, displayNameFa, displayNameEn).catch(() => {});
 
     // Manual rewards: upsert mission progress and/or badge progress
     if (company.is_manual) {
