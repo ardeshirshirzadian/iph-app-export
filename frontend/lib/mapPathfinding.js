@@ -91,7 +91,7 @@ function snapToRectBoundary(px, py, x0, y0, x1, y1) {
 //             the one-way inside→out constraint.
 //
 // Returns { blocked: Uint8Array, cols, rows, cellSize, forbiddenEdges: Map }.
-export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = [], mapDoors = [], cellSize = CELL) {
+export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = [], mapDoors = [], mapZones = [], cellSize = CELL) {
   const cols = Math.ceil(mapW / cellSize) + 2;
   const rows = Math.ceil(mapH / cellSize) + 2;
   const blocked = new Uint8Array(cols * rows); // 0 = walkable, 1 = blocked
@@ -111,6 +111,24 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
     const c1 = Math.min(cols - 1, Math.ceil(maxX / cellSize - 0.5) - 1);
     const r0 = Math.max(0, Math.floor(minY / cellSize - 0.5) + 1);
     const r1 = Math.min(rows - 1, Math.ceil(maxY / cellSize - 0.5) - 1);
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        blocked[r * cols + c] = 1;
+      }
+    }
+  }
+
+  // ── Step 1b: mark custom zone rectangles as blocked ──────────────────────
+  for (const zone of (mapZones ?? [])) {
+    if (!zone.is_blocking) continue;
+    const zx0 = Math.min(zone.x1, zone.x2);
+    const zx1 = Math.max(zone.x1, zone.x2);
+    const zy0 = Math.min(zone.y1, zone.y2);
+    const zy1 = Math.max(zone.y1, zone.y2);
+    const c0 = Math.max(0, Math.floor(zx0 / cellSize));
+    const c1 = Math.min(cols - 1, Math.ceil(zx1 / cellSize));
+    const r0 = Math.max(0, Math.floor(zy0 / cellSize));
+    const r1 = Math.min(rows - 1, Math.ceil(zy1 / cellSize));
     for (let r = r0; r <= r1; r++) {
       for (let c = c0; c <= c1; c++) {
         blocked[r * cols + c] = 1;
@@ -455,12 +473,14 @@ function rdp(pts, eps) {
 // `mapDoors` are filtered per floor by matching `door.hall_name` to that floor's
 // halls; doors with no hall_name are included in every floor's grid.
 // Returns an object keyed by floor number: { 0: grid, 1: grid, ... }.
-export function buildFloorGrids(mapW, mapH, halls, mapSigns = [], mapDoors = [], cellSize = CELL) {
+export function buildFloorGrids(mapW, mapH, halls, mapSigns = [], mapDoors = [], mapZones = [], hallFloors = {}, cellSize = CELL) {
   const floorSet = [...new Set(halls.map(h => h.floor ?? 0))];
   if (floorSet.length <= 1) {
     const f = floorSet[0] ?? 0;
     const booths = halls.flatMap(h => h.booths ?? []);
-    return { [f]: buildWalkableGrid(mapW, mapH, booths, mapSigns, halls, mapDoors, cellSize) };
+    // zones with no hall_name apply to every floor
+    const floorZones = (mapZones ?? []).filter(z => !z.hall_name || (hallFloors[z.hall_name] ?? 0) === f);
+    return { [f]: buildWalkableGrid(mapW, mapH, booths, mapSigns, halls, mapDoors, floorZones, cellSize) };
   }
   const grids = {};
   for (const floor of floorSet) {
@@ -470,7 +490,8 @@ export function buildFloorGrids(mapW, mapH, halls, mapSigns = [], mapDoors = [],
       d => !d.hall_name || floorHallNames.has(d.hall_name)
     );
     const floorBooths = floorHalls.flatMap(h => h.booths ?? []);
-    grids[floor] = buildWalkableGrid(mapW, mapH, floorBooths, mapSigns, floorHalls, floorDoors, cellSize);
+    const floorZones = (mapZones ?? []).filter(z => !z.hall_name || (hallFloors[z.hall_name] ?? 0) === floor);
+    grids[floor] = buildWalkableGrid(mapW, mapH, floorBooths, mapSigns, floorHalls, floorDoors, floorZones, cellSize);
   }
   return grids;
 }

@@ -39,6 +39,9 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
   const otpRefs = useRef([]);
   const quickAutoSent = useRef(false);
   const sendOtpCoreRef = useRef(null);
+  // Synchronous guard — React state (loading) is async and can't prevent
+  // same-tick duplicate calls from the auto-submit and paste handlers.
+  const submittingRef = useRef(false);
 
   const isEmail = lang === "en";
 
@@ -128,6 +131,8 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
 
   const submitOtp = useCallback(
     async (code) => {
+      if (submittingRef.current) return;
+      submittingRef.current = true;
       setError("");
       setLoading(true);
       try {
@@ -187,6 +192,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
         setError(t(lang, "server_error"));
       } finally {
         setLoading(false);
+        submittingRef.current = false;
       }
     },
     [contact, isEmail, lang, router, quickMode, fromPath]

@@ -101,11 +101,31 @@ export async function GET() {
       // table may not exist yet — safe to ignore
     }
 
+    let hallFloors = {};
+    try {
+      const floorsResult = await query('SELECT hall_name, floor FROM map_hall_floors');
+      hallFloors = Object.fromEntries(floorsResult.rows.map(r => [r.hall_name, r.floor]));
+    } catch {
+      // table may not exist yet — safe to ignore; default 0 applied client-side
+    }
+
+    let mapZones = [];
+    try {
+      const zonesResult = await query(
+        'SELECT id, title_fa, title_en, hall_name, x1, y1, x2, y2, is_blocking FROM map_zones WHERE is_active = true'
+      );
+      mapZones = zonesResult.rows;
+    } catch {
+      // table may not exist yet — safe to ignore
+    }
+
     return NextResponse.json({
       websiteEvent: json.data?.websiteEvent ?? null,
       hallColors,
       mapElements,
       mapDoors,
+      hallFloors,
+      mapZones,
     });
   } catch (err) {
     console.error('[api/map]', err.message);

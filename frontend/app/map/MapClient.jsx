@@ -140,9 +140,6 @@ const PRESET_ICONS = {
   medical: "🏥", parking: "🅿️", stairs: "🪜",
 };
 
-// Hall H is floor 1; all others are ground floor (0).
-const FLOOR_1_HALLS = new Set(["H"]);
-
 // Returns the floor number for a given SVG coordinate by checking which hall
 // bbox the point falls inside. Defaults to 0 if outside all halls.
 function getFloorAtPoint(x, y, halls) {
@@ -731,7 +728,9 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
   const [signTooltip, setSignTooltip] = useState(null); // { sign, sx, sy }
   // CHANGE 3-A: new state for hall colors, map elements, element tooltip
   const [hallColors, setHallColors] = useState({});
+  const [hallFloors, setHallFloors] = useState({});
   const [mapElements, setMapElements] = useState([]);
+  const [mapZones, setMapZones] = useState([]);
   const [elementTooltip, setElementTooltip] = useState(null); // { el, sx, sy }
 
   // Navigation state
@@ -958,7 +957,9 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
         dimRef.current = dim;
         setMapData(d.websiteEvent);
         if (d.hallColors) setHallColors(d.hallColors);
+        if (d.hallFloors) setHallFloors(d.hallFloors);
         if (d.mapElements) setMapElements(d.mapElements);
+        if (d.mapZones) setMapZones(d.mapZones);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -1197,10 +1198,10 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
     if (!mapData) return [];
     return (mapData.halls ?? []).map((hall) => ({
       ...hall,
-      floor: FLOOR_1_HALLS.has(hall.name) ? 1 : 0,
+      floor: hallFloors[hall.name] ?? 0,
       groups: buildBoothGroups(hall.booths ?? []),
     }));
-  }, [mapData]);
+  }, [mapData, hallFloors]);
 
   const stairsElements = useMemo(
     () => mapElements.filter(el => el.icon_type === "preset" && el.icon_value === "stairs"),
@@ -1226,7 +1227,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
         const pts = booth.bounds ?? [];
         if (!pts.length) continue;
         const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
-        results.push({ type: "booth", id: `b-${booth.id}`, name: co.brand_name_fa || co.brand_name_en, nameEn: co.brand_name_en, hall: hall.name, no: booth.no, companyId: co.id, floor: FLOOR_1_HALLS.has(hall.name) ? 1 : 0, x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 });
+        results.push({ type: "booth", id: `b-${booth.id}`, name: co.brand_name_fa || co.brand_name_en, nameEn: co.brand_name_en, hall: hall.name, no: booth.no, companyId: co.id, floor: hallFloors[hall.name] ?? 0, x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 });
         if (results.length >= 12) break;
       }
       if (results.length >= 12) break;
@@ -1238,7 +1239,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
       if (results.length >= 15) break;
     }
     return results;
-  }, [searchQuery, mapData, mapElements]);
+  }, [searchQuery, mapData, mapElements, hallFloors]);
 
   const startSearchResults = useMemo(() => {
     const q = startQuery.trim().toLowerCase();
@@ -1257,7 +1258,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
         const pts = booth.bounds ?? [];
         if (!pts.length) continue;
         const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
-        results.push({ type: "booth", id: `b-${booth.id}`, name: co.brand_name_fa || co.brand_name_en, hall: hall.name, no: booth.no, companyId: co.id, floor: FLOOR_1_HALLS.has(hall.name) ? 1 : 0, x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 });
+        results.push({ type: "booth", id: `b-${booth.id}`, name: co.brand_name_fa || co.brand_name_en, hall: hall.name, no: booth.no, companyId: co.id, floor: hallFloors[hall.name] ?? 0, x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 });
         if (results.length >= 8) break;
       }
       if (results.length >= 8) break;
@@ -1269,7 +1270,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
       if (results.length >= 10) break;
     }
     return results;
-  }, [startQuery, mapData, mapElements]);
+  }, [startQuery, mapData, mapElements, hallFloors]);
 
   // ── Wayfinding helpers ─────────────────────────────────────────────────────
 
@@ -1319,6 +1320,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
             dim.w, dim.h, halls,
             mapData.map_signs ?? [],
             mapData.map_doors ?? [],
+            mapZones.filter(z => z.is_blocking),
+            hallFloors,
           );
         }
 
@@ -1744,10 +1747,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
                     <g style={{ pointerEvents: "none" }}>
                       <polyline points={path.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="#00ffb3" strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash} strokeOpacity={0.9} />
                       {arrowPolygons(path, "#00ffb3", "a")}
-                      <circle cx={start.x} cy={start.y} r={markerR} fill="#3b82f6" stroke="#fff" strokeWidth={strokeW * 0.6} />
-                      <text x={start.x} y={start.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs * 0.85} style={{ userSelect: "none" }}>🔵</text>
-                      <circle cx={dest.x} cy={dest.y} r={markerR * 1.2} fill="#f97316" stroke="#fff" strokeWidth={strokeW * 0.6} />
-                      <text x={dest.x} y={dest.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs} style={{ userSelect: "none" }}>🏁</text>
+                      <text x={start.x} y={start.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs * 1.3} filter="url(#markerDrop)" style={{ userSelect: "none" }}>🏁</text>
+                      <text x={dest.x} y={dest.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs * 1.4} filter="url(#markerDrop)" style={{ userSelect: "none" }}>📍</text>
                     </g>
                   );
                 }
@@ -1765,17 +1766,13 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
                       <polyline points={pathB.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="#f59e0b" strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash} strokeOpacity={0.85} />
                       {arrowPolygons(pathB, "#f59e0b", "ab")}
                       {/* Start pin */}
-                      <circle cx={startPt.x} cy={startPt.y} r={markerR} fill="#3b82f6" stroke="#fff" strokeWidth={strokeW * 0.6} />
-                      <text x={startPt.x} y={startPt.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs * 0.85} style={{ userSelect: "none" }}>🔵</text>
+                      <text x={startPt.x} y={startPt.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs * 1.3} filter="url(#markerDrop)" style={{ userSelect: "none" }}>🏁</text>
                       {/* Staircase on start floor */}
-                      <circle cx={stairsFrom.x} cy={stairsFrom.y} r={markerR * 1.1} fill="rgba(245,158,11,0.85)" stroke="#f59e0b" strokeWidth={strokeW * 0.8} />
-                      <text x={stairsFrom.x} y={stairsFrom.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs} style={{ userSelect: "none" }}>🪜</text>
+                      <text x={stairsFrom.x} y={stairsFrom.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs * 1.3} filter="url(#markerDrop)" style={{ userSelect: "none" }}>🪜</text>
                       {/* Staircase on dest floor */}
-                      <circle cx={stairsTo.x} cy={stairsTo.y} r={markerR * 1.1} fill="rgba(245,158,11,0.85)" stroke="#f59e0b" strokeWidth={strokeW * 0.8} />
-                      <text x={stairsTo.x} y={stairsTo.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs} style={{ userSelect: "none" }}>🪜</text>
+                      <text x={stairsTo.x} y={stairsTo.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs * 1.3} filter="url(#markerDrop)" style={{ userSelect: "none" }}>🪜</text>
                       {/* Destination pin */}
-                      <circle cx={destPt.x} cy={destPt.y} r={markerR * 1.2} fill="#f97316" stroke="#fff" strokeWidth={strokeW * 0.6} />
-                      <text x={destPt.x} y={destPt.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs} style={{ userSelect: "none" }}>🏁</text>
+                      <text x={destPt.x} y={destPt.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs * 1.4} filter="url(#markerDrop)" style={{ userSelect: "none" }}>📍</text>
                     </g>
                   );
                 }
@@ -1785,11 +1782,14 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
               </g>
 
               {/* CHANGE 4-B: Local map elements (admin-managed) */}
-              {/* Shared clip path for upload-icon markers */}
+              {/* Shared clip path for upload-icon markers + drop-shadow for route markers */}
               <defs>
                 <clipPath id="mapElImgClip">
                   <circle r={signR * 0.95} />
                 </clipPath>
+                <filter id="markerDrop" x="-60%" y="-60%" width="220%" height="220%" colorInterpolationFilters="sRGB">
+                  <feDropShadow dx="0" dy="0" stdDeviation="2.5" floodColor="#000000" floodOpacity="0.72" />
+                </filter>
               </defs>
 
               {mapElements.map((el) => {
