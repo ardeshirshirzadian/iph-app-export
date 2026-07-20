@@ -313,6 +313,40 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en }
       <div className="relative max-w-md mx-auto px-4 pb-32">
         <PageHeader title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} leftActions={<GearIcon lang={lang} />} />
 
+        {/* Mandatory photo banner — shown when attendee data is loaded and no photo exists */}
+        {attendeeData && !attendeeData.profile?.jpg?.["128"] && (
+          <div
+            className="mb-4 rounded-2xl p-4 flex items-start gap-3"
+            style={{ background: "rgba(255,179,0,0.1)", border: "1px solid rgba(255,179,0,0.35)" }}
+          >
+            <span style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>📸</span>
+            <div className="flex-1 min-w-0">
+              {lang === "en" ? (
+                <>
+                  <p className="text-sm font-bold mb-1" style={{ color: "#ffb300" }}>Profile photo required</p>
+                  <p className="text-xs leading-5" style={{ color: "rgba(255,255,255,0.7)" }}>
+                    You must upload a profile photo to access the app. Please tap the button below to add your photo.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-bold mb-1" style={{ color: "#ffb300" }}>تصویر پروفایل الزامی است</p>
+                  <p className="text-xs leading-6" style={{ color: "rgba(255,255,255,0.7)" }}>
+                    برای استفاده از اپلیکیشن باید تصویر پروفایل خود را آپلود کنید. لطفاً روی دکمه زیر ضربه بزنید.
+                  </p>
+                </>
+              )}
+              <Link
+                href="/profile/edit"
+                className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95"
+                style={{ background: "#ffb300", color: "#021f20", textDecoration: "none" }}
+              >
+                {lang === "en" ? "Upload Photo" : "آپلود تصویر"}
+              </Link>
+            </div>
+          </div>
+        )}
+
         {/* User card */}
         <div
           className="relative backdrop-blur-xl border border-[var(--border-accent)] rounded-3xl p-5 mb-4"

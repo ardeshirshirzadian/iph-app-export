@@ -118,20 +118,65 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
     }
   }
 
-  // ── Step 1b: mark custom zone rectangles as blocked ──────────────────────
+  // ── Step 1b: mark custom zones as blocked (rectangle / circle / polygon) ──
   for (const zone of (mapZones ?? [])) {
     if (!zone.is_blocking) continue;
-    const zx0 = Math.min(zone.x1, zone.x2);
-    const zx1 = Math.max(zone.x1, zone.x2);
-    const zy0 = Math.min(zone.y1, zone.y2);
-    const zy1 = Math.max(zone.y1, zone.y2);
-    const c0 = Math.max(0, Math.floor(zx0 / cellSize));
-    const c1 = Math.min(cols - 1, Math.ceil(zx1 / cellSize));
-    const r0 = Math.max(0, Math.floor(zy0 / cellSize));
-    const r1 = Math.min(rows - 1, Math.ceil(zy1 / cellSize));
-    for (let r = r0; r <= r1; r++) {
-      for (let c = c0; c <= c1; c++) {
-        blocked[r * cols + c] = 1;
+    const shape = zone.shape_type || 'rectangle';
+
+    if (shape === 'circle' && zone.cx != null && zone.radius != null) {
+      // Bounding box of circle for outer scan, then distance check per cell
+      const r2 = zone.radius * zone.radius;
+      const c0 = Math.max(0, Math.floor((zone.cx - zone.radius) / cellSize));
+      const c1 = Math.min(cols - 1, Math.ceil((zone.cx + zone.radius) / cellSize));
+      const r0 = Math.max(0, Math.floor((zone.cy - zone.radius) / cellSize));
+      const r1 = Math.min(rows - 1, Math.ceil((zone.cy + zone.radius) / cellSize));
+      for (let row = r0; row <= r1; row++) {
+        for (let col = c0; col <= c1; col++) {
+          const cellCx = (col + 0.5) * cellSize;
+          const cellCy = (row + 0.5) * cellSize;
+          const dx = cellCx - zone.cx, dy = cellCy - zone.cy;
+          if (dx * dx + dy * dy <= r2) blocked[row * cols + col] = 1;
+        }
+      }
+    } else if (shape === 'polygon' && Array.isArray(zone.points) && zone.points.length >= 3) {
+      // Bounding box for outer scan, then ray-cast per cell
+      const pts = zone.points;
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const p of pts) {
+        if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+      }
+      const c0 = Math.max(0, Math.floor(minX / cellSize));
+      const c1 = Math.min(cols - 1, Math.ceil(maxX / cellSize));
+      const r0 = Math.max(0, Math.floor(minY / cellSize));
+      const r1 = Math.min(rows - 1, Math.ceil(maxY / cellSize));
+      for (let row = r0; row <= r1; row++) {
+        for (let col = c0; col <= c1; col++) {
+          const px = (col + 0.5) * cellSize, py = (row + 0.5) * cellSize;
+          let inside = false;
+          for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+            const xi = pts[i].x, yi = pts[i].y, xj = pts[j].x, yj = pts[j].y;
+            if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi)
+              inside = !inside;
+          }
+          if (inside) blocked[row * cols + col] = 1;
+        }
+      }
+    } else {
+      // Default: rectangle (x1,y1,x2,y2)
+      if (zone.x1 == null) continue;
+      const zx0 = Math.min(zone.x1, zone.x2);
+      const zx1 = Math.max(zone.x1, zone.x2);
+      const zy0 = Math.min(zone.y1, zone.y2);
+      const zy1 = Math.max(zone.y1, zone.y2);
+      const c0 = Math.max(0, Math.floor(zx0 / cellSize));
+      const c1 = Math.min(cols - 1, Math.ceil(zx1 / cellSize));
+      const r0 = Math.max(0, Math.floor(zy0 / cellSize));
+      const r1 = Math.min(rows - 1, Math.ceil(zy1 / cellSize));
+      for (let r = r0; r <= r1; r++) {
+        for (let c = c0; c <= c1; c++) {
+          blocked[r * cols + c] = 1;
+        }
       }
     }
   }

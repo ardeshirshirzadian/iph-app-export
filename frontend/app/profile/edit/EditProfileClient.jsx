@@ -426,6 +426,8 @@ export default function EditProfileClient() {
       client.cache.evict({ fieldName: "getAttendee" });
       client.cache.evict({ fieldName: "attendee" });
       client.cache.gc();
+      // Unblock the mandatory-photo guard now that a photo exists
+      localStorage.setItem("iph_photo_ok", "1");
       setCropSrc(null);
     } catch (err) {
       setPhotoError(err.message || "خطا در آپلود تصویر");

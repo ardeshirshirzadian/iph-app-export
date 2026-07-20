@@ -15,9 +15,10 @@ const CREATE_TABLE = `
 `;
 
 const SEED = [
-  { item_type: 'logo', sort_order: 0 },
-  { item_type: 'bell', sort_order: 1 },
-  { item_type: 'cart', sort_order: 2 },
+  { item_type: 'profile_pic', sort_order: 0 },
+  { item_type: 'logo',        sort_order: 1 },
+  { item_type: 'bell',        sort_order: 2 },
+  { item_type: 'cart',        sort_order: 3 },
 ];
 
 export async function ensureHeaderItemsTable() {
@@ -30,6 +31,12 @@ export async function ensureHeaderItemsTable() {
         'INSERT INTO header_items (item_type, sort_order) VALUES ($1, $2)',
         [item.item_type, item.sort_order]
       );
+    }
+  } else {
+    // Migrate: ensure profile_pic row exists in already-seeded tables
+    const { rows: pp } = await query("SELECT id FROM header_items WHERE item_type = 'profile_pic'");
+    if (pp.length === 0) {
+      await query("INSERT INTO header_items (item_type, sort_order) VALUES ('profile_pic', 0)");
     }
   }
   globalThis._headerItemsInitialized = true;

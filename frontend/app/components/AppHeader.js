@@ -16,6 +16,12 @@ const CART_HAS_ITEMS = gql`
   query { getAttendeeCart { id status cart_items { id } } }
 `;
 
+const PROFILE_PHOTO_QUERY = gql`
+  query GetAttendeeHeaderPhoto { getAttendee { profile } }
+`;
+
+const RASAYESH_BASE = "https://api.rasayesh.com/";
+
 const BELL_MASK = {
   display: "block",
   width: "20px",
@@ -52,6 +58,29 @@ const ICON_SHELL = {
   background: "var(--surface-2)",
   border: "1px solid var(--border)",
 };
+
+const USER_MASK = {
+  display: "block",
+  width: "20px",
+  height: "20px",
+  backgroundColor: "currentColor",
+  maskImage: "url('/logo/user.svg')",
+  maskSize: "contain",
+  maskRepeat: "no-repeat",
+  maskPosition: "center",
+  WebkitMaskImage: "url('/logo/user.svg')",
+  WebkitMaskSize: "contain",
+  WebkitMaskRepeat: "no-repeat",
+  WebkitMaskPosition: "center",
+  color: "var(--text)",
+};
+
+function readUserCookie() {
+  if (typeof document === "undefined") return null;
+  const m = document.cookie.match(/(?:^|; )iph_user=([^;]*)/);
+  if (!m) return null;
+  try { return JSON.parse(decodeURIComponent(m[1])); } catch { return null; }
+}
 
 // Custom-link icon uses the same mask technique as bell/cart.
 function linkMask(iconPath) {
@@ -96,6 +125,8 @@ export default function AppHeader({ leftActions, rightActions }) {
   const [lastSeen, setLastSeen] = useState(0);
   const [liveToast, setLiveToast] = useState(null);
   const [hasCart, setHasCart] = useState(false);
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   // Initialise from module-level cache so remounts render instantly without refetch.
   const [headerItems, setHeaderItems] = useState(_headerCache);
 
@@ -104,6 +135,21 @@ export default function AppHeader({ leftActions, rightActions }) {
     fetch("/api/notifications")
       .then((r) => r.json())
       .then(({ notifications: rows = [] }) => setNotifications(rows))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const user = readUserCookie();
+    if (!user) return;
+    setIsLoggedIn(true);
+    const client = getApolloClient();
+    if (!client) return;
+    client.query({ query: PROFILE_PHOTO_QUERY, fetchPolicy: "cache-first" })
+      .then(({ data }) => {
+        const jpg = data?.getAttendee?.profile?.jpg;
+        const url = jpg?.["128"] || jpg?.["256"] || jpg?.["512"];
+        if (url) setProfilePhotoUrl(`${RASAYESH_BASE}${url}`);
+      })
       .catch(() => {});
   }, []);
 
@@ -183,8 +229,32 @@ export default function AppHeader({ leftActions, rightActions }) {
   // existing hardcoded behavior (bell-cart in FA → cart-bell in EN).
   const actionItemsDesc = [...actionItemsAsc].reverse();
 
-  // Render a single action item (bell / cart / custom link).
+  // Render a single action item (profile_pic / bell / cart / custom link).
   function renderActionItem(item) {
+    if (item.item_type === "profile_pic") {
+      if (!isLoggedIn) return null;
+      return (
+        <button
+          key={item.id}
+          aria-label={lang === "en" ? "Profile" : "پروفایل"}
+          onClick={() => router.push("/profile")}
+          className="relative w-9 h-9 rounded-xl flex items-center justify-center transition-transform active:scale-90 duration-150 overflow-hidden"
+          style={profilePhotoUrl ? { ...ICON_SHELL, padding: 0 } : ICON_SHELL}
+        >
+          {profilePhotoUrl ? (
+            <img
+              src={profilePhotoUrl}
+              alt=""
+              style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "10px" }}
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <span style={USER_MASK} />
+          )}
+        </button>
+      );
+    }
+
     if (item.item_type === "bell") {
       return (
         <button

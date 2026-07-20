@@ -97,6 +97,31 @@ function polyCenter(points) {
   return { cx: (Math.min(...xs) + Math.max(...xs)) / 2, cy: (Math.min(...ys) + Math.max(...ys)) / 2 };
 }
 
+// Compute the geometric center of a map_zone for any shape type.
+function zoneCenter(zone) {
+  const shape = zone.shape_type || 'rectangle';
+  if (shape === 'circle' && zone.cx != null) return { x: zone.cx, y: zone.cy };
+  if (shape === 'polygon' && Array.isArray(zone.points) && zone.points.length >= 3) {
+    // True polygon centroid (Shoelace formula)
+    const pts = zone.points;
+    let ax = 0, ay = 0, area = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const j = (i + 1) % pts.length;
+      const cross = pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+      area += cross; ax += (pts[i].x + pts[j].x) * cross; ay += (pts[i].y + pts[j].y) * cross;
+    }
+    area /= 2;
+    if (Math.abs(area) < 0.001) {
+      const sx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+      const sy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+      return { x: sx, y: sy };
+    }
+    return { x: ax / (6 * area), y: ay / (6 * area) };
+  }
+  // rectangle fallback
+  return { x: ((zone.x1 ?? 0) + (zone.x2 ?? 0)) / 2, y: ((zone.y1 ?? 0) + (zone.y2 ?? 0)) / 2 };
+}
+
 function buildBoothGroups(booths) {
   const companyMap = new Map();
   const result = [];
@@ -253,7 +278,7 @@ function MapSearchBar({ query, setQuery, open, setOpen, results, onSelect, destN
               }}
             >
               <span style={{ fontSize: 18, flexShrink: 0 }}>
-                {r.type === "element" ? r.emoji : "🏪"}
+                {r.type === "element" ? r.emoji : r.type === "zone" ? "🔲" : "🏪"}
               </span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -262,6 +287,8 @@ function MapSearchBar({ query, setQuery, open, setOpen, results, onSelect, destN
                 <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
                   {r.type === "booth"
                     ? `${isEN ? "Hall" : "سالن"} ${r.hall} · ${isEN ? "Booth" : "غرفه"} ${r.no}`
+                    : r.type === "zone"
+                    ? (isEN ? "Area / Zone" : "منطقه / سالن")
                     : (isEN ? (r.nameEn || r.name) : r.name)}
                 </div>
               </div>
@@ -373,11 +400,14 @@ function StartPanel({ lang, isRTL, onTapMode, onScanMode, startQuery, setStartQu
               cursor: "pointer", textAlign: isRTL ? "right" : "left", fontFamily: "inherit",
             }}
           >
-            <span style={{ fontSize: 18 }}>{r.type === "element" ? r.emoji : "🏪"}</span>
+            <span style={{ fontSize: 18 }}>{r.type === "element" ? r.emoji : r.type === "zone" ? "🔲" : "🏪"}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{isEN ? (r.nameEn || r.name) : r.name}</div>
               {r.type === "booth" && (
                 <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{isEN ? "Hall" : "سالن"} {r.hall}</div>
+              )}
+              {r.type === "zone" && (
+                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{isEN ? "Area / Zone" : "منطقه / سالن"}</div>
               )}
             </div>
           </button>
@@ -1238,8 +1268,16 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
       results.push({ type: "element", id: `e-${el.id}`, name: el.title_fa, nameEn: el.title_en, emoji: getElementEmoji(el), floor: el.floor ?? 0, x: el.x, y: el.y });
       if (results.length >= 15) break;
     }
+    for (const zone of mapZones) {
+      if (!zone.title_fa) continue;
+      const t = ((zone.title_fa || "") + " " + (zone.title_en || "")).toLowerCase();
+      if (!t.includes(q)) continue;
+      const c = zoneCenter(zone);
+      results.push({ type: "zone", id: `z-${zone.id}`, name: zone.title_fa, nameEn: zone.title_en, floor: 0, x: c.x, y: c.y });
+      if (results.length >= 18) break;
+    }
     return results;
-  }, [searchQuery, mapData, mapElements, hallFloors]);
+  }, [searchQuery, mapData, mapElements, mapZones, hallFloors]);
 
   const startSearchResults = useMemo(() => {
     const q = startQuery.trim().toLowerCase();
@@ -1269,8 +1307,16 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
       results.push({ type: "element", id: `e-${el.id}`, name: el.title_fa, emoji: getElementEmoji(el), floor: el.floor ?? 0, x: el.x, y: el.y });
       if (results.length >= 10) break;
     }
+    for (const zone of mapZones) {
+      if (!zone.title_fa) continue;
+      const t = ((zone.title_fa || "") + " " + (zone.title_en || "")).toLowerCase();
+      if (!t.includes(q)) continue;
+      const c = zoneCenter(zone);
+      results.push({ type: "zone", id: `z-${zone.id}`, name: zone.title_fa, nameEn: zone.title_en, floor: 0, x: c.x, y: c.y });
+      if (results.length >= 12) break;
+    }
     return results;
-  }, [startQuery, mapData, mapElements, hallFloors]);
+  }, [startQuery, mapData, mapElements, mapZones, hallFloors]);
 
   // ── Wayfinding helpers ─────────────────────────────────────────────────────
 
@@ -1685,17 +1731,11 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
                     onClick={(e) => onSignClick(e, sign)}
                     style={{ cursor: "pointer" }}
                   >
-                    <circle
-                      r={signR}
-                      fill={isActive ? (sign.color || "#00ffb3") : "rgba(2,31,32,0.88)"}
-                      stroke={sign.color || "#00ffb3"}
-                      strokeWidth={isActive ? 3 : 2}
-                      strokeOpacity={0.75}
-                    />
                     <text
                       textAnchor="middle"
                       dominantBaseline="central"
-                      fontSize={signFs}
+                      fontSize={signFs * 1.2}
+                      filter="url(#markerDrop)"
                       style={{ userSelect: "none", pointerEvents: "none" }}
                     >
                       {sign.icon || "📍"}
@@ -1804,13 +1844,6 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
                     onClick={(e) => onElementClick(e, el)}
                     style={{ cursor: "pointer" }}
                   >
-                    <circle
-                      r={r}
-                      fill={isActive ? (el.color || "#3b82f6") : "rgba(2,31,32,0.88)"}
-                      stroke={el.color || "#3b82f6"}
-                      strokeWidth={isActive ? 3 : 2}
-                      strokeOpacity={0.85}
-                    />
                     {isUpload ? (
                       <image
                         href={el.icon_value}
@@ -1820,13 +1853,15 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
                         height={signR * 1.9}
                         clipPath="url(#mapElImgClip)"
                         preserveAspectRatio="xMidYMid meet"
+                        filter="url(#markerDrop)"
                         style={{ pointerEvents: "none" }}
                       />
                     ) : (
                       <text
                         textAnchor="middle"
                         dominantBaseline="central"
-                        fontSize={signFs}
+                        fontSize={signFs * 1.2}
+                        filter="url(#markerDrop)"
                         style={{ userSelect: "none", pointerEvents: "none" }}
                       >
                         {emoji}
