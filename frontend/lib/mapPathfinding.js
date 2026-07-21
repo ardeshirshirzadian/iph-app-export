@@ -561,13 +561,25 @@ function rdp(pts, eps) {
 // `mapDoors` are filtered per floor by matching `door.hall_name` to that floor's
 // halls; doors with no hall_name are included in every floor's grid.
 // Returns an object keyed by floor number: { 0: grid, 1: grid, ... }.
+// Helper: resolve a wall/zone's floor number.
+// If hall_name is set, look it up in hallFloors (defaulting to 0 if unrecognised).
+// If hall_name is NULL or empty string (admin forgot to tag it), default to floor 0
+// rather than spreading it across every floor.  This means the wall will block
+// pathfinding on floor 0 only — correct for virtually all single-floor venues
+// and a safe fallback for multi-floor ones.  Admin should always tag hall_name on
+// multi-floor maps; this prevents the wall from being silently ignored.
+function resolveFloor(hallName, hallFloors) {
+  if (!hallName) return 0; // NULL or "" → floor 0 fallback
+  return hallFloors[hallName] ?? 0;
+}
+
 export function buildFloorGrids(mapW, mapH, halls, mapSigns = [], mapDoors = [], mapZones = [], hallFloors = {}, mapWalls = [], cellSize = CELL) {
   const floorSet = [...new Set(halls.map(h => h.floor ?? 0))];
   if (floorSet.length <= 1) {
     const f = floorSet[0] ?? 0;
     const booths = halls.flatMap(h => h.booths ?? []);
-    const floorZones = (mapZones ?? []).filter(z => !z.hall_name || (hallFloors[z.hall_name] ?? 0) === f);
-    const floorWalls = (mapWalls ?? []).filter(w => !w.hall_name || (hallFloors[w.hall_name] ?? 0) === f);
+    const floorZones = (mapZones ?? []).filter(z => resolveFloor(z.hall_name, hallFloors) === f);
+    const floorWalls = (mapWalls ?? []).filter(w => resolveFloor(w.hall_name, hallFloors) === f);
     return { [f]: buildWalkableGrid(mapW, mapH, booths, mapSigns, halls, mapDoors, floorZones, floorWalls, cellSize) };
   }
   const grids = {};
@@ -576,8 +588,8 @@ export function buildFloorGrids(mapW, mapH, halls, mapSigns = [], mapDoors = [],
     const floorHallNames = new Set(floorHalls.map(h => h.name));
     const floorDoors = (mapDoors ?? []).filter(d => !d.hall_name || floorHallNames.has(d.hall_name));
     const floorBooths = floorHalls.flatMap(h => h.booths ?? []);
-    const floorZones = (mapZones ?? []).filter(z => !z.hall_name || (hallFloors[z.hall_name] ?? 0) === floor);
-    const floorWalls = (mapWalls ?? []).filter(w => !w.hall_name || (hallFloors[w.hall_name] ?? 0) === floor);
+    const floorZones = (mapZones ?? []).filter(z => resolveFloor(z.hall_name, hallFloors) === floor);
+    const floorWalls = (mapWalls ?? []).filter(w => resolveFloor(w.hall_name, hallFloors) === floor);
     grids[floor] = buildWalkableGrid(mapW, mapH, floorBooths, mapSigns, floorHalls, floorDoors, floorZones, floorWalls, cellSize);
   }
   return grids;

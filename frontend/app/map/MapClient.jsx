@@ -1,5 +1,41 @@
 "use client";
 
+// ╔══════════════════════════════════════════════════════════════════════════════╗
+// ║  ⚠️  CRITICAL PERFORMANCE RULES — READ BEFORE ADDING ANY NEW MAP FEATURE  ║
+// ║                                                                              ║
+// ║  This file has caused THREE separate iOS Safari GPU-memory crash regressions ║
+// ║  (map elements, route arrows, walls). Every new feature must obey:           ║
+// ║                                                                              ║
+// ║  RULE 1 — NO React setState during active gesture frames.                    ║
+// ║    • All transform updates go through applyT() → wrapperRef direct DOM.      ║
+// ║    • ✅ correct: applyT(x, y, scale)                                         ║
+// ║    • ❌ wrong:  setScale(newScale)  inside onPointerMove / onTouchMove       ║
+// ║                                                                              ║
+// ║  RULE 2 — willChange:"transform" must ONLY be active during gestures.        ║
+// ║    • Set it at gesture START; rely solely on onGestureSettle() to clear it.  ║
+// ║    • NEVER call wrapperRef.current.style.willChange = "auto" inside          ║
+// ║      cancelMomentum() or cancelZoomAnim() — those functions only cancel the  ║
+// ║      RAF; the 120 ms settle timer is the single owner of the "auto" reset.   ║
+// ║    • ✅ correct: wrapperRef.current.style.willChange = "transform" in        ║
+// ║                  onPointerDown / onTouchStart / startMomentum / smoothZoom   ║
+// ║    • ❌ wrong:  permanently setting willChange in JSX style={{ willChange }}  ║
+// ║    • ❌ wrong:  toggling "auto" inside cancel helpers (causes rapid           ║
+// ║                  alloc/dealloc of GPU layers → iOS Safari crash on 10+ zooms)║
+// ║                                                                              ║
+// ║  RULE 3 — No per-frame expensive derived-data recomputation.                 ║
+// ║    • Grid builds, centroid calcs, line-intersection tests: compute ONCE when ║
+// ║      underlying data changes; cache in a ref.                                ║
+// ║    • ✅ correct: floorGridsRef.current built lazily in confirmStart, cached   ║
+// ║    • ❌ wrong:  calling buildFloorGrids() or _segmentsIntersect() inside     ║
+// ║                  applyT(), onTouchMove(), or any RAF step callback           ║
+// ║                                                                              ║
+// ║  ADDING A NEW FEATURE CHECKLIST:                                             ║
+// ║    [ ] Does it add SVG/DOM nodes inside wrapperRef? → hide them during       ║
+// ║        gesture via onGestureStart / onGestureSettle (see routeLayerRef).     ║
+// ║    [ ] Does it compute something on data? → useMemo with stable deps.        ║
+// ║    [ ] Does it need pathfinding? → add to buildFloorGrids once, cache it.    ║
+// ╚══════════════════════════════════════════════════════════════════════════════╝
+
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
 import BottomNav from "../components/BottomNav";
@@ -824,6 +860,13 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const gestureSettleTimerRef = useRef(null);
   const routeLayerRef = useRef(null);
 
+  // ════════════════════════════════════════════════════════════════════════════
+  // PAN / ZOOM CORE — DO NOT ADD STATE UPDATES OR EXPENSIVE LOGIC INSIDE HERE
+  // Everything below until "Data fetch" uses only refs + direct DOM writes.
+  // Any new map feature code (rendering, data, route logic) belongs OUTSIDE this
+  // section. See the CRITICAL PERFORMANCE RULES block at the top of this file.
+  // ════════════════════════════════════════════════════════════════════════════
+
   // ── Transform helpers ──────────────────────────────────────────────────────
 
   function applyT(x, y, scale) {
@@ -872,23 +915,23 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   }
 
   // Cancel momentum animation (safe to call any time).
-  // MUST also clear willChange — if momentum is running (willChange="transform")
-  // and a caller cancels it without resetting willChange, the large SVG map
-  // stays permanently composited on GPU, causing iOS Safari memory crashes.
+  // Does NOT touch willChange — onGestureSettle() is the sole owner of the
+  // "auto" reset. Callers that cancel momentum always either immediately start
+  // a new gesture (which keeps willChange = "transform") or have already called
+  // onGestureSettle / will let onTouchEnd reset willChange via onGestureSettle.
   function cancelMomentum() {
     if (momentumRef.current.rafId) {
       cancelAnimationFrame(momentumRef.current.rafId);
       momentumRef.current.rafId = 0;
-      if (wrapperRef.current) wrapperRef.current.style.willChange = "auto";
     }
   }
 
-  // Cancel smooth-zoom animation — same willChange cleanup obligation.
+  // Cancel smooth-zoom animation. Does NOT touch willChange for the same reason
+  // as cancelMomentum — the settle timer owns the "auto" transition.
   function cancelZoomAnim() {
     if (zoomAnimRef.current.rafId) {
       cancelAnimationFrame(zoomAnimRef.current.rafId);
       zoomAnimRef.current.rafId = 0;
-      if (wrapperRef.current) wrapperRef.current.style.willChange = "auto";
     }
   }
 
@@ -910,6 +953,10 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
     gestureSettleTimerRef.current = setTimeout(() => {
       gestureActiveRef.current = false;
       gestureSettleTimerRef.current = null;
+      // Sole owner of willChange reset — never clear it inside cancel helpers,
+      // because rapid cancel→restart cycles (zoom button clicks, double-taps)
+      // would cause GPU layer alloc/dealloc thrashing and iOS Safari crashes.
+      if (wrapperRef.current) wrapperRef.current.style.willChange = "auto";
       if (routeLayerRef.current) routeLayerRef.current.style.visibility = "";
       if (boothLabelsWrapRef.current) {
         const { scale } = tRef.current;
@@ -937,7 +984,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
       vy *= fric;
       if (Math.hypot(vx, vy) < STOP) {
         momentumRef.current.rafId = 0;
-        if (wrapperRef.current) wrapperRef.current.style.willChange = "auto";
+        onGestureSettle(); // settle timer owns the willChange → "auto" transition
         return;
       }
       const { x, y, scale } = tRef.current;
@@ -957,7 +1004,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   // The SVG point under (vpX, vpY) stays visually fixed throughout the animation.
   // Uses cubic ease-out over ~220 ms.
   function smoothZoomToward(vpX, vpY, targetScale, duration = 220) {
-    cancelZoomAnim(); // clears any prior RAF + resets willChange to "auto"
+    cancelZoomAnim(); // cancels any prior RAF (does NOT touch willChange)
     onGestureStart();
     const { x: x0, y: y0, scale: s0 } = tRef.current;
     const s1 = clamp(targetScale, minScaleRef.current, maxScaleRef.current);
@@ -978,8 +1025,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
         zoomAnimRef.current.rafId = requestAnimationFrame(step);
       } else {
         zoomAnimRef.current.rafId = 0;
-        if (wrapperRef.current) wrapperRef.current.style.willChange = "auto";
-        onGestureSettle();
+        onGestureSettle(); // settle timer owns willChange → "auto"; do not reset it here
       }
     }
     zoomAnimRef.current.rafId = requestAnimationFrame(step);
@@ -1021,6 +1067,14 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   // Grid is built lazily on first route request (see confirmStart).
   // Building it eagerly here blocked the main thread for 2-3 s before the
   // map SVG could paint — moved to lazy to eliminate that delay.
+
+  // Invalidate the cached grid whenever any of its inputs change (e.g. walls or
+  // zones updated by admin while the map page is open).  Next route request
+  // rebuilds it.  mapWalls / mapZones / hallFloors are loaded once on mount in
+  // normal usage, but a future polling mechanism would need this guard.
+  useEffect(() => {
+    floorGridsRef.current = null;
+  }, [mapWalls, mapZones, hallFloors]);
 
   // CHANGE 1: Consolidated non-passive event listeners (pointer + touchmove + wheel)
   // [] dependency — all handlers read only refs, no stale closures
@@ -1071,9 +1125,13 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
       if (e.pointerType === "touch") return;
       const { vx, vy, moved } = dragRef.current;
       dragRef.current.on = false;
-      if (wrapperRef.current) wrapperRef.current.style.willChange = "auto";
-      onGestureSettle();
-      if (moved && Math.hypot(vx, vy) > 0.04) startMomentum(vx, vy);
+      // Do not reset willChange here — startMomentum keeps it if launching momentum;
+      // onGestureSettle timer clears it after 120 ms of quiet in all cases.
+      if (moved && Math.hypot(vx, vy) > 0.04) {
+        startMomentum(vx, vy);
+      } else {
+        onGestureSettle();
+      }
     }
     function onTouchMove(e) {
       e.preventDefault();
@@ -1107,7 +1165,15 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
     }
     function onWheel(e) {
       e.preventDefault();
-      cancelMomentum(); // interrupt any running scroll
+      cancelMomentum();
+      cancelZoomAnim(); // interrupt any smooth-zoom RAF that's already animating
+      // Wheel has no explicit "end" event, so we call onGestureStart on every
+      // event (it clears any pending settle timer) and onGestureSettle at the
+      // end (which starts a fresh 120 ms timer).  The net result: willChange
+      // stays "transform" for the duration of the wheel burst and reverts 120 ms
+      // after the last wheel event — identical to drag / pinch lifecycle.
+      onGestureStart();
+      if (wrapperRef.current) wrapperRef.current.style.willChange = "transform";
       const { x, y, scale } = tRef.current;
       const factor = e.deltaY > 0 ? 0.88 : 1.13;
       const newScale = clamp(scale * factor, minScaleRef.current, maxScaleRef.current);
@@ -1116,6 +1182,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
       const my = (e.clientY - rect.top - y) / scale;
       const c = clampPan(e.clientX - rect.left - mx * newScale, e.clientY - rect.top - my * newScale, newScale);
       applyT(c.x, c.y, newScale);
+      onGestureSettle();
     }
     function onDblClick(e) {
       const rect = el.getBoundingClientRect();
@@ -1169,12 +1236,16 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
       const { moved, vx, vy } = dragRef.current;
       dragRef.current.on = false;
       pinchRef.current.on = false;
-      if (wrapperRef.current) wrapperRef.current.style.willChange = "auto";
-      onGestureSettle();
+      // Do not reset willChange here: startMomentum keeps it active if launching
+      // momentum; smoothZoomToward keeps it for double-tap zoom; onGestureSettle
+      // clears it after 120 ms of quiet. Direct reset here would cause a brief
+      // "auto" blip that thrashes the GPU layer on fast double-taps.
 
       // Momentum: fire if the user was actively dragging (not tapping or pinching)
       if (wasDrag && moved && Math.hypot(vx, vy) > 0.04) {
         startMomentum(vx, vy);
+      } else {
+        onGestureSettle();
       }
 
       // Double-tap detection (only for stationary taps, not drags)
@@ -1738,6 +1809,28 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                   });
                 })
               )}
+
+              {/* Admin-defined walls — rendered as solid polylines so admins and
+                  users can see where barriers are.  The same segments also block
+                  A* pathfinding via forbidden edges computed in buildWalkableGrid
+                  (Step 6).  Walls with no hall_name tag default to floor 0;
+                  admin should always set hall_name on multi-floor maps. */}
+              {mapWalls.map((wall) => {
+                if (!Array.isArray(wall.points) || wall.points.length < 2) return null;
+                const pts = wall.points.map(p => `${p.x},${p.y}`).join(" ");
+                return (
+                  <polyline
+                    key={`wall-${wall.id}`}
+                    points={pts}
+                    fill="none"
+                    stroke="rgba(239,68,68,0.72)"
+                    strokeWidth={Math.max(2, mapW / 140)}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ pointerEvents: "none" }}
+                  />
+                );
+              })}
 
               {/* Map signs (entrances, facilities, etc.) */}
               {(mapData.map_signs ?? []).map((sign) => {
