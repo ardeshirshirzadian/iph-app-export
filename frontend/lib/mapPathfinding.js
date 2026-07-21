@@ -90,8 +90,20 @@ function snapToRectBoundary(px, py, x0, y0, x1, y1) {
 //             that block A* from traversing gap→interior (outside-in), enforcing
 //             the one-way inside→out constraint.
 //
+// True if segment (ax,ay)→(bx,by) strictly intersects (cx,cy)→(dx,dy).
+// Strict (0.01..0.99) to avoid false positives at shared endpoints/corners.
+function _segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
+  const dxAB = bx - ax, dyAB = by - ay;
+  const dxCD = dx - cx, dyCD = dy - cy;
+  const denom = dxAB * dyCD - dyAB * dxCD;
+  if (Math.abs(denom) < 1e-10) return false;
+  const t = ((cx - ax) * dyCD - (cy - ay) * dxCD) / denom;
+  const u = ((cx - ax) * dyAB - (cy - ay) * dxAB) / denom;
+  return t > 0.01 && t < 0.99 && u > 0.01 && u < 0.99;
+}
+
 // Returns { blocked: Uint8Array, cols, rows, cellSize, forbiddenEdges: Map }.
-export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = [], mapDoors = [], mapZones = [], cellSize = CELL) {
+export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = [], mapDoors = [], mapZones = [], mapWalls = [], cellSize = CELL) {
   const cols = Math.ceil(mapW / cellSize) + 2;
   const rows = Math.ceil(mapH / cellSize) + 2;
   const blocked = new Uint8Array(cols * rows); // 0 = walkable, 1 = blocked
@@ -385,6 +397,37 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
     }
   }
 
+  // ── Step 6: wall-crossing forbidden edges ────────────────────────────────
+  // For each wall polyline segment (Ax,Ay)→(Bx,By), block any grid-edge whose
+  // cell-center-to-cell-center straight line crosses that segment.  Both
+  // directions are forbidden (walls are bidirectional barriers, unlike exit doors).
+  for (const wall of (mapWalls ?? [])) {
+    const pts = Array.isArray(wall.points) ? wall.points : [];
+    if (pts.length < 2) continue;
+    for (let si = 0; si < pts.length - 1; si++) {
+      const wx1 = pts[si].x, wy1 = pts[si].y;
+      const wx2 = pts[si + 1].x, wy2 = pts[si + 1].y;
+      const scMin = Math.max(0, Math.floor(Math.min(wx1, wx2) / cellSize) - 1);
+      const scMax = Math.min(cols - 1, Math.ceil(Math.max(wx1, wx2) / cellSize) + 1);
+      const srMin = Math.max(0, Math.floor(Math.min(wy1, wy2) / cellSize) - 1);
+      const srMax = Math.min(rows - 1, Math.ceil(Math.max(wy1, wy2) / cellSize) + 1);
+      for (let r = srMin; r <= srMax; r++) {
+        for (let c = scMin; c <= scMax; c++) {
+          const ccx = (c + 0.5) * cellSize, ccy = (r + 0.5) * cellSize;
+          for (const [dc, dr] of [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]]) {
+            const nc = c + dc, nr = r + dr;
+            if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+            const ncx = (nc + 0.5) * cellSize, ncy = (nr + 0.5) * cellSize;
+            if (_segmentsIntersect(ccx, ccy, ncx, ncy, wx1, wy1, wx2, wy2)) {
+              addForbiddenEdge(r * cols + c, nr * cols + nc);
+              addForbiddenEdge(nr * cols + nc, r * cols + c);
+            }
+          }
+        }
+      }
+    }
+  }
+
   return { blocked, cols, rows, cellSize, forbiddenEdges };
 }
 
@@ -518,25 +561,24 @@ function rdp(pts, eps) {
 // `mapDoors` are filtered per floor by matching `door.hall_name` to that floor's
 // halls; doors with no hall_name are included in every floor's grid.
 // Returns an object keyed by floor number: { 0: grid, 1: grid, ... }.
-export function buildFloorGrids(mapW, mapH, halls, mapSigns = [], mapDoors = [], mapZones = [], hallFloors = {}, cellSize = CELL) {
+export function buildFloorGrids(mapW, mapH, halls, mapSigns = [], mapDoors = [], mapZones = [], hallFloors = {}, mapWalls = [], cellSize = CELL) {
   const floorSet = [...new Set(halls.map(h => h.floor ?? 0))];
   if (floorSet.length <= 1) {
     const f = floorSet[0] ?? 0;
     const booths = halls.flatMap(h => h.booths ?? []);
-    // zones with no hall_name apply to every floor
     const floorZones = (mapZones ?? []).filter(z => !z.hall_name || (hallFloors[z.hall_name] ?? 0) === f);
-    return { [f]: buildWalkableGrid(mapW, mapH, booths, mapSigns, halls, mapDoors, floorZones, cellSize) };
+    const floorWalls = (mapWalls ?? []).filter(w => !w.hall_name || (hallFloors[w.hall_name] ?? 0) === f);
+    return { [f]: buildWalkableGrid(mapW, mapH, booths, mapSigns, halls, mapDoors, floorZones, floorWalls, cellSize) };
   }
   const grids = {};
   for (const floor of floorSet) {
     const floorHalls = halls.filter(h => (h.floor ?? 0) === floor);
     const floorHallNames = new Set(floorHalls.map(h => h.name));
-    const floorDoors = (mapDoors ?? []).filter(
-      d => !d.hall_name || floorHallNames.has(d.hall_name)
-    );
+    const floorDoors = (mapDoors ?? []).filter(d => !d.hall_name || floorHallNames.has(d.hall_name));
     const floorBooths = floorHalls.flatMap(h => h.booths ?? []);
     const floorZones = (mapZones ?? []).filter(z => !z.hall_name || (hallFloors[z.hall_name] ?? 0) === floor);
-    grids[floor] = buildWalkableGrid(mapW, mapH, floorBooths, mapSigns, floorHalls, floorDoors, floorZones, cellSize);
+    const floorWalls = (mapWalls ?? []).filter(w => !w.hall_name || (hallFloors[w.hall_name] ?? 0) === floor);
+    grids[floor] = buildWalkableGrid(mapW, mapH, floorBooths, mapSigns, floorHalls, floorDoors, floorZones, floorWalls, cellSize);
   }
   return grids;
 }

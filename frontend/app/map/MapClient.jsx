@@ -775,6 +775,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const [hallFloors, setHallFloors] = useState({});
   const [mapElements, setMapElements] = useState([]);
   const [mapZones, setMapZones] = useState([]);
+  const [mapWalls, setMapWalls] = useState([]);
   const [elementTooltip, setElementTooltip] = useState(null); // { el, sx, sy }
 
   // Navigation state
@@ -1004,6 +1005,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
         if (d.hallFloors) setHallFloors(d.hallFloors);
         if (d.mapElements) setMapElements(d.mapElements);
         if (d.mapZones) setMapZones(d.mapZones);
+        if (d.mapWalls) setMapWalls(d.mapWalls);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -1382,6 +1384,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
             mapData.map_doors ?? [],
             mapZones.filter(z => z.is_blocking),
             hallFloors,
+            mapWalls,
           );
         }
 

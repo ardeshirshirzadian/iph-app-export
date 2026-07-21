@@ -119,6 +119,16 @@ export async function GET() {
       // table may not exist yet — safe to ignore
     }
 
+    let mapWalls = [];
+    try {
+      const wallsResult = await query(
+        'SELECT id, hall_name, points FROM map_walls WHERE is_active = true'
+      );
+      mapWalls = wallsResult.rows;
+    } catch {
+      // table may not exist yet — safe to ignore
+    }
+
     return NextResponse.json({
       websiteEvent: json.data?.websiteEvent ?? null,
       hallColors,
@@ -126,6 +136,7 @@ export async function GET() {
       mapDoors,
       hallFloors,
       mapZones,
+      mapWalls,
     });
   } catch (err) {
     console.error('[api/map]', err.message);

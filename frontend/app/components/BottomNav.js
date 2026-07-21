@@ -31,7 +31,7 @@ export default function BottomNav() {
   // Render nothing until the first real fetch resolves — avoids flashing
   // hardcoded icon paths that may differ from what admin has configured.
   const items = navItems
-    ? navItems.map((item) => ({ href: item.href, icon_path: item.icon_path }))
+    ? navItems.map((item) => ({ href: item.href, icon_path: item.icon_path, icon_size: item.icon_size ?? 28 }))
     : [];
 
   return (
@@ -57,8 +57,10 @@ export default function BottomNav() {
               style={{ color: active ? "var(--accent)" : "var(--text-dim)" }}
             >
               <span
-                className="w-7 h-7 block"
                 style={{
+                  display: "block",
+                  width: item.icon_size,
+                  height: item.icon_size,
                   backgroundColor: "currentColor",
                   WebkitMaskImage: `url('${item.icon_path}')`,
                   WebkitMaskSize: "contain",

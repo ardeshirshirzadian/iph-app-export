@@ -13,10 +13,6 @@ const BADGE_DEFAULTS = {
   logo_icon_type: 'image',
   logo_icon_value: '/logo/logo-l.png',
   logo_icon_size: 64,
-  show_qr: true,
-  show_company: true,
-  show_job_title: true,
-  show_national_id: false,
 };
 
 export default async function BadgePage() {

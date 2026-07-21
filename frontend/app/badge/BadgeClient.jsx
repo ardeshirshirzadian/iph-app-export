@@ -49,7 +49,7 @@ function SkeletonBlock({ className }) {
   );
 }
 
-function QRCode({ uuid }) {
+function QRCode({ uuid, size = 180 }) {
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -61,15 +61,14 @@ function QRCode({ uuid }) {
       .then(({ BrowserQRCodeSvgWriter }) => {
         if (!container) return;
         const writer = new BrowserQRCodeSvgWriter();
-        const svg = writer.write(uuid, 180, 180);
+        const svg = writer.write(uuid, size, size);
         container.appendChild(svg);
       })
       .catch(() => {
         if (!container) return;
-        container.innerHTML =
-          '<div style="width:180px;height:180px;display:flex;align-items:center;justify-content:center;font-size:11px;color:rgba(0,0,0,0.4)">QR</div>';
+        container.innerHTML = `<div style="width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;font-size:11px;color:rgba(0,0,0,0.4)">QR</div>`;
       });
-  }, [uuid]);
+  }, [uuid, size]);
 
   return (
     <div
@@ -77,11 +76,41 @@ function QRCode({ uuid }) {
       className="rounded-2xl overflow-hidden mx-auto"
       style={{
         background: "#ffffff",
-        width: 180,
-        height: 180,
+        width: size,
+        height: size,
         flexShrink: 0,
       }}
     />
+  );
+}
+
+function QRModal({ uuid, onClose }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-6"
+      style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(6px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="relative rounded-3xl p-6 flex flex-col items-center gap-3"
+        style={{
+          background: "var(--surface)",
+          border: "1px solid rgba(0,255,179,0.2)",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.6)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"
+          style={{ background: "rgba(255,255,255,0.1)", color: "var(--text)" }}
+          aria-label="Close"
+        >
+          ✕
+        </button>
+        <QRCode uuid={uuid} size={300} />
+      </div>
+    </div>
   );
 }
 
@@ -155,15 +184,12 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
   const [badgeStatus, setBadgeStatus] = useState(null);
   const [cardTemplate, setCardTemplate] = useState(null);
   const { isRTL, lang } = useLang();
+  const [qrModalOpen, setQrModalOpen] = useState(false);
 
   const settings = {
     logo_icon_type: 'image',
     logo_icon_value: '/logo/logo-l.png',
     logo_icon_size: 64,
-    show_qr: true,
-    show_company: true,
-    show_job_title: true,
-    show_national_id: false,
     event_name_fa: 'نمایشگاه ایران‌فارما',
     event_name_en: 'IranPharma Exhibition',
     ...badgeSettings,
@@ -306,6 +332,7 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
                   template={cardTemplate}
                   attendee={attendee}
                   eventName={displayEventName}
+                  onQRClick={() => setQrModalOpen(true)}
                 />
                 <button
                   onClick={downloadCard}
@@ -365,7 +392,7 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
                       {nameEn}
                     </p>
                   )}
-                  {settings.show_company && attendee.company_name_fa && (
+                  {attendee.company_name_fa && (
                     <div className="mt-2 inline-flex">
                       <span
                         className="px-3 py-1 rounded-lg text-xs font-medium"
@@ -377,7 +404,7 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
                       </span>
                     </div>
                   )}
-                  {settings.show_job_title && attendee.job_title_fa && (
+                  {attendee.job_title_fa && (
                     <div className="mt-2 inline-flex">
                       <span
                         className="px-3 py-1 rounded-lg text-xs font-medium"
@@ -387,27 +414,24 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
                       </span>
                     </div>
                   )}
-                  {settings.show_national_id && attendee.national_id && (
-                    <p className="mt-2 text-xs font-mono" style={{ color: "var(--text-dim)" }}>
-                      {attendee.national_id}
-                    </p>
-                  )}
                 </div>
 
                 {/* QR code */}
-                {settings.show_qr && (
-                  <div className="px-5 pb-4 flex flex-col items-center gap-2">
-                    <div className="p-3 rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }}>
-                      <QRCode uuid={attendee.uuid} />
-                    </div>
-                    <p
-                      className="text-[10px] font-mono text-center max-w-[200px] truncate"
-                      style={{ color: "var(--text-faint)" }}
-                    >
-                      {attendee.uuid}
-                    </p>
+                <div
+                  className="px-5 pb-4 flex flex-col items-center gap-2 cursor-pointer"
+                  onClick={() => setQrModalOpen(true)}
+                  title="Tap to enlarge"
+                >
+                  <div className="p-3 rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }}>
+                    <QRCode uuid={attendee.uuid} />
                   </div>
-                )}
+                  <p
+                    className="text-[10px] font-mono text-center max-w-[200px] truncate"
+                    style={{ color: "var(--text-faint)" }}
+                  >
+                    {attendee.uuid}
+                  </p>
+                </div>
 
                 {registrationPlan?.id && (
                   <div
@@ -456,6 +480,10 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
           </div>
         )}
       </div>
+
+      {qrModalOpen && attendee?.uuid && (
+        <QRModal uuid={attendee.uuid} onClose={() => setQrModalOpen(false)} />
+      )}
 
       <BottomNav />
     </main>
