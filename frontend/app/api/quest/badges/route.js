@@ -81,6 +81,18 @@ async function calcEarned(badge, userUuid) {
         );
         return r.rows.length > 0;
       }
+      case 'hall_scan': {
+        if (!badge.target_hall_name) return false;
+        const r = await query(
+          `SELECT COUNT(DISTINCT qs.company_id) AS cnt
+           FROM quest_scans qs
+           JOIN companies c ON c.id = qs.company_id
+           WHERE qs.user_uuid = $1 AND c.hall_name = $2`,
+          [userUuid, badge.target_hall_name]
+        );
+        const scanned = parseInt(r.rows[0].cnt, 10);
+        return scanned >= badge.threshold;
+      }
       default:
         return false;
     }

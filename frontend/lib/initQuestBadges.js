@@ -16,6 +16,9 @@ const CREATE_BADGES_TABLE = `
     target_company_id INT,
     is_active BOOLEAN NOT NULL DEFAULT true,
     sort_order INT NOT NULL DEFAULT 0,
+    target_hall_name VARCHAR(50),
+    hall_match_mode VARCHAR(10) NOT NULL DEFAULT 'any',
+    hall_scan_count INT,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
   )

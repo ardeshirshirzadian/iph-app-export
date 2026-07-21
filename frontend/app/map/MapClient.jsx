@@ -433,33 +433,43 @@ function StartPanel({ lang, isRTL, onTapMode, onScanMode, startQuery, setStartQu
 function RouteInfoCard({ route, lang, isRTL, onClear }) {
   if (!route) return null;
   const isEN = lang === "en";
+
+  // Card shell: flex-column so the clear button always occupies its own row below
+  // the info content, never overlapping it regardless of text length or UI language.
+  const cardStyle = {
+    bottom: "calc(68px + env(safe-area-inset-bottom))", left: 8, right: 8,
+    background: "rgba(2,20,21,0.96)", backdropFilter: "blur(16px)",
+    borderRadius: 16,
+    padding: "12px 16px",
+    boxShadow: "0 4px 24px rgba(0,0,0,0.45)",
+    display: "flex", flexDirection: "column", gap: 10,
+  };
+  // Info row inside the card: icon + text, respects RTL text direction
+  const infoRow = { display: "flex", alignItems: "center", gap: 12, direction: isRTL ? "rtl" : "ltr" };
+  // Button row: always LTR so "حذف مسیر" sits on the RIGHT end, away from MapLegend
+  // which is anchored to the left (bottom-left corner).
+  const btnRow = { display: "flex", justifyContent: "flex-end", direction: "ltr" };
   const clearBtn = (
     <button
       onClick={onClear}
       style={{
         background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.1)",
-        borderRadius: 8, padding: "6px 12px", color: "var(--text-muted)",
-        fontFamily: "inherit", fontSize: 12, cursor: "pointer",
+        borderRadius: 8, padding: "6px 14px", color: "var(--text-muted)",
+        fontFamily: "inherit", fontSize: 12, cursor: "pointer", flexShrink: 0,
       }}
     >
-      {isEN ? "Clear" : "حذف مسیر"}
+      {isEN ? "Clear route" : "حذف مسیر"}
     </button>
   );
-  const cardStyle = {
-    bottom: "calc(68px + env(safe-area-inset-bottom))", left: 8, right: 8,
-    background: "rgba(2,20,21,0.96)", backdropFilter: "blur(16px)",
-    borderRadius: 16,
-    padding: "12px 16px", display: "flex", alignItems: "center", gap: 12,
-    boxShadow: "0 4px 24px rgba(0,0,0,0.45)",
-    direction: isRTL ? "rtl" : "ltr",
-  };
 
   if (route.type === "computing") {
     return (
       <div className="absolute z-[20]" style={{ ...cardStyle, border: "1px solid rgba(0,255,179,0.15)" }}>
-        <span style={{ fontSize: 20 }}>🧭</span>
-        <div className="animate-pulse" style={{ flex: 1, fontSize: 14, color: "var(--accent)" }}>
-          {isEN ? "Calculating route…" : "در حال محاسبه مسیر…"}
+        <div style={infoRow}>
+          <span style={{ fontSize: 20 }}>🧭</span>
+          <div className="animate-pulse" style={{ flex: 1, fontSize: 14, color: "var(--accent)" }}>
+            {isEN ? "Calculating route…" : "در حال محاسبه مسیر…"}
+          </div>
         </div>
       </div>
     );
@@ -468,16 +478,18 @@ function RouteInfoCard({ route, lang, isRTL, onClear }) {
   if (route.type === "no_connection") {
     return (
       <div className="absolute z-[20]" style={{ ...cardStyle, border: "1px solid rgba(249,115,22,0.4)" }}>
-        <span style={{ fontSize: 22 }}>🚫</span>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#f97316" }}>
-            {isEN ? "No floor connection found" : "مسیر بین طبقات یافت نشد"}
-          </div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-            {isEN ? "Ensure staircase elements are configured on the map" : "مطمئن شوید عناصر پله در نقشه تنظیم شده‌اند"}
+        <div style={infoRow}>
+          <span style={{ fontSize: 22 }}>🚫</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#f97316" }}>
+              {isEN ? "No floor connection found" : "مسیر بین طبقات یافت نشد"}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+              {isEN ? "Ensure staircase elements are configured on the map" : "مطمئن شوید عناصر پله در نقشه تنظیم شده‌اند"}
+            </div>
           </div>
         </div>
-        {clearBtn}
+        <div style={btnRow}>{clearBtn}</div>
       </div>
     );
   }
@@ -492,21 +504,23 @@ function RouteInfoCard({ route, lang, isRTL, onClear }) {
 
   return (
     <div className="absolute z-[20]" style={{ ...cardStyle, border: "1px solid rgba(0,255,179,0.3)" }}>
-      <span style={{ fontSize: 22 }}>{isMultiFloor ? "🪜" : "🧭"}</span>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: "var(--accent)" }}>
-          {isEN ? `≈ ${meters} m · ${minutes} min` : `≈ ${meters} متر · ${toPersianDigits(minutes)} دقیقه`}
-        </div>
-        {isMultiFloor && (
-          <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 1 }}>
-            {isEN ? "Route includes floor change via staircase" : "مسیر شامل تغییر طبقه از پله است"}
+      <div style={infoRow}>
+        <span style={{ fontSize: 22 }}>{isMultiFloor ? "🪜" : "🧭"}</span>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--accent)" }}>
+            {isEN ? `≈ ${meters} m · ${minutes} min` : `≈ ${meters} متر · ${toPersianDigits(minutes)} دقیقه`}
           </div>
-        )}
-        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-          {isEN ? "Estimated walking time" : "زمان تقریبی پیاده‌روی"}
+          {isMultiFloor && (
+            <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 1 }}>
+              {isEN ? "Route includes floor change via staircase" : "مسیر شامل تغییر طبقه از پله است"}
+            </div>
+          )}
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+            {isEN ? "Estimated walking time" : "زمان تقریبی پیاده‌روی"}
+          </div>
         </div>
       </div>
-      {clearBtn}
+      <div style={btnRow}>{clearBtn}</div>
     </div>
   );
 }

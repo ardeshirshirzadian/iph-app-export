@@ -103,14 +103,6 @@ function linkMask(iconPath) {
 
 const LS_KEY = "notif_last_seen";
 
-// The fallback list mirrors the current hardcoded layout so the header
-// looks identical before the API response arrives.
-const DEFAULT_HEADER_ITEMS = [
-  { id: "__logo", item_type: "logo", sort_order: 0, is_active: true },
-  { id: "__bell", item_type: "bell", sort_order: 1, is_active: true },
-  { id: "__cart", item_type: "cart", sort_order: 2, is_active: true },
-];
-
 // Module-level cache: fetched once per browser session, reused on remount.
 let _headerCache = null;
 
@@ -214,11 +206,17 @@ export default function AppHeader({ leftActions, rightActions }) {
     ? (lang === "fa" ? "۹+" : "9+")
     : lang === "fa" ? toPersianDigits(unreadCount) : String(unreadCount);
 
-  // Effective item list: use fetched data once available, otherwise fallback.
-  const allItems = headerItems ?? DEFAULT_HEADER_ITEMS;
+  // headerItems is null only on the very first load (cache miss).
+  // Fall back to an empty list so no action icon that might be disabled by admin
+  // ever flashes before the real data arrives. Logo is shown during loading to
+  // avoid a fully blank header — a brief absence of icons is far less jarring
+  // than a flash of a since-disabled item.
+  const allItems = headerItems ?? [];
   const activeItems = allItems.filter((i) => i.is_active !== false);
 
-  const logoVisible = activeItems.some((i) => i.item_type === "logo");
+  // During initial load (headerItems === null) always show the logo so the
+  // header isn't completely empty; once data arrives, follow admin setting.
+  const logoVisible = headerItems === null ? true : activeItems.some((i) => i.item_type === "logo");
 
   // Action items are everything except the logo, sorted by sort_order.
   const actionItemsAsc = activeItems

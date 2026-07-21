@@ -169,6 +169,16 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
           body: JSON.stringify({ user: u }),
         });
 
+        // Auto-enroll in free plan if admin has enabled it and user has no plan.
+        // Fire-and-forget: a failure here MUST NOT block login.
+        if (result.accessToken && u.uuid) {
+          fetch('/api/auth/auto-enroll', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accessToken: result.accessToken, uuid: u.uuid }),
+          }).catch(() => {});
+        }
+
         if (
           !localStorage.getItem('push_banner_dismissed') &&
           'Notification' in window &&

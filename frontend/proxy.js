@@ -19,6 +19,10 @@ function getProxyPool() {
   return _proxyPool
 }
 
+let _pagesCache = null
+let _pagesCacheTime = 0
+const PAGES_CACHE_TTL = 60_000
+
 async function getCurrentTokenVersion() {
   const client = await getProxyPool().connect()
   try {
@@ -26,6 +30,24 @@ async function getCurrentTokenVersion() {
       "SELECT value FROM app_settings WHERE key = 'auth_token_version'"
     )
     return rows[0]?.value?.version ?? 1
+  } finally {
+    client.release()
+  }
+}
+
+async function getAppPages() {
+  const now = Date.now()
+  if (_pagesCache && now - _pagesCacheTime < PAGES_CACHE_TTL) return _pagesCache
+  const client = await getProxyPool().connect()
+  try {
+    const { rows } = await client.query(
+      'SELECT page_key, default_path, custom_path, is_active FROM app_pages ORDER BY id ASC'
+    )
+    _pagesCache = rows
+    _pagesCacheTime = now
+    return rows
+  } catch {
+    return _pagesCache || []
   } finally {
     client.release()
   }
@@ -55,6 +77,7 @@ const PAGE_SECTION_MAP = Object.fromEntries(
 // Map /api/admin/[prefix] to permission keys (longest match wins via ordered check)
 const API_SECTION_PREFIXES = [
   ['/api/admin/app-settings', 'app-settings'],
+  ['/api/admin/app-pages', 'app-settings'],
   ['/api/admin/banners', 'appearance'],
   ['/api/admin/fonts', 'appearance'],
   ['/api/admin/theme-colors', 'appearance'],
@@ -177,6 +200,36 @@ export async function proxy(request) {
 
   if (pathname === '/cart/callback' || pathname.startsWith('/cart/callback/')) {
     return NextResponse.next()
+  }
+
+  // ── App pages enforcement ─────────────────────────────────────────────────
+  // Runs before auth so disabled pages 404 regardless of login state.
+  // Table may not exist yet (before migration) — fail-open in that case.
+  try {
+    const pages = await getAppPages()
+    for (const page of pages) {
+      const onDefault = pathname === page.default_path || pathname.startsWith(page.default_path + '/')
+      const onCustom  = !!page.custom_path && (pathname === page.custom_path || pathname.startsWith(page.custom_path + '/'))
+
+      if (!page.is_active && (onDefault || onCustom)) {
+        return new NextResponse('Not Found', { status: 404 })
+      }
+
+      if (page.is_active && page.custom_path) {
+        if (onDefault) {
+          // Redirect old default path → custom path
+          const remainder = pathname.slice(page.default_path.length)
+          return NextResponse.redirect(new URL(page.custom_path + remainder, request.url), 307)
+        }
+        if (onCustom) {
+          // Rewrite custom path → actual Next.js route (URL stays as custom_path)
+          const remainder = pathname.slice(page.custom_path.length)
+          return NextResponse.rewrite(new URL(page.default_path + remainder, request.url))
+        }
+      }
+    }
+  } catch {
+    // Fail-open: table missing or DB error — let request through normally
   }
 
   if (!userCookieRaw) {

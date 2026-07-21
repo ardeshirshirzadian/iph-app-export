@@ -54,6 +54,18 @@ async function calcProgress(mission, userUuid) {
         );
         return r.rows.length > 0 && r.rows[0].completed ? 1 : 0;
       }
+      case 'hall_scan': {
+        if (!mission.target_hall_name) return 0;
+        const r = await query(
+          `SELECT COUNT(DISTINCT qs.company_id) AS cnt
+           FROM quest_scans qs
+           JOIN companies c ON c.id = qs.company_id
+           WHERE qs.user_uuid = $1 AND c.hall_name = $2`,
+          [userUuid, mission.target_hall_name]
+        );
+        const scanned = parseInt(r.rows[0].cnt, 10);
+        return mission.hall_match_mode === 'any' ? (scanned >= 1 ? 1 : 0) : scanned;
+      }
       default:
         return 0;
     }
@@ -79,12 +91,15 @@ export async function GET() {
           title_en: m.title_en,
           description: m.description_fa,
           description_en: m.description_en,
-          icon: m.icon_type === 'image' ? m.icon_value : m.icon_value,
+          icon: m.icon_value,
           icon_size: m.icon_size ?? 36,
           xpReward: m.xp_reward,
           mission_type: m.mission_type,
           total: m.total,
           progress: Math.min(progress, m.total),
+          target_hall_name: m.target_hall_name ?? null,
+          hall_match_mode: m.hall_match_mode ?? 'any',
+          hall_scan_count: m.hall_scan_count ?? null,
         };
       })
     );
