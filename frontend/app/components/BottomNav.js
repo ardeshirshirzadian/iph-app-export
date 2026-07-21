@@ -4,14 +4,9 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const FALLBACK_ITEMS = [
-  { href: "/", icon_path: "/logo/services-icon.svg" },
-  { href: "/badge", icon_path: "/logo/id-badge.svg" },
-  { href: "/profile", icon_path: "/logo/user.svg" },
-];
-
 // Module-level cache: survives component unmount/remount across navigations.
 // Populated on first mount, reused on all subsequent mounts — zero re-fetches.
+// Resets to null on every fresh page load (new JS execution context).
 let _navCache = null;
 
 export default function BottomNav() {
@@ -33,9 +28,11 @@ export default function BottomNav() {
       .catch(() => {});
   }, []);
 
+  // Render nothing until the first real fetch resolves — avoids flashing
+  // hardcoded icon paths that may differ from what admin has configured.
   const items = navItems
     ? navItems.map((item) => ({ href: item.href, icon_path: item.icon_path }))
-    : FALLBACK_ITEMS;
+    : [];
 
   return (
     <nav

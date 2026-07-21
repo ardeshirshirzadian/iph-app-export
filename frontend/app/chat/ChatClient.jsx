@@ -38,7 +38,7 @@ function clearHistory() {
   sessionStorage.removeItem(STORAGE_KEY);
 }
 
-export default function ChatClient({ title, subtitle, title_en, subtitle_en }) {
+export default function ChatClient({ title, subtitle, title_en, subtitle_en, isHomeContext = false }) {
   const [messages, setMessages] = useState(loadHistory);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -128,7 +128,7 @@ export default function ChatClient({ title, subtitle, title_en, subtitle_en }) {
       </div>
 
       <div className="relative w-full max-w-5xl mx-auto flex flex-col flex-1">
-        <PageHeader title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} />
+        <PageHeader title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={isHomeContext} />
 
         <section className="relative w-full grid md:grid-cols-[300px_1fr] gap-4 flex-1">
 

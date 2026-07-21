@@ -84,7 +84,7 @@ function NotifCard({ notif, lang, isRTL }) {
   return <Link href={notif.link}>{inner}</Link>;
 }
 
-export default function NotificationsClient({ title, subtitle, title_en, subtitle_en }) {
+export default function NotificationsClient({ title, subtitle, title_en, subtitle_en, isHomeContext = false }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const { lang, isRTL } = useLang();
@@ -121,7 +121,7 @@ export default function NotificationsClient({ title, subtitle, title_en, subtitl
       </div>
 
       <div className="relative max-w-md mx-auto px-4">
-        <PageHeader title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} />
+        <PageHeader title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={isHomeContext} />
 
         {loading ? (
           <div

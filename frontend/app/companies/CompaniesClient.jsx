@@ -264,7 +264,7 @@ function CardSkeleton() {
   );
 }
 
-export default function CompaniesClient({ title, subtitle, title_en, subtitle_en }) {
+export default function CompaniesClient({ title, subtitle, title_en, subtitle_en, isHomeContext = false }) {
   const [config, setConfig] = useState(null);
   const [allCompanies, setAllCompanies] = useState([]);
   // eslint-disable-next-line no-unused-vars
@@ -427,7 +427,7 @@ export default function CompaniesClient({ title, subtitle, title_en, subtitle_en
       />
 
       <div className="relative z-10 max-w-lg mx-auto px-4 pt-4">
-        <PageHeader title={title} subtitle={subtitle} title_en={eventNameEn || title_en} subtitle_en={subtitle_en} />
+        <PageHeader title={title} subtitle={subtitle} title_en={eventNameEn || title_en} subtitle_en={subtitle_en} isHomeContext={isHomeContext} />
 
         <input
           type="search"

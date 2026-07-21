@@ -138,17 +138,17 @@ export default async function Home() {
         console.error('[home→quest] failed to load content blocks:', err.message);
       }
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('quest');
-      return <QuestClient content={content} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} />;
+      return <QuestClient content={content} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/companies': {
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('companies');
-      return <CompaniesClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} />;
+      return <CompaniesClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/panels': {
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('panels');
-      return <PanelsClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} />;
+      return <PanelsClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/badge': {
@@ -166,38 +166,39 @@ export default async function Home() {
           title_en={settings.title_en}
           subtitle_en={settings.subtitle_en}
           badgeSettings={settings}
+          isHomeContext={true}
         />
       );
     }
 
     case '/map': {
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('map');
-      return <MapClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} />;
+      return <MapClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/chat': {
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('chat');
-      return <ChatClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} />;
+      return <ChatClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/notifications': {
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('notifications');
-      return <NotificationsClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} />;
+      return <NotificationsClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/gallery': {
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('gallery');
-      return <GalleryClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} />;
+      return <GalleryClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/news': {
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('news');
-      return <NewsClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} />;
+      return <NewsClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/profile': {
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('profile');
-      return <ProfileClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} />;
+      return <ProfileClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     default: {

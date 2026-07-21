@@ -25,6 +25,7 @@ const SEED_ROWS = [
   ['main', 'text', 'xp_label',            'امتیاز فعلی',                    50],
   ['main', 'text', 'next_level_prefix',   'تا سطح بعدی:',                   60],
   ['main', 'text', 'xp_remaining_suffix', 'XP مانده',                       70],
+  ['main', 'text', 'xp_unit',            'XP',                              75],
   ['main', 'text', 'stat_xp_label',       'امتیاز امروز',                   80],
   ['main', 'text', 'stat_scanned_label',  'غرفه اسکن‌شده',                  90],
   ['main', 'text', 'stat_rank_label',     'رتبه شما',                      100],
@@ -117,6 +118,17 @@ export async function ensureQuestContentTable() {
         `INSERT INTO quest_content_blocks (section, block_type, block_key, content, sort_order)
          VALUES ($1, $2, $3, $4, $5)`,
         [section, block_type, block_key, content, sort_order]
+      );
+    }
+  } else {
+    // Ensure new fields added after initial seed exist in existing installations
+    const { rows: existing } = await query(
+      "SELECT id FROM quest_content_blocks WHERE section = 'main' AND block_key = 'xp_unit'"
+    );
+    if (existing.length === 0) {
+      await query(
+        `INSERT INTO quest_content_blocks (section, block_type, block_key, content, sort_order)
+         VALUES ('main', 'text', 'xp_unit', 'XP', 75)`
       );
     }
   }

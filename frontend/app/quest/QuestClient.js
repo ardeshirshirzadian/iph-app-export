@@ -161,7 +161,7 @@ function UserCard({ user, thresholds, levelColors, labels }) {
 
       <div className="flex items-center justify-between text-sm mb-2">
         <span style={{ color: "var(--text-muted)" }}>{labels.xpLabel}</span>
-        <span className="font-bold" style={{ color: "var(--accent)" }}>{user.xp} XP</span>
+        <span className="font-bold" style={{ color: "var(--accent)" }}>{user.xp} {labels.xpUnit}</span>
       </div>
 
       <div className="h-2.5 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
@@ -233,7 +233,7 @@ function ScanButton({ isDark, label }) {
   );
 }
 
-function MissionCard({ mission }) {
+function MissionCard({ mission, xpUnit }) {
   const pct = useMemo(
     () => (mission.total > 0 ? Math.round((mission.progress / mission.total) * 100) : 0),
     [mission.progress, mission.total]
@@ -269,7 +269,7 @@ function MissionCard({ mission }) {
             {mission.title}
           </span>
           <span className="text-xs font-bold flex-shrink-0 mr-2" style={{ color: "var(--accent)" }}>
-            +{mission.xpReward} XP
+            +{mission.xpReward} {xpUnit || "XP"}
           </span>
         </div>
         <p className="text-xs leading-6 mb-1.5 truncate" style={{ color: "var(--text-dim)" }}>
@@ -303,7 +303,7 @@ function MissionCard({ mission }) {
   );
 }
 
-function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid }) {
+function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUnit }) {
   const levelNameToColor = useMemo(() => {
     const map = {};
     thresholds.forEach((t, i) => { map[t.name] = levelColors[i] || levelColors[levelColors.length - 1]; });
@@ -346,7 +346,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid }) {
               <p className="text-sm font-black leading-5" style={{ color: isMe ? "var(--accent)" : "var(--text)" }}>
                 {user.xp}
               </p>
-              <p className="text-[10px] leading-4" style={{ color: "var(--text-dim)" }}>XP</p>
+              <p className="text-[10px] leading-4" style={{ color: "var(--text-dim)" }}>{xpUnit || "XP"}</p>
             </div>
             <div
               className="px-2 py-0.5 rounded-full text-[10px] font-bold flex-shrink-0"
@@ -418,7 +418,7 @@ function getLogoUrl(logo, baseUrl) {
   return (baseUrl || '') + src;
 }
 
-function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedIds, boothsLoading, logoBaseUrl }) {
+function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedIds, boothsLoading, logoBaseUrl, xpUnit }) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -539,7 +539,7 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
 
                 {/* XP */}
                 <span className="text-xs font-bold flex-shrink-0" style={{ color: "var(--accent)" }}>
-                  +{booth.xp} XP
+                  +{booth.xp} {xpUnit || "XP"}
                 </span>
 
                 {/* Scanned indicator */}
@@ -573,7 +573,7 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
 
 // ── Main client component ───────────────────────────────────────────────────
 
-export default function QuestClient({ content, title, subtitle, title_en, subtitle_en }) {
+export default function QuestClient({ content, title, subtitle, title_en, subtitle_en, isHomeContext = false }) {
   const [boothsOpen, setBoothsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("missions");
   const [isDark, setIsDark] = useState(true);
@@ -704,6 +704,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
   const labels = useMemo(() => ({
     userCardLabel:      c.user_card_label      || "کاربر",
     xpLabel:            c.xp_label             || "امتیاز فعلی",
+    xpUnit:             c.xp_unit              || "XP",
     nextLevelPrefix:    c.next_level_prefix    || "تا سطح بعدی:",
     xpRemainingSuffix:  c.xp_remaining_suffix  || "XP مانده",
     scanButtonLabel:    c.scan_button_label    || "اسکن QR غرفه",
@@ -724,8 +725,8 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
   }, []);
 
   const missionList = useMemo(
-    () => missions.map((m, i) => <MissionCard key={m.id ?? i} mission={m} />),
-    [missions]
+    () => missions.map((m, i) => <MissionCard key={m.id ?? i} mission={m} xpUnit={labels.xpUnit} />),
+    [missions, labels.xpUnit]
   );
 
   return (
@@ -737,7 +738,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
 
       <div className="relative max-w-md mx-auto px-4 pb-32">
 
-        <PageHeader title={title || c.title || "Booth Quest"} subtitle={subtitle || c.subtitle || ""} title_en={title_en} subtitle_en={subtitle_en} />
+        <PageHeader title={title || c.title || "Booth Quest"} subtitle={subtitle || c.subtitle || ""} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={isHomeContext} />
 
         <UserCard
           user={{
@@ -786,7 +787,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
               {(() => {
                 const toFA = (n) => lang === 'fa' ? String(n).replace(/[0-9]/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]) : String(n);
                 return [
-                  { label: labels.statXpLabel,      value: toFA(questStats.xp),          unit: "XP",   icon: "⚡", onClick: null,                      highlight: false },
+                  { label: labels.statXpLabel,      value: toFA(questStats.xp),          unit: labels.xpUnit, icon: "⚡", onClick: null,                      highlight: false },
                   { label: labels.statScannedLabel, value: toFA(questStats.total_scans), unit: "غرفه", icon: "📍", onClick: () => setBoothsOpen(true), highlight: true  },
                   { label: labels.statRankLabel,    value: currentUserRank ? toFA(currentUserRank) : "—", unit: "", icon: "🏅", onClick: null, highlight: false },
                 ];
@@ -835,6 +836,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
             levelColors={LEVEL_COLORS_BY_IDX}
             thresholds={levelThresholds}
             currentUserUuid={currentUserUuid}
+            xpUnit={labels.xpUnit}
           />
         )}
 
@@ -851,6 +853,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         scannedIds={scannedIds}
         boothsLoading={boothsLoading}
         logoBaseUrl={logoBaseUrl}
+        xpUnit={labels.xpUnit}
       />
 
       <BottomNav />

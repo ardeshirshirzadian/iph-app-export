@@ -761,7 +761,7 @@ function MapSkeleton() {
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
-export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
+export default function MapClient({ title, subtitle, title_en, subtitle_en, isHomeContext = false }) {
   const { lang, isRTL } = useLang();
   const isEN = lang === "en";
 
@@ -1503,16 +1503,18 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en }) {
         className="flex-shrink-0 flex items-center justify-between px-4 pt-4 pb-3"
         style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)", zIndex: 20 }}
       >
-        <div>
-          <h1 className="text-lg font-bold leading-tight" style={{ color: "var(--text)" }}>
-            {(isEN ? title_en : title) || (isEN ? "Exhibition Map" : "نقشه نمایشگاه")}
-          </h1>
-          {(isEN ? subtitle_en : subtitle) && (
-            <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-              {isEN ? subtitle_en : subtitle}
-            </p>
-          )}
-        </div>
+        {!isHomeContext && (
+          <div>
+            <h1 className="text-lg font-bold leading-tight" style={{ color: "var(--text)" }}>
+              {(isEN ? title_en : title) || (isEN ? "Exhibition Map" : "نقشه نمایشگاه")}
+            </h1>
+            {(isEN ? subtitle_en : subtitle) && (
+              <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+                {isEN ? subtitle_en : subtitle}
+              </p>
+            )}
+          </div>
+        )}
 
         {mapData && (
           <div className="flex items-center gap-1.5">

@@ -4,11 +4,15 @@ import AppHeader from "@/app/components/AppHeader";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 
-export default function PageHeader({ title, title_en, subtitle, subtitle_en, showBack = true, leftActions, rightActions }) {
+export default function PageHeader({ title, title_en, subtitle, subtitle_en, showBack = true, leftActions, rightActions, isHomeContext = false }) {
   const router = useRouter();
   const { lang, isRTL } = useLang();
   const displayTitle = (lang === 'en' && title_en) ? title_en : title;
   const displaySubtitle = (lang === 'en' && subtitle_en) ? subtitle_en : subtitle;
+
+  if (isHomeContext) {
+    return <AppHeader leftActions={leftActions} rightActions={rightActions} />;
+  }
 
   return (
     <>
