@@ -42,6 +42,7 @@ import BottomNav from "../components/BottomNav";
 import { useLang } from "@/lib/useLang";
 import { toPersianDigits } from "@/lib/utils";
 import { buildFloorGrids, findMultiFloorRoute, pathLength } from "@/lib/mapPathfinding";
+import Map3DView from "./Map3DView";
 
 const RASAYESH_BASE = "https://api.rasayesh.com/";
 const DRAG_THRESHOLD = 6; // px movement before a touch is treated as a drag (not a tap)
@@ -223,6 +224,7 @@ function getElementEmoji(el) {
 function getHallColor(hall, hallColors) {
   return hallColors[hall.name] || hall.color || "#00ffb3";
 }
+
 
 // Samples a [{x,y}] polyline at regular arc-length intervals and returns
 // [{x, y, angle}] where angle (degrees) is the tangent direction at each point.
@@ -814,6 +816,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const [mapWalls, setMapWalls] = useState([]);
   const [mapDoors, setMapDoors] = useState([]);
   const [elementTooltip, setElementTooltip] = useState(null); // { el, sx, sy }
+  const [view3D, setView3D] = useState(false);
 
   // Navigation state
   const [navDest, setNavDest] = useState(null);       // { x, y, name, floor }
@@ -860,6 +863,10 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const gestureActiveRef = useRef(false);
   const gestureSettleTimerRef = useRef(null);
   const routeLayerRef = useRef(null);
+  // mirrors view3D state so closures/timeouts always read the current mode
+  const view3DRef    = useRef(false);
+  // imperative handle to the Map3DView component (focusOnPoint, resetView, zoom)
+  const map3DViewRef = useRef(null);
 
   // ════════════════════════════════════════════════════════════════════════════
   // PAN / ZOOM CORE — DO NOT ADD STATE UPDATES OR EXPENSIVE LOGIC INSIDE HERE
@@ -1078,6 +1085,9 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
     floorGridsRef.current = null;
   }, [mapWalls, mapZones, mapDoors, hallFloors]);
 
+  // Keep view3DRef in sync so closures/timeouts always read the current mode.
+  useEffect(() => { view3DRef.current = view3D; }, [view3D]);
+
   // CHANGE 1: Consolidated non-passive event listeners (pointer + touchmove + wheel)
   // [] dependency — all handlers read only refs, no stale closures
 
@@ -1101,6 +1111,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
 
     function onPointerDown(e) {
       if (e.pointerType === "touch") return;
+      if (view3DRef.current) return; // 3D: OrbitControls handles it
       cancelMomentum();
       cancelZoomAnim();
       onGestureStart();
@@ -1111,6 +1122,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
     }
     function onPointerMove(e) {
       if (e.pointerType === "touch" || !dragRef.current.on) return;
+      if (view3DRef.current) return;
       const now = performance.now();
       const dx = e.clientX - dragRef.current.lx;
       const dy = e.clientY - dragRef.current.ly;
@@ -1136,6 +1148,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
       }
     }
     function onTouchMove(e) {
+      if (view3DRef.current) return; // 3D: OrbitControls handles touch; skip e.preventDefault() too
       e.preventDefault();
       if (e.touches.length === 1 && dragRef.current.on) {
         const now = performance.now();
@@ -1167,6 +1180,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
     }
     function onWheel(e) {
       e.preventDefault();
+      if (view3DRef.current) return;
       cancelMomentum();
       cancelZoomAnim(); // interrupt any smooth-zoom RAF that's already animating
       // Wheel has no explicit "end" event, so we call onGestureStart on every
@@ -1216,6 +1230,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   // ── React event handlers (passive) ────────────────────────────────────────
 
   function onTouchStart(e) {
+    if (view3DRef.current) return; // 3D: OrbitControls handles touch
     cancelMomentum(); // new touch always cancels in-flight momentum
     cancelZoomAnim();
     onGestureStart();
@@ -1233,6 +1248,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   }
 
   function onTouchEnd(e) {
+    if (view3DRef.current) return; // 3D: OrbitControls handles touch
     if (e.touches.length === 0) {
       const wasDrag = dragRef.current.on;
       const { moved, vx, vy } = dragRef.current;
@@ -1309,6 +1325,14 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
     e.stopPropagation();
     if (dragRef.current.moved) return;
     setElementTooltip((prev) => prev?.el.id === el.id ? null : { el, sx: e.clientX, sy: e.clientY });
+  }
+
+  // 3D mode booth tap — drag detection is handled inside Map3DView before this fires.
+  function onBooth3DTap(booth, hall, meta) {
+    // meta = { cx: mapX, cy: mapY, mergedLabel }
+    if (tapStartMode) { confirmStart(meta.cx, meta.cy); return; }
+    if (!booth.company) return;
+    setSelectedBooth({ booth, hall, mergedLabel: meta.mergedLabel || null });
   }
 
   // ── Booth groups (merged companies share multiple adjacent polygons) ─────────
@@ -1409,13 +1433,13 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
 
   // ── Wayfinding helpers ─────────────────────────────────────────────────────
 
-  function panToSvgPoint(svgX, svgY, zoomMult) {
+  function panToSvgPoint(mapX, mapY, zoomMult) {
     const el = containerRef.current;
     if (!el) return;
     const fit = fitScaleRef.current;
     const newScale = clamp(fit * (zoomMult ?? 3), minScaleRef.current, maxScaleRef.current);
-    const nx = el.clientWidth / 2 - svgX * newScale;
-    const ny = el.clientHeight / 2 - svgY * newScale;
+    const nx = el.clientWidth  / 2 - mapX * newScale;
+    const ny = el.clientHeight / 2 - mapY * newScale;
     const c = clampPan(nx, ny, newScale);
     applyT(c.x, c.y, newScale);
   }
@@ -1427,7 +1451,11 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
     setSearchQuery(result.name || result.nameEn || "");
     setSearchOpen(false);
     setStartPanelOpen(true);
-    panToSvgPoint(result.x, result.y);
+    if (view3DRef.current) {
+      map3DViewRef.current?.focusOnPoint(result.x, result.y);
+    } else {
+      panToSvgPoint(result.x, result.y);
+    }
   }
 
   function confirmStart(startX, startY) {
@@ -1485,7 +1513,14 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
           setNavRoute(route);
         }
 
-        if (route?.type === "single" && route.path.length >= 2) {
+        if (view3DRef.current) {
+          // In 3D mode, animate the Three.js camera instead of CSS panning
+          const focusPt = route?.type === "single" && route.path.length >= 2
+            ? { x: route.path.reduce((s, p) => s + p.x, 0) / route.path.length,
+                y: route.path.reduce((s, p) => s + p.y, 0) / route.path.length }
+            : { x: sx, y: sy };
+          map3DViewRef.current?.focusOnPoint(focusPt.x, focusPt.y);
+        } else if (route?.type === "single" && route.path.length >= 2) {
           const xs = route.path.map(p => p.x), ys = route.path.map(p => p.y);
           panToSvgPoint((Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, 1.6);
         } else if (route?.type === "multi_floor") {
@@ -1595,19 +1630,35 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
         {mapData && (
           <div className="flex items-center gap-1.5">
             <button
-              onClick={() => zoomBy(1.35)}
+              onClick={() => {
+                const next = !view3D;
+                view3DRef.current = next;
+                setView3D(next);
+                if (!next) requestAnimationFrame(() => resetView()); // only reset 2D on switch back
+              }}
+              aria-label="Toggle 3D view"
+              className="h-9 px-3 rounded-xl flex items-center justify-center text-xs font-bold transition-all active:scale-90"
+              style={{
+                background: view3D ? "var(--accent)" : "var(--surface)",
+                border: "1px solid var(--border)",
+                color: view3D ? "#021f20" : "var(--text)",
+                fontFamily: "inherit", cursor: "pointer",
+              }}
+            >{view3D ? "2D" : "3D"}</button>
+            <button
+              onClick={() => view3D ? map3DViewRef.current?.zoom(1.35) : zoomBy(1.35)}
               aria-label="Zoom in"
               className="w-9 h-9 rounded-xl flex items-center justify-center text-xl font-bold transition-all active:scale-90"
               style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "inherit", cursor: "pointer" }}
             >+</button>
             <button
-              onClick={() => zoomBy(0.74)}
+              onClick={() => view3D ? map3DViewRef.current?.zoom(0.74) : zoomBy(0.74)}
               aria-label="Zoom out"
               className="w-9 h-9 rounded-xl flex items-center justify-center text-xl font-bold transition-all active:scale-90"
               style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "inherit", cursor: "pointer" }}
             >−</button>
             <button
-              onClick={() => resetView()}
+              onClick={() => view3D ? map3DViewRef.current?.resetView() : resetView()}
               aria-label="Reset view"
               className="w-9 h-9 rounded-xl flex items-center justify-center text-base transition-all active:scale-90"
               style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", fontFamily: "inherit", cursor: "pointer" }}
@@ -1630,7 +1681,9 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
             doubleTapJustFiredRef.current = false;
             return;
           }
-          if (tapStartMode && !dragRef.current.moved) {
+          // In 2D mode only: tap anywhere on the map to set start.
+          // In 3D mode Map3DView's canvas click handler handles this instead.
+          if (!view3D && tapStartMode && !dragRef.current.moved) {
             const rect = containerRef.current?.getBoundingClientRect();
             if (rect) {
               const { x: tx, y: ty, scale } = tRef.current;
@@ -1665,7 +1718,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
           </div>
         )}
 
-        {/* Search bar */}
+        {/* Search bar — visible in both 2D and 3D modes */}
         {mapData && (
           <MapSearchBar
             query={searchQuery}
@@ -1695,18 +1748,40 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                 boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
               }}
             >
-              {isEN ? "Tap anywhere on the map to set your start point" : "روی نقشه بزنید تا موقعیت شروع تعیین شود"}
+              {isEN
+                ? (view3D ? "Tap a booth block to set your start point" : "Tap anywhere on the map to set your start point")
+                : (view3D ? "روی یک غرفه بزنید تا موقعیت شروع تعیین شود" : "روی نقشه بزنید تا موقعیت شروع تعیین شود")}
             </div>
           </div>
         )}
 
-        {/* CHANGE 4-E: map legend */}
-        {mapElements.length > 0 && (
+        {/* CHANGE 4-E: map legend — hidden in 3D mode */}
+        {mapElements.length > 0 && !view3D && (
           <MapLegend elements={mapElements} lang={lang} />
         )}
 
         {mapData && (
           <>
+          {/* ── 3D mode: Three.js canvas fills container independently ── */}
+          {view3D && (
+            <Map3DView
+              halls={hallGroups}
+              hallColors={hallColors}
+              mapElements={mapElements}
+              navRoute={navRoute}
+              navStart={navStart}
+              navDest={navDest}
+              tapStartMode={tapStartMode}
+              onBoothTap={onBooth3DTap}
+              onGroundTap={(x, y) => { if (tapStartMode) confirmStart(x, y); }}
+              onBackgroundTap={() => { setSelectedBooth(null); setSearchOpen(false); setElementTooltip(null); setSignTooltip(null); }}
+              controlRef={map3DViewRef}
+              lang={lang}
+            />
+          )}
+
+          {/* ── 2D mode: CSS-transform wrapper + SVG overlay ── */}
+          {!view3D && (
           <div
             ref={wrapperRef}
             style={{
@@ -1716,9 +1791,9 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
               width: mapW,
               height: mapH,
               transformOrigin: "0 0",
-              // CHANGE 1 Fix-A: willChange removed from static style — managed dynamically
             }}
           >
+          <>
             {/* Floor plan background image */}
             {planUrl && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -2035,9 +2110,11 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                 })
               )}
             </div>
+          </>
           </div>
+          )}
 
-          {/* Route info card — floats above bottom nav */}
+          {/* Route info card — visible in both 2D and 3D modes */}
           {navRoute && (
             <RouteInfoCard route={navRoute} lang={lang} isRTL={isRTL} onClear={clearNav} />
           )}
