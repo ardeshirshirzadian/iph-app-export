@@ -812,6 +812,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const [mapElements, setMapElements] = useState([]);
   const [mapZones, setMapZones] = useState([]);
   const [mapWalls, setMapWalls] = useState([]);
+  const [mapDoors, setMapDoors] = useState([]);
   const [elementTooltip, setElementTooltip] = useState(null); // { el, sx, sy }
 
   // Navigation state
@@ -1052,6 +1053,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
         if (d.mapElements) setMapElements(d.mapElements);
         if (d.mapZones) setMapZones(d.mapZones);
         if (d.mapWalls) setMapWalls(d.mapWalls);
+        if (d.mapDoors) setMapDoors(d.mapDoors);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -1074,7 +1076,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   // normal usage, but a future polling mechanism would need this guard.
   useEffect(() => {
     floorGridsRef.current = null;
-  }, [mapWalls, mapZones, hallFloors]);
+  }, [mapWalls, mapZones, mapDoors, hallFloors]);
 
   // CHANGE 1: Consolidated non-passive event listeners (pointer + touchmove + wheel)
   // [] dependency — all handlers read only refs, no stale closures
@@ -1452,7 +1454,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
           floorGridsRef.current = buildFloorGrids(
             dim.w, dim.h, halls,
             mapData.map_signs ?? [],
-            mapData.map_doors ?? [],
+            mapDoors,
             mapZones.filter(z => z.is_blocking),
             hallFloors,
             mapWalls,

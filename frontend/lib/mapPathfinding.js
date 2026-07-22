@@ -8,6 +8,9 @@ const SQRT2 = Math.SQRT2;
 
 // How many cells to pad around each hall's booth-bounds bbox (creates the wall thickness).
 const WALL_PAD = CELL;
+// Safety buffer around manually-drawn map_walls: cells within this distance
+// of any wall segment are fully blocked so the route never hugs the wall edge.
+const WALL_BUF = CELL;
 // Bboxes within this many SVG units are merged into one "building" (avoids splitting
 // adjacent halls A-E into separate enclosures).
 const MERGE_GAP = CELL * 4;
@@ -90,8 +93,11 @@ function snapToRectBoundary(px, py, x0, y0, x1, y1) {
 //             that block A* from traversing gap→interior (outside-in), enforcing
 //             the one-way inside→out constraint.
 //
-// True if segment (ax,ay)→(bx,by) strictly intersects (cx,cy)→(dx,dy).
-// Strict (0.01..0.99) to avoid false positives at shared endpoints/corners.
+// True if segment (ax,ay)→(bx,by) intersects (cx,cy)→(dx,dy).
+// Bounds are slightly loose (-0.001..1.001) so crossings that occur right
+// at or immediately adjacent to shared vertices (where two wall segments
+// meet) are caught — the original strict 0.01..0.99 range excluded those,
+// creating a vertex-leak where paths could slip through a wall corner.
 function _segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
   const dxAB = bx - ax, dyAB = by - ay;
   const dxCD = dx - cx, dyCD = dy - cy;
@@ -99,7 +105,16 @@ function _segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
   if (Math.abs(denom) < 1e-10) return false;
   const t = ((cx - ax) * dyCD - (cy - ay) * dxCD) / denom;
   const u = ((cx - ax) * dyAB - (cy - ay) * dxAB) / denom;
-  return t > 0.01 && t < 0.99 && u > 0.01 && u < 0.99;
+  return t > -0.001 && t < 1.001 && u > -0.001 && u < 1.001;
+}
+
+// Shortest distance from point (px,py) to segment (ax,ay)→(bx,by).
+function _ptSegDist(px, py, ax, ay, bx, by) {
+  const abx = bx - ax, aby = by - ay;
+  const len2 = abx * abx + aby * aby;
+  if (len2 < 1e-10) return Math.hypot(px - ax, py - ay);
+  const t = Math.max(0, Math.min(1, ((px - ax) * abx + (py - ay) * aby) / len2));
+  return Math.hypot(px - (ax + t * abx), py - (ay + t * aby));
 }
 
 // Returns { blocked: Uint8Array, cols, rows, cellSize, forbiddenEdges: Map }.
@@ -217,139 +232,11 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
   // are treated as one enclosure (e.g. halls A-E form one building; H is separate).
   const buildings = mergeBboxes(rawBboxes, MERGE_GAP);
 
-  // ── Step 3: collect all gap sources (mapSigns entrances + admin doors) ────
-  const entrancesFromSigns = (mapSigns ?? []).filter(isEntranceSign);
-  const activeDoors = (mapDoors ?? []).filter(d => d.is_active !== false);
-
-  // Skip wall blocking entirely if no gap sources exist — preserves backward
-  // compatibility for maps with neither entrance signs nor admin doors.
-  if (entrancesFromSigns.length === 0 && activeDoors.length === 0) {
-    if (typeof window !== "undefined") {
-      console.warn("[mapPathfinding] No entrance markers or admin doors — outer wall blocking skipped.");
-    }
-    return emptyGrid;
-  }
-
-  // gapCells          — all walkable gap cells (all door types)
-  // exitGapCells      — exit-only doors (inside→outside): forbid gap → interior
-  // entranceOnlyGapCells — entrance-only doors (outside→inside): forbid interior → gap
-  const gapCells = new Set();
-  const exitGapCells = new Set();
-  const entranceOnlyGapCells = new Set();
-
-  // Helper: snap (px,py) to nearest building boundary and carve grid cells.
-  // doorType: 'entrance' (bidirectional), 'entrance_only' (in only), 'exit' (out only)
-  function carveGap(px, py, halfW, doorType) {
-    let nearest = null, nearestDist = Infinity;
-    for (const bldg of buildings) {
-      const dx = Math.max(bldg.x0 - px, 0, px - bldg.x1);
-      const dy = Math.max(bldg.y0 - py, 0, py - bldg.y1);
-      const d = Math.hypot(dx, dy);
-      if (d < nearestDist) { nearestDist = d; nearest = bldg; }
-    }
-    let snapX = px, snapY = py;
-    if (nearest) {
-      const s = snapToRectBoundary(px, py, nearest.x0, nearest.y0, nearest.x1, nearest.y1);
-      snapX = s.x; snapY = s.y;
-    }
-    const gc = Math.round(snapX / cellSize);
-    const gr = Math.round(snapY / cellSize);
-    for (let dr = -halfW; dr <= halfW; dr++) {
-      for (let dc = -halfW; dc <= halfW; dc++) {
-        const nr = gr + dr, nc = gc + dc;
-        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
-          const idx = nr * cols + nc;
-          gapCells.add(idx);
-          if (doorType === 'exit') exitGapCells.add(idx);
-          if (doorType === 'entrance_only') entranceOnlyGapCells.add(idx);
-        }
-      }
-    }
-  }
-
-  // Carve gaps from Rasayesh entrance signs (always bidirectional).
-  for (const ent of entrancesFromSigns) {
-    const ex = ent.coords?.x, ey = ent.coords?.y;
-    if (ex == null || ey == null) continue;
-    carveGap(ex, ey, GAP_HALF, 'entrance');
-  }
-
-  // Carve gaps from admin-defined doors.
-  for (const door of activeDoors) {
-    if (door.x == null || door.y == null) continue;
-    const halfW = Math.max(1, Math.round(door.width ?? GAP_HALF));
-    carveGap(door.x, door.y, halfW, door.door_type ?? 'entrance');
-  }
-
-  if (typeof window !== "undefined") {
-    console.info(
-      `[mapPathfinding] ${buildings.length} building(s), ` +
-      `${entrancesFromSigns.length} sign entrance(s), ` +
-      `${activeDoors.filter(d => d.door_type !== 'exit' && d.door_type !== 'entrance_only').length} admin bidir, ` +
-      `${activeDoors.filter(d => d.door_type === 'entrance_only').length} admin entrance-only, ` +
-      `${activeDoors.filter(d => d.door_type === 'exit').length} admin exit-only.`
-    );
-  }
-
-  // ── Step 4: block only the wall ring (outer bbox minus inner bbox) ────────
-  //
-  // IMPORTANT: exterior cells (outside ALL building bboxes) are intentionally
-  // left WALKABLE.  Previously they were blocked, which caused the following
-  // bug: a start point placed outside the building fell in a blocked exterior
-  // cell; nearestWalkable() spiralled outward and — because the wall ring is
-  // only 1 cell thick (WALL_PAD == cellSize) — found the first interior cell
-  // at Chebyshev distance 2 (straight through the wall), causing A* to begin
-  // inside the building without ever passing through a door gap.
-  //
-  // With exterior cells walkable:
-  //   • Outside start points are already on a walkable cell → no snap.
-  //   • A* routes along the exterior to the nearest gap cell, enters there,
-  //     and continues inside to the destination.
-  //
-  // Gap cells override wall-ring blocking and stay walkable regardless.
-
-  const innerBboxes = buildings.map((b) => ({
-    x0: b.x0 + WALL_PAD,
-    y0: b.y0 + WALL_PAD,
-    x1: b.x1 - WALL_PAD,
-    y1: b.y1 - WALL_PAD,
-  }));
-
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      if (blocked[r * cols + c]) continue; // already booth-blocked (step 1)
-      if (gapCells.has(r * cols + c)) continue; // door gap: always walkable
-
-      const cx = (c + 0.5) * cellSize;
-      const cy = (r + 0.5) * cellSize;
-
-      // Only block cells that fall inside a building bbox but OUTSIDE its
-      // inner bbox (= the wall ring).  Exterior cells (not inside any bbox)
-      // are left walkable so outside-start routing works correctly.
-      for (let i = 0; i < buildings.length; i++) {
-        const b = buildings[i];
-        if (cx >= b.x0 && cx <= b.x1 && cy >= b.y0 && cy <= b.y1) {
-          const ib = innerBboxes[i];
-          if (!(cx >= ib.x0 && cx <= ib.x1 && cy >= ib.y0 && cy <= ib.y1)) {
-            blocked[r * cols + c] = 1; // wall ring cell → blocked
-          }
-          // Interior cell: leave walkable (booths already blocked from step 1)
-          break;
-        }
-        // Exterior cell (no building bbox matched): leave walkable
-      }
-    }
-  }
-
-  // ── Step 5: build forbidden directed edges for one-way gaps ──────────────
-  //
-  // exit door (inside→out only):
-  //   forbid: exitGapCell → interiorCell   (prevents outside→inside routing)
-  //   allow:  interiorCell → exitGapCell   (inside→outside routing works fine)
-  //
-  // entrance_only door (outside→in only):
-  //   forbid: interiorCell → entranceOnlyGapCell  (prevents inside→outside routing)
-  //   allow:  entranceOnlyGapCell → interiorCell  (outside→inside works fine)
+  // ── Steps 3–5: outer-wall ring and one-way door gaps ─────────────────────
+  // Requires at least one gap source (entrance sign or admin door) to know
+  // where to carve walkable openings in the perimeter wall.  When no gap
+  // sources exist this block is skipped entirely; manual walls (Step 6) still
+  // run unconditionally below.
 
   const forbiddenEdges = new Map(); // Map<fromCellIdx, Set<toCellIdx>>
 
@@ -359,61 +246,248 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
     s.add(to);
   }
 
-  // exit gaps: gap → interior is forbidden
-  for (const idx of exitGapCells) {
-    const gr = Math.floor(idx / cols);
-    const gc = idx - gr * cols;
-    for (const [dc, dr] of [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]) {
-      const nc = gc + dc, nr = gr + dr;
-      if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
-      const ni = nr * cols + nc;
-      if (blocked[ni]) continue;
-      const ncx = (nc + 0.5) * cellSize, ncy = (nr + 0.5) * cellSize;
-      for (const ib of innerBboxes) {
-        if (ncx >= ib.x0 && ncx <= ib.x1 && ncy >= ib.y0 && ncy <= ib.y1) {
-          addForbiddenEdge(idx, ni); // exit gap → interior is forbidden
-          break;
+  const entrancesFromSigns = (mapSigns ?? []).filter(isEntranceSign);
+  const activeDoors = (mapDoors ?? []).filter(d => d.is_active !== false);
+
+  if (entrancesFromSigns.length > 0 || activeDoors.length > 0) {
+    // ── Step 3: carve gap cells at each entrance / door ──────────────────
+
+    // gapCells          — all walkable gap cells (all door types)
+    // exitGapCells      — exit-only doors (inside→outside): forbid gap → interior
+    // entranceOnlyGapCells — entrance-only doors (outside→inside): forbid interior → gap
+    const gapCells = new Set();
+    const exitGapCells = new Set();
+    const entranceOnlyGapCells = new Set();
+
+    // Helper: snap (px,py) to nearest building boundary and carve grid cells.
+    // doorType: 'entrance' (bidirectional), 'entrance_only' (in only), 'exit' (out only)
+    function carveGap(px, py, halfW, doorType) {
+      let nearest = null, nearestDist = Infinity;
+      for (const bldg of buildings) {
+        const dx = Math.max(bldg.x0 - px, 0, px - bldg.x1);
+        const dy = Math.max(bldg.y0 - py, 0, py - bldg.y1);
+        const d = Math.hypot(dx, dy);
+        if (d < nearestDist) { nearestDist = d; nearest = bldg; }
+      }
+      let snapX = px, snapY = py;
+      if (nearest) {
+        const s = snapToRectBoundary(px, py, nearest.x0, nearest.y0, nearest.x1, nearest.y1);
+        snapX = s.x; snapY = s.y;
+      }
+      const gc = Math.round(snapX / cellSize);
+      const gr = Math.round(snapY / cellSize);
+      for (let dr = -halfW; dr <= halfW; dr++) {
+        for (let dc = -halfW; dc <= halfW; dc++) {
+          const nr = gr + dr, nc = gc + dc;
+          if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
+            const idx = nr * cols + nc;
+            gapCells.add(idx);
+            if (doorType === 'exit') exitGapCells.add(idx);
+            if (doorType === 'entrance_only') entranceOnlyGapCells.add(idx);
+          }
         }
       }
     }
-  }
 
-  // entrance_only gaps: interior → gap is forbidden
-  for (const idx of entranceOnlyGapCells) {
-    const gr = Math.floor(idx / cols);
-    const gc = idx - gr * cols;
-    for (const [dc, dr] of [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]) {
-      const nc = gc + dc, nr = gr + dr;
-      if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
-      const ni = nr * cols + nc;
-      if (blocked[ni]) continue;
-      const ncx = (nc + 0.5) * cellSize, ncy = (nr + 0.5) * cellSize;
-      for (const ib of innerBboxes) {
-        if (ncx >= ib.x0 && ncx <= ib.x1 && ncy >= ib.y0 && ncy <= ib.y1) {
-          addForbiddenEdge(ni, idx); // interior → entrance_only gap is forbidden
-          break;
+    // Carve gaps from Rasayesh entrance signs (always bidirectional).
+    for (const ent of entrancesFromSigns) {
+      const ex = ent.coords?.x, ey = ent.coords?.y;
+      if (ex == null || ey == null) continue;
+      carveGap(ex, ey, GAP_HALF, 'entrance');
+    }
+
+    // Carve gaps from admin-defined doors.
+    for (const door of activeDoors) {
+      if (door.x == null || door.y == null) continue;
+      const halfW = Math.max(1, Math.round(door.width ?? GAP_HALF));
+      carveGap(door.x, door.y, halfW, door.door_type ?? 'entrance');
+    }
+
+    if (typeof window !== "undefined") {
+      console.info(
+        `[mapPathfinding] ${buildings.length} building(s), ` +
+        `${entrancesFromSigns.length} sign entrance(s), ` +
+        `${activeDoors.filter(d => d.door_type !== 'exit' && d.door_type !== 'entrance_only').length} admin bidir, ` +
+        `${activeDoors.filter(d => d.door_type === 'entrance_only').length} admin entrance-only, ` +
+        `${activeDoors.filter(d => d.door_type === 'exit').length} admin exit-only.`
+      );
+    }
+
+    // ── Step 4: block only the wall ring (outer bbox minus inner bbox) ────
+    //
+    // IMPORTANT: exterior cells (outside ALL building bboxes) are intentionally
+    // left WALKABLE.  Previously they were blocked, which caused the following
+    // bug: a start point placed outside the building fell in a blocked exterior
+    // cell; nearestWalkable() spiralled outward and — because the wall ring is
+    // only 1 cell thick (WALL_PAD == cellSize) — found the first interior cell
+    // at Chebyshev distance 2 (straight through the wall), causing A* to begin
+    // inside the building without ever passing through a door gap.
+    //
+    // With exterior cells walkable:
+    //   • Outside start points are already on a walkable cell → no snap.
+    //   • A* routes along the exterior to the nearest gap cell, enters there,
+    //     and continues inside to the destination.
+    //
+    // Gap cells override wall-ring blocking and stay walkable regardless.
+
+    const innerBboxes = buildings.map((b) => ({
+      x0: b.x0 + WALL_PAD,
+      y0: b.y0 + WALL_PAD,
+      x1: b.x1 - WALL_PAD,
+      y1: b.y1 - WALL_PAD,
+    }));
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (blocked[r * cols + c]) continue; // already booth-blocked (step 1)
+        if (gapCells.has(r * cols + c)) continue; // door gap: always walkable
+
+        const cx = (c + 0.5) * cellSize;
+        const cy = (r + 0.5) * cellSize;
+
+        // Only block cells that fall inside a building bbox but OUTSIDE its
+        // inner bbox (= the wall ring).  Exterior cells (not inside any bbox)
+        // are left walkable so outside-start routing works correctly.
+        for (let i = 0; i < buildings.length; i++) {
+          const b = buildings[i];
+          if (cx >= b.x0 && cx <= b.x1 && cy >= b.y0 && cy <= b.y1) {
+            const ib = innerBboxes[i];
+            if (!(cx >= ib.x0 && cx <= ib.x1 && cy >= ib.y0 && cy <= ib.y1)) {
+              blocked[r * cols + c] = 1; // wall ring cell → blocked
+            }
+            // Interior cell: leave walkable (booths already blocked from step 1)
+            break;
+          }
+          // Exterior cell (no building bbox matched): leave walkable
         }
       }
     }
+
+    // ── Step 5: forbidden directed edges for one-way gaps ────────────────
+    //
+    // exit door (inside→out only):
+    //   forbid: exitGapCell → interiorCell   (prevents outside→inside routing)
+    //   allow:  interiorCell → exitGapCell   (inside→outside routing works fine)
+    //
+    // entrance_only door (outside→in only):
+    //   forbid: interiorCell → entranceOnlyGapCell  (prevents inside→outside routing)
+    //   allow:  entranceOnlyGapCell → interiorCell  (outside→inside works fine)
+
+    // exit gaps: gap → interior is forbidden
+    for (const idx of exitGapCells) {
+      const gr = Math.floor(idx / cols);
+      const gc = idx - gr * cols;
+      for (const [dc, dr] of [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]) {
+        const nc = gc + dc, nr = gr + dr;
+        if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+        const ni = nr * cols + nc;
+        if (blocked[ni]) continue;
+        const ncx = (nc + 0.5) * cellSize, ncy = (nr + 0.5) * cellSize;
+        for (const ib of innerBboxes) {
+          if (ncx >= ib.x0 && ncx <= ib.x1 && ncy >= ib.y0 && ncy <= ib.y1) {
+            addForbiddenEdge(idx, ni); // exit gap → interior is forbidden
+            break;
+          }
+        }
+      }
+    }
+
+    // entrance_only gaps: interior → gap is forbidden
+    for (const idx of entranceOnlyGapCells) {
+      const gr = Math.floor(idx / cols);
+      const gc = idx - gr * cols;
+      for (const [dc, dr] of [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]) {
+        const nc = gc + dc, nr = gr + dr;
+        if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+        const ni = nr * cols + nc;
+        if (blocked[ni]) continue;
+        const ncx = (nc + 0.5) * cellSize, ncy = (nr + 0.5) * cellSize;
+        for (const ib of innerBboxes) {
+          if (ncx >= ib.x0 && ncx <= ib.x1 && ncy >= ib.y0 && ncy <= ib.y1) {
+            addForbiddenEdge(ni, idx); // interior → entrance_only gap is forbidden
+            break;
+          }
+        }
+      }
+    }
+  } else if (typeof window !== "undefined") {
+    // This fires when BOTH entrance signs AND admin doors are absent for this map.
+    // Consequence: Steps 3-5 (outer-wall ring blocking) are completely inactive —
+    // the gap between the building exterior and the back of perimeter booths is
+    // walkable and A* can route through it unchecked.
+    // FIX: add at least one door via the admin Doors tab for the relevant hall,
+    // or ensure at least one map_sign with title containing "ورودی" / "entrance".
+    console.info(
+      `[mapPathfinding] OUTER-WALL BLOCKING SKIPPED — ` +
+      `entrance signs: ${entrancesFromSigns.length} (of ${(mapSigns ?? []).length} total signs), ` +
+      `active admin doors: ${activeDoors.length} — ` +
+      `add at least one door or entrance sign to activate outer-wall ring blocking.`
+    );
   }
 
-  // ── Step 6: wall-crossing forbidden edges ────────────────────────────────
-  // For each wall polyline segment (Ax,Ay)→(Bx,By), block any grid-edge whose
-  // cell-center-to-cell-center straight line crosses that segment.  Both
-  // directions are forbidden (walls are bidirectional barriers, unlike exit doors).
+  // ── Step 6: wall buffer (blocked cells) + wall-crossing forbidden edges ──
+  //
+  // Two-layer defence for each wall polyline segment (Ax,Ay)→(Bx,By):
+  //
+  // Layer 1 — safety buffer: mark every grid cell whose centre is within
+  //   WALL_BUF of the segment as blocked[].  This forces A* to route at
+  //   least 1 cell away from the wall, so the displayed route never hugs
+  //   the wall edge.  Same mechanism as booth blocking (Step 1).
+  //
+  // Layer 2 — crossing edges: for cells just outside the buffer, register
+  //   forbidden directed edges for any cell-to-cell step whose centre-to-
+  //   centre line crosses the wall segment.  Belt-and-suspenders guard for
+  //   cells right at the buffer boundary.
+  //
+  // Scan radius is extended to cover the buffer zone (bufCells extra on
+  // each side beyond the segment bounding box).
+  const bufCells = Math.ceil(WALL_BUF / cellSize) + 1;
+  if (typeof window !== "undefined" && (mapWalls ?? []).length > 0) {
+    for (const wall of (mapWalls ?? [])) {
+      const pts = Array.isArray(wall.points) ? wall.points : [];
+      const isClosed = pts.length >= 2 &&
+        pts[0].x === pts[pts.length - 1].x && pts[0].y === pts[pts.length - 1].y;
+      const segCount = Math.max(0, pts.length - 1);
+      const degenSegs = [];
+      for (let si = 0; si < segCount; si++) {
+        const len = Math.hypot(pts[si + 1].x - pts[si].x, pts[si + 1].y - pts[si].y);
+        if (len < 1) degenSegs.push({ si, len: len.toFixed(4) });
+      }
+      const closingLen = isClosed && pts.length >= 2
+        ? Math.hypot(pts[pts.length - 1].x - pts[pts.length - 2].x, pts[pts.length - 1].y - pts[pts.length - 2].y).toFixed(1)
+        : null;
+      console.log(
+        `[wall-seg-debug] wall id=${wall.id ?? '?'} pts=${pts.length} segs=${segCount}` +
+        ` closed=${isClosed}` +
+        (isClosed ? ` closingSegLen=${closingLen} (${pts[pts.length - 2]?.x},${pts[pts.length - 2]?.y})→(${pts[pts.length - 1]?.x},${pts[pts.length - 1]?.y})` : '') +
+        (degenSegs.length > 0 ? ` DEGEN_SEGS:${JSON.stringify(degenSegs)}` : ' no-degen')
+      );
+    }
+  }
   for (const wall of (mapWalls ?? [])) {
     const pts = Array.isArray(wall.points) ? wall.points : [];
     if (pts.length < 2) continue;
     for (let si = 0; si < pts.length - 1; si++) {
       const wx1 = pts[si].x, wy1 = pts[si].y;
       const wx2 = pts[si + 1].x, wy2 = pts[si + 1].y;
-      const scMin = Math.max(0, Math.floor(Math.min(wx1, wx2) / cellSize) - 1);
-      const scMax = Math.min(cols - 1, Math.ceil(Math.max(wx1, wx2) / cellSize) + 1);
-      const srMin = Math.max(0, Math.floor(Math.min(wy1, wy2) / cellSize) - 1);
-      const srMax = Math.min(rows - 1, Math.ceil(Math.max(wy1, wy2) / cellSize) + 1);
+      // Skip zero-length segments — they can never block anything and would
+      // cause _ptSegDist to return point-distance (handled) but _segmentsIntersect
+      // returns false for all paths (denom=0 check), so the forbidden-edge layer
+      // is moot; log them above via [wall-seg-debug] DEGEN_SEGS instead.
+      if (wx1 === wx2 && wy1 === wy2) continue;
+      const scMin = Math.max(0, Math.floor(Math.min(wx1, wx2) / cellSize) - bufCells);
+      const scMax = Math.min(cols - 1, Math.ceil(Math.max(wx1, wx2) / cellSize) + bufCells);
+      const srMin = Math.max(0, Math.floor(Math.min(wy1, wy2) / cellSize) - bufCells);
+      const srMax = Math.min(rows - 1, Math.ceil(Math.max(wy1, wy2) / cellSize) + bufCells);
       for (let r = srMin; r <= srMax; r++) {
         for (let c = scMin; c <= scMax; c++) {
           const ccx = (c + 0.5) * cellSize, ccy = (r + 0.5) * cellSize;
+          // Layer 1: buffer cell — block it and skip edge check (redundant on blocked cells).
+          if (_ptSegDist(ccx, ccy, wx1, wy1, wx2, wy2) < WALL_BUF) {
+            blocked[r * cols + c] = 1;
+            continue;
+          }
+          // Layer 2: crossing edges for cells outside the buffer.
           for (const [dc, dr] of [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]]) {
             const nc = c + dc, nr = r + dr;
             if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
@@ -428,7 +502,9 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
     }
   }
 
-  return { blocked, cols, rows, cellSize, forbiddenEdges };
+  // `walls` is kept on the grid so findGridRoute can repair RDP-simplified segments
+  // that visually cross a wall even though the raw A* path correctly avoids it.
+  return { blocked, cols, rows, cellSize, forbiddenEdges, walls: mapWalls ?? [] };
 }
 
 // ── Nearest walkable cell (Chebyshev spiral) ──────────────────────────────────
@@ -703,9 +779,115 @@ export function findGridRoute(grid, startX, startY, destX, destY) {
   // Convert cell indices to SVG coords (cell centers)
   const svgPath = gridPath.map(([c, r]) => ({ x: (c + 0.5) * cellSize, y: (r + 0.5) * cellSize }));
 
-  // Prepend actual start and append actual dest for precise endpoints
+  // Prepend actual start and append actual dest for precise endpoints.
+  // Tag each point with its raw-path index so the repair loop can look up
+  // sub-paths in O(1) without relying on object-reference equality
+  // (which would silently break if rdp() ever clones its input points).
   const full = [{ x: startX, y: startY }, ...svgPath, { x: destX, y: destY }];
+  full.forEach((p, i) => { p._i = i; });
 
-  // Simplify with RDP at 1.5-cell tolerance to remove grid-axis zigzag
-  return rdp(full, cellSize * 1.5);
+  // Simplify with RDP to remove grid-axis zigzag.
+  let simplified = rdp(full, cellSize * 1.5);
+
+  // Post-simplification wall-crossing repair.
+  //
+  // RDP can connect two waypoints A→B with a straight chord that visually
+  // passes through a wall's interior even though the raw A* path correctly
+  // routes around it (raw deviation < epsilon → RDP drops the intermediate
+  // waypoints, but the chord crosses the wall).  For each simplified segment
+  // that crosses any wall polyline, re-insert the original raw sub-path
+  // between those two endpoints and repeat until the display line is clean.
+  // Zones/outer-wall-ring don't need this because they mark cells blocked[],
+  // so A* can never place waypoints straddling them.
+  if (grid.walls?.length > 0) {
+    // Flat array of wall segment coords: [x1,y1,x2,y2, x1,y1,x2,y2, ...]
+    const wallFlat = [];
+    for (const w of grid.walls) {
+      const pts = Array.isArray(w.points) ? w.points : [];
+      for (let i = 0; i < pts.length - 1; i++)
+        wallFlat.push(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y);
+    }
+
+    const crossesWall = (ax, ay, bx, by) => {
+      for (let i = 0; i < wallFlat.length; i += 4) {
+        if (_segmentsIntersect(ax, ay, bx, by, wallFlat[i], wallFlat[i + 1], wallFlat[i + 2], wallFlat[i + 3]))
+          return true;
+      }
+      return false;
+    };
+
+    let repaired = true;
+    while (repaired) {
+      repaired = false;
+      const out = [simplified[0]];
+      for (let i = 0; i < simplified.length - 1; i++) {
+        const a = simplified[i], b = simplified[i + 1];
+        if (crossesWall(a.x, a.y, b.x, b.y)) {
+          const ia = a._i ?? -1;
+          const ib = b._i ?? -1;
+          if (ia !== -1 && ib !== -1 && ib > ia + 1) {
+            // Re-insert raw sub-path between a and b (a is already in out).
+            out.push(...full.slice(ia + 1, ib));
+            repaired = true;
+          }
+        }
+        out.push(b);
+      }
+      if (repaired) simplified = out;
+    }
+
+    if (typeof window !== "undefined") {
+      // Helper: min distance from point to any registered wall segment.
+      const minDistToWall = (px, py) => {
+        let min = Infinity;
+        for (let wi = 0; wi < wallFlat.length; wi += 4)
+          min = Math.min(min, _ptSegDist(px, py, wallFlat[wi], wallFlat[wi+1], wallFlat[wi+2], wallFlat[wi+3]));
+        return min;
+      };
+
+      // Helper: identify WHICH wall segment(s) a route segment crosses.
+      const whichWallsCrossed = (ax, ay, bx, by) => {
+        const hits = [];
+        for (let wi = 0; wi < wallFlat.length; wi += 4) {
+          if (_segmentsIntersect(ax, ay, bx, by, wallFlat[wi], wallFlat[wi+1], wallFlat[wi+2], wallFlat[wi+3]))
+            hits.push(`seg${wi/4}(${wallFlat[wi]},${wallFlat[wi+1]})→(${wallFlat[wi+2]},${wallFlat[wi+3]})`);
+        }
+        return hits;
+      };
+
+      // ── Raw A* path: find any cell within WALL_BUF (should be blocked) ──
+      const rawViolations = full
+        .map((p, i) => ({ i, x: p.x, y: p.y, d: minDistToWall(p.x, p.y) }))
+        .filter(e => e.d < WALL_BUF);
+      console.log("[wall-buf-debug] raw path length:", full.length,
+        "| raw points within WALL_BUF of wall:", rawViolations.length,
+        rawViolations.map(e => `#${e.i}(${e.x.toFixed(0)},${e.y.toFixed(0)})d=${e.d.toFixed(1)}`).join(" "));
+
+      // ── Final simplified path: same check + crossing check w/ segment ID ─
+      const finalPts = simplified.map((p, i) => ({ i, x: p.x, y: p.y, d: minDistToWall(p.x, p.y) }));
+      const finalBufViolations = finalPts.filter(e => e.d < WALL_BUF);
+      const finalCrossings = simplified.slice(0, -1)
+        .map((a, i) => { const b = simplified[i + 1]; return { i, a, b, hits: whichWallsCrossed(a.x, a.y, b.x, b.y) }; })
+        .filter(e => e.hits.length > 0);
+      console.log("[wall-buf-debug] final path length:", simplified.length,
+        "| final pts within WALL_BUF:", finalBufViolations.length,
+        "| final crossing segments:", finalCrossings.length);
+      console.log("[wall-buf-debug] final waypoints+dist:",
+        finalPts.map(e => `(${e.x.toFixed(0)},${e.y.toFixed(0)})d=${e.d.toFixed(0)}`).join(" → "));
+      if (finalBufViolations.length > 0)
+        console.log("[wall-buf-debug] BUFFER VIOLATIONS (cells not blocked as expected):",
+          finalBufViolations.map(e => `#${e.i}(${e.x.toFixed(0)},${e.y.toFixed(0)})d=${e.d.toFixed(1)}`).join(" "));
+      if (finalCrossings.length > 0)
+        console.log("[wall-buf-debug] CROSSING SEGMENTS (repair incomplete):",
+          finalCrossings.map(({ i, a, b, hits }) =>
+            `route-seg${i}(${a.x.toFixed(0)},${a.y.toFixed(0)})→(${b.x.toFixed(0)},${b.y.toFixed(0)}) crosses wall ${hits.join(', ')}`
+          ).join(' | '));
+      if (finalBufViolations.length === 0 && finalCrossings.length === 0)
+        console.log("[wall-buf-debug] path respects buffer and has no crossings — visual issue is topological (path inside loop without crossing registered wall segments)");
+    }
+  }
+
+  // Strip the internal index tags before returning.
+  for (const p of simplified) delete p._i;
+  return simplified;
 }
