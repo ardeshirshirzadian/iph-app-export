@@ -4,17 +4,42 @@ import { query } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
+const RASAYESH_BASE = 'https://api.rasayesh.com/';
+
 async function ensureQuestUserNamesTable() {
   if (globalThis._questUserNamesReady) return;
   await query(`
     CREATE TABLE IF NOT EXISTS quest_user_names (
-      user_uuid       VARCHAR(100) PRIMARY KEY,
-      display_name_fa VARCHAR(200),
-      display_name_en VARCHAR(200),
-      updated_at      TIMESTAMP DEFAULT NOW()
+      user_uuid         VARCHAR(100) PRIMARY KEY,
+      display_name_fa   VARCHAR(200),
+      display_name_en   VARCHAR(200),
+      updated_at        TIMESTAMP DEFAULT NOW()
     )
   `);
+  await query(`ALTER TABLE quest_user_names ADD COLUMN IF NOT EXISTS profile_photo_url VARCHAR(500)`);
   globalThis._questUserNamesReady = true;
+}
+
+function resolvePhotoUrl(profilePhotoUrl, profileImage) {
+  if (profilePhotoUrl) {
+    return profilePhotoUrl.startsWith('http') ? profilePhotoUrl : RASAYESH_BASE + profilePhotoUrl;
+  }
+  if (profileImage) {
+    const raw = typeof profileImage === 'string' ? profileImage : null;
+    if (raw && raw.startsWith('/')) return RASAYESH_BASE + raw;
+    if (raw && raw.startsWith('http')) return raw;
+  }
+  return null;
+}
+
+async function getLeaderboardLimit() {
+  try {
+    const result = await query("SELECT value FROM app_settings WHERE key = 'quest_settings'");
+    const limit = parseInt(result.rows[0]?.value?.leaderboard_limit, 10);
+    return Number.isFinite(limit) && limit >= 1 ? limit : 50;
+  } catch {
+    return 50;
+  }
 }
 
 export async function GET() {
@@ -29,8 +54,9 @@ export async function GET() {
 
   try {
     await ensureQuestUserNamesTable();
+    const limit = await getLeaderboardLimit();
 
-    // Top-50 leaderboard with name resolution:
+    // Top-N leaderboard with name + photo resolution:
     //   1st priority: quest_user_names (populated at scan time, always fresh)
     //   2nd priority: app_users (populated at login, covers old scan data)
     //   3rd priority: generic "شرکت‌کننده" label
@@ -46,6 +72,8 @@ export async function GET() {
           qn.display_name_en,
           NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), '')
         ) AS display_name_en,
+        qn.profile_photo_url,
+        au.profile_image,
         SUM(qs.xp_earned)::int AS total_xp,
         COUNT(*)::int          AS scan_count
       FROM quest_scans qs
@@ -53,22 +81,23 @@ export async function GET() {
       LEFT JOIN app_users        au ON qs.user_uuid = au.uuid
       GROUP BY
         qs.user_uuid,
-        qn.display_name_fa, qn.display_name_en,
-        au.firstname_fa, au.lastname_fa, au.firstname_en, au.lastname_en
+        qn.display_name_fa, qn.display_name_en, qn.profile_photo_url,
+        au.firstname_fa, au.lastname_fa, au.firstname_en, au.lastname_en, au.profile_image
       ORDER BY total_xp DESC
-      LIMIT 50
-    `);
+      LIMIT $1
+    `, [limit]);
 
     const leaderboard = leaderboardRows.map((row, idx) => ({
-      rank:            idx + 1,
-      user_uuid:       row.user_uuid,
-      display_name_fa: row.display_name_fa,
-      display_name_en: row.display_name_en || null,
-      total_xp:        row.total_xp,
-      scan_count:      row.scan_count,
+      rank:              idx + 1,
+      user_uuid:         row.user_uuid,
+      display_name_fa:   row.display_name_fa,
+      display_name_en:   row.display_name_en || null,
+      total_xp:          row.total_xp,
+      scan_count:        row.scan_count,
+      profile_photo_url: resolvePhotoUrl(row.profile_photo_url, row.profile_image),
     }));
 
-    // Current user's rank and XP (may be outside top 50)
+    // Current user's rank, XP, and photo (may be outside top-N)
     let currentUser = null;
     if (currentUuid) {
       const { rows: rankRows } = await query(`
@@ -80,14 +109,19 @@ export async function GET() {
           FROM quest_scans
           GROUP BY user_uuid
         )
-        SELECT rank, total_xp FROM ranked WHERE user_uuid = $1
+        SELECT r.rank, r.total_xp, qn.profile_photo_url, au.profile_image
+        FROM ranked r
+        LEFT JOIN quest_user_names qn ON r.user_uuid = qn.user_uuid
+        LEFT JOIN app_users        au ON r.user_uuid = au.uuid
+        WHERE r.user_uuid = $1
       `, [currentUuid]);
 
       if (rankRows.length > 0) {
         currentUser = {
-          user_uuid: currentUuid,
-          rank:      rankRows[0].rank,
-          total_xp:  rankRows[0].total_xp,
+          user_uuid:         currentUuid,
+          rank:              rankRows[0].rank,
+          total_xp:          rankRows[0].total_xp,
+          profile_photo_url: resolvePhotoUrl(rankRows[0].profile_photo_url, rankRows[0].profile_image),
         };
       }
     }

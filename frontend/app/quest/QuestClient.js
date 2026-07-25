@@ -322,6 +322,16 @@ function MissionCard({ mission, xpUnit, onQuizClick }) {
   );
 }
 
+function AvatarPlaceholder({ size = 32 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"
+      style={{ borderRadius: '50%', background: 'rgba(255,255,255,0.08)', flexShrink: 0 }}>
+      <circle cx="16" cy="13" r="5" fill="rgba(255,255,255,0.25)" />
+      <path d="M6 27c0-5.523 4.477-10 10-10s10 4.477 10 10" stroke="rgba(255,255,255,0.25)" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUnit }) {
   const levelNameToColor = useMemo(() => {
     const map = {};
@@ -351,6 +361,17 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
                 </span>
               )}
             </div>
+            {user.profile_photo_url ? (
+              <img
+                src={user.profile_photo_url}
+                alt=""
+                width={32} height={32}
+                className="flex-shrink-0 object-cover"
+                style={{ borderRadius: '50%', width: 32, height: 32 }}
+              />
+            ) : (
+              <AvatarPlaceholder size={32} />
+            )}
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold leading-6 truncate"
                 style={{ color: isMe ? "var(--accent)" : "var(--text)" }}>
@@ -441,7 +462,11 @@ function getLogoUrl(logo, baseUrl) {
   if (typeof logo === 'string') {
     try { parsed = JSON.parse(logo); } catch { return null; }
   }
-  const src = parsed?.jpg?.['128'] || parsed?.jpg?.['64'];
+  const src =
+    parsed?.jpg?.['128'] || parsed?.jpg?.['64'] || parsed?.jpg?.['32'] ||
+    parsed?.png?.['128'] || parsed?.png?.['64'] || parsed?.png?.['32'] ||
+    parsed?.webp?.['128'] || parsed?.webp?.['64'] || parsed?.webp?.['32'] ||
+    parsed?.['128'] || parsed?.['64'] || parsed?.['32'];
   if (!src) return null;
   return (baseUrl || '') + src;
 }
@@ -723,6 +748,9 @@ function QuizModal({ quiz, onClose, onComplete, lang }) {
                 )}
               </div>
             ) : null}
+            <p className="font-bold text-sm leading-7 mb-4" style={{ color: "var(--text)" }}>
+              {question}
+            </p>
             <button
               onClick={() => setPhase('question')}
               disabled={quiz.quiz_hint_type === 'video' && !videoEnded}
@@ -919,12 +947,13 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
           ? (item.display_name_en || item.display_name_fa)
           : item.display_name_fa;
         return {
-          rank:      item.rank,
-          user_uuid: item.user_uuid,
-          name:      name || 'شرکت‌کننده',
-          company:   '',
-          xp:        item.total_xp,
-          level:     current.name,
+          rank:              item.rank,
+          user_uuid:         item.user_uuid,
+          name:              name || 'شرکت‌کننده',
+          company:           '',
+          xp:                item.total_xp,
+          level:             current.name,
+          profile_photo_url: item.profile_photo_url || null,
         };
       });
     }

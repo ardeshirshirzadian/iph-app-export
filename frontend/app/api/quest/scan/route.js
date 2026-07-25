@@ -3,27 +3,45 @@ import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { ensureBadgeProgressTable } from '@/lib/initQuestBadges';
 
+const RASAYESH_BASE = 'https://api.rasayesh.com/';
+
+async function ensureQuestUserNamesTable() {
+  if (globalThis._questUserNamesReady) return;
+  await query(`
+    CREATE TABLE IF NOT EXISTS quest_user_names (
+      user_uuid         VARCHAR(100) PRIMARY KEY,
+      display_name_fa   VARCHAR(200),
+      display_name_en   VARCHAR(200),
+      updated_at        TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await query(`ALTER TABLE quest_user_names ADD COLUMN IF NOT EXISTS profile_photo_url VARCHAR(500)`);
+  globalThis._questUserNamesReady = true;
+}
+
 async function cacheUserName(userUuid, displayNameFa, displayNameEn) {
   try {
-    if (!globalThis._questUserNamesReady) {
-      await query(`
-        CREATE TABLE IF NOT EXISTS quest_user_names (
-          user_uuid       VARCHAR(100) PRIMARY KEY,
-          display_name_fa VARCHAR(200),
-          display_name_en VARCHAR(200),
-          updated_at      TIMESTAMP DEFAULT NOW()
-        )
-      `);
-      globalThis._questUserNamesReady = true;
-    }
+    await ensureQuestUserNamesTable();
+
+    // Resolve profile photo from app_users (populated at login time)
+    let profilePhotoUrl = null;
+    try {
+      const { rows } = await query('SELECT profile_image FROM app_users WHERE uuid = $1', [userUuid]);
+      const raw = rows[0]?.profile_image;
+      if (raw && typeof raw === 'string') {
+        profilePhotoUrl = raw.startsWith('http') ? raw : RASAYESH_BASE + raw;
+      }
+    } catch {}
+
     await query(
-      `INSERT INTO quest_user_names (user_uuid, display_name_fa, display_name_en, updated_at)
-       VALUES ($1, $2, $3, NOW())
+      `INSERT INTO quest_user_names (user_uuid, display_name_fa, display_name_en, profile_photo_url, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
        ON CONFLICT (user_uuid) DO UPDATE
-         SET display_name_fa = EXCLUDED.display_name_fa,
-             display_name_en = EXCLUDED.display_name_en,
-             updated_at      = NOW()`,
-      [userUuid, displayNameFa || null, displayNameEn || null]
+         SET display_name_fa   = EXCLUDED.display_name_fa,
+             display_name_en   = EXCLUDED.display_name_en,
+             profile_photo_url = COALESCE(EXCLUDED.profile_photo_url, quest_user_names.profile_photo_url),
+             updated_at        = NOW()`,
+      [userUuid, displayNameFa || null, displayNameEn || null, profilePhotoUrl]
     );
   } catch (err) {
     console.error('[quest/scan] cacheUserName failed:', err.message);
