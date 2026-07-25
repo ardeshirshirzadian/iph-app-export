@@ -233,18 +233,22 @@ function ScanButton({ isDark, label }) {
   );
 }
 
-function MissionCard({ mission, xpUnit }) {
+function MissionCard({ mission, xpUnit, onQuizClick }) {
   const pct = useMemo(
     () => (mission.total > 0 ? Math.round((mission.progress / mission.total) * 100) : 0),
     [mission.progress, mission.total]
   );
   const done = mission.progress >= mission.total;
+  const isQuiz = mission.mission_type === 'quiz';
+  const quizAttempted = isQuiz && !!mission.quiz_attempted;
+  const quizClickable = isQuiz && !done && !quizAttempted && typeof onQuizClick === 'function';
 
   return (
     <div
+      onClick={quizClickable ? onQuizClick : undefined}
       className={`backdrop-blur-xl border rounded-2xl p-4 flex items-center gap-4 transition-colors ${
         done ? "border-[#00ffb3]/30 bg-[#00ffb3]/5" : "border-[var(--border)]"
-      }`}
+      } ${quizClickable ? "cursor-pointer active:scale-[0.98]" : ""}`}
       style={done ? undefined : { background: "var(--surface-2)" }}
     >
       <div
@@ -275,17 +279,32 @@ function MissionCard({ mission, xpUnit }) {
         <p className="text-xs leading-6 mb-1.5 truncate" style={{ color: "var(--text-dim)" }}>
           {mission.description}
         </p>
-        <div className="flex items-center gap-2">
-          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
-            <div
-              className="h-full rounded-full transition-all duration-700"
-              style={{ width: `${pct}%`, background: "var(--accent)" }}
-            />
+        {isQuiz ? (
+          <div className="flex items-center gap-2">
+            {done ? (
+              <span className="text-xs font-bold" style={{ color: "var(--accent)" }}>پاسخ صحیح ✓</span>
+            ) : quizAttempted ? (
+              <span className="text-xs font-medium" style={{ color: "#f87171" }}>پاسخ داده شده (قفل شده)</span>
+            ) : (
+              <span className="text-xs font-bold px-3 py-0.5 rounded-full"
+                style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
+                شرکت کن ←
+              </span>
+            )}
           </div>
-          <span className="text-xs flex-shrink-0" style={{ color: "var(--text-dim)" }}>
-            {mission.progress}/{mission.total}
-          </span>
-        </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
+              <div
+                className="h-full rounded-full transition-all duration-700"
+                style={{ width: `${pct}%`, background: "var(--accent)" }}
+              />
+            </div>
+            <span className="text-xs flex-shrink-0" style={{ color: "var(--text-dim)" }}>
+              {mission.progress}/{mission.total}
+            </span>
+          </div>
+        )}
       </div>
 
       {done && (
@@ -361,48 +380,57 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
   );
 }
 
-function BadgesTab({ badges }) {
+function BadgesTab({ badges, onQuizClick }) {
   return (
     <div className="grid grid-cols-2 gap-3">
-      {badges.map((badge, idx) => (
-        <div
-          key={badge.id ?? idx}
-          className={`rounded-2xl p-4 border text-center transition-colors ${
-            badge.earned ? "border-[#00ffb3]/30 bg-[#00ffb3]/5" : "border-[var(--border)]"
-          }`}
-          style={badge.earned ? undefined : { background: "var(--surface-2)", opacity: 0.5 }}
-        >
+      {badges.map((badge, idx) => {
+        const isQuiz = badge.badge_type === 'quiz';
+        const quizClickable = isQuiz && !badge.earned && !badge.quiz_attempted && typeof onQuizClick === 'function';
+        return (
           <div
-            className="w-14 h-14 rounded-2xl mx-auto mb-3 flex items-center justify-center"
-            style={{ background: badge.earned ? "rgba(0,255,179,0.15)" : "var(--surface-hover)" }}
+            key={badge.id ?? idx}
+            onClick={quizClickable ? () => onQuizClick(badge) : undefined}
+            className={`rounded-2xl p-4 border text-center transition-colors ${
+              badge.earned ? "border-[#00ffb3]/30 bg-[#00ffb3]/5" : "border-[var(--border)]"
+            } ${quizClickable ? "cursor-pointer active:scale-[0.97]" : ""}`}
+            style={badge.earned ? undefined : { background: "var(--surface-2)", opacity: quizClickable ? 1 : 0.5 }}
           >
-            {badge.icon && badge.icon.startsWith('/') ? (
-              <img src={badge.icon} alt="" style={{ width: badge.icon_size ?? 36, height: badge.icon_size ?? 36, objectFit: 'contain' }} />
-            ) : (
-              <span style={{ fontSize: badge.icon_size ?? 36, lineHeight: 1 }}>{badge.icon}</span>
-            )}
-          </div>
-          <p className="text-sm font-bold leading-6"
-            style={{ color: badge.earned ? "var(--accent)" : "var(--text-muted)" }}>
-            {badge.name}
-          </p>
-          <p className="text-[11px] leading-5 mt-0.5" style={{ color: "var(--text-dim)" }}>
-            {badge.description}
-          </p>
-          {badge.earned && (
             <div
-              className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full"
-              style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}
+              className="w-14 h-14 rounded-2xl mx-auto mb-3 flex items-center justify-center"
+              style={{ background: badge.earned ? "rgba(0,255,179,0.15)" : "var(--surface-hover)" }}
             >
-              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-              کسب شده
+              {badge.icon && badge.icon.startsWith('/') ? (
+                <img src={badge.icon} alt="" style={{ width: badge.icon_size ?? 36, height: badge.icon_size ?? 36, objectFit: 'contain' }} />
+              ) : (
+                <span style={{ fontSize: badge.icon_size ?? 36, lineHeight: 1 }}>{badge.icon}</span>
+              )}
             </div>
-          )}
-        </div>
-      ))}
+            <p className="text-sm font-bold leading-6"
+              style={{ color: badge.earned ? "var(--accent)" : "var(--text-muted)" }}>
+              {badge.name}
+            </p>
+            <p className="text-[11px] leading-5 mt-0.5" style={{ color: "var(--text-dim)" }}>
+              {badge.description}
+            </p>
+            {badge.earned ? (
+              <div
+                className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full"
+                style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}
+              >
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                کسب شده
+              </div>
+            ) : isQuiz && badge.quiz_attempted ? (
+              <div className="mt-2 text-[10px]" style={{ color: "#f87171" }}>قفل شده</div>
+            ) : isQuiz ? (
+              <div className="mt-2 text-[10px] font-bold" style={{ color: "var(--accent)" }}>شرکت کن ←</div>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -418,8 +446,26 @@ function getLogoUrl(logo, baseUrl) {
   return (baseUrl || '') + src;
 }
 
+function useCooldownTick() {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
+}
+
+function getCooldownMinutes(lastScanAt, hours, now) {
+  if (!lastScanAt) return null;
+  const elapsed = now - new Date(lastScanAt).getTime();
+  const cooldownMs = Math.max(1, hours || 1) * 60 * 60 * 1000;
+  const remaining = cooldownMs - elapsed;
+  return remaining > 0 ? Math.ceil(remaining / 60000) : 0;
+}
+
 function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedIds, boothsLoading, logoBaseUrl, xpUnit }) {
   const [visible, setVisible] = useState(false);
+  const now = useCooldownTick();
 
   useEffect(() => {
     if (open) {
@@ -492,6 +538,9 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
               ? (booth.brand_name_fa || booth.brand_name_en || '—')
               : (booth.brand_name_en || booth.brand_name_fa || '—');
             const firstLetter = (booth.brand_name_fa || booth.brand_name_en || '؟').charAt(0);
+            const cooldownMins = booth.repeatable_scan
+              ? getCooldownMinutes(booth.last_scan_at, booth.repeatable_scan_hours, now)
+              : null;
             return (
               <div
                 key={booth.id}
@@ -535,6 +584,17 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
                       {booth.booth_no && <> • {lang === 'fa' ? 'غرفه' : 'Booth'} {booth.booth_no}</>}
                     </div>
                   )}
+                  {cooldownMins !== null && (
+                    cooldownMins === 0 ? (
+                      <div className="text-[10px] leading-4 mt-0.5 font-medium" style={{ color: "var(--accent)" }}>
+                        🔄 {lang === 'fa' ? 'قابل اسکن مجدد' : 'Ready to scan again'}
+                      </div>
+                    ) : (
+                      <div className="text-[10px] leading-4 mt-0.5" style={{ color: "#f59e0b" }}>
+                        🔄 {lang === 'fa' ? `بازنشانی: ${cooldownMins} دقیقه دیگر` : `Resets in ${cooldownMins} min`}
+                      </div>
+                    )
+                  )}
                 </div>
 
                 {/* XP */}
@@ -571,6 +631,193 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
   );
 }
 
+// ── Quiz Modal ─────────────────────────────────────────────────────────────
+
+function QuizModal({ quiz, onClose, onComplete, lang }) {
+  const [phase, setPhase] = useState(quiz?.quiz_hint_type && quiz.quiz_hint_type !== 'none' ? 'hint' : 'question');
+  const [videoEnded, setVideoEnded] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState(null); // null | 'correct' | 'wrong' | 'already'
+
+  const isRTL = lang === 'fa';
+  const hasHint = quiz?.quiz_hint_type && quiz.quiz_hint_type !== 'none';
+  const hintUrl = quiz?.quiz_hint_url;
+
+  const question = lang === 'en' ? (quiz?.quiz_question_en || quiz?.quiz_question_fa) : quiz?.quiz_question_fa;
+  const options = lang === 'en'
+    ? (Array.isArray(quiz?.quiz_options_en) && quiz.quiz_options_en.length === 4 ? quiz.quiz_options_en : quiz?.quiz_options_fa)
+    : quiz?.quiz_options_fa;
+
+  async function handleSubmit() {
+    if (selected === null || submitting || result) return;
+    setSubmitting(true);
+    try {
+      const body = quiz.isBadge
+        ? { badgeId: quiz.id, selectedIndex: selected }
+        : { missionId: quiz.id, selectedIndex: selected };
+      const res = await fetch('/api/quest/quiz', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.error === 'already_attempted') {
+        setResult('already');
+      } else {
+        setResult(data.correct ? 'correct' : 'wrong');
+        if (data.correct && onComplete) onComplete();
+      }
+    } catch {
+      setResult('wrong');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-end justify-center" dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={result ? onClose : undefined} />
+      <div
+        className="relative w-full max-w-md rounded-t-3xl border-t border-x border-[#00ffb3]/20 pb-10 overflow-hidden"
+        style={{ background: "#021f20", maxHeight: '90vh', overflowY: 'auto' }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+          <h2 className="font-bold text-base" style={{ color: "var(--text)" }}>
+            {lang === 'fa' ? 'سؤال چهارگزینه‌ای' : 'Quiz'}
+          </h2>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full flex items-center justify-center"
+            style={{ background: "rgba(255,255,255,0.08)", color: "var(--text-dim)" }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2.5" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Hint phase */}
+        {phase === 'hint' && hasHint && (
+          <div className="px-5 pb-4">
+            {quiz.quiz_hint_type === 'image' ? (
+              <img src={hintUrl} alt="" className="w-full rounded-2xl mb-4 object-contain max-h-64" />
+            ) : quiz.quiz_hint_type === 'video' ? (
+              <div className="relative mb-4">
+                <video
+                  src={hintUrl}
+                  className="w-full rounded-2xl"
+                  autoPlay
+                  playsInline
+                  controlsList="nodownload nofullscreen noremoteplayback"
+                  onEnded={() => setVideoEnded(true)}
+                  style={{ pointerEvents: videoEnded ? 'auto' : 'none' }}
+                />
+                {!videoEnded && (
+                  <div className="absolute bottom-2 right-2 text-xs px-2 py-0.5 rounded-full"
+                    style={{ background: 'rgba(0,0,0,0.6)', color: 'rgba(255,255,255,0.6)' }}>
+                    {lang === 'fa' ? 'تا پایان ویدیو صبر کنید' : 'Watch until end'}
+                  </div>
+                )}
+              </div>
+            ) : null}
+            <button
+              onClick={() => setPhase('question')}
+              disabled={quiz.quiz_hint_type === 'video' && !videoEnded}
+              className="w-full py-3 rounded-xl font-bold text-sm transition-all"
+              style={{
+                background: (quiz.quiz_hint_type === 'video' && !videoEnded) ? 'rgba(0,255,179,0.2)' : 'var(--accent)',
+                color: (quiz.quiz_hint_type === 'video' && !videoEnded) ? 'rgba(0,255,179,0.4)' : 'var(--bg)',
+              }}
+            >
+              {lang === 'fa' ? 'ادامه' : 'Continue'}
+            </button>
+          </div>
+        )}
+
+        {/* Question phase */}
+        {phase === 'question' && !result && (
+          <div className="px-5 pb-4">
+            <p className="font-bold text-sm leading-7 mb-4" style={{ color: "var(--text)" }}>
+              {question}
+            </p>
+            <div className="space-y-2.5 mb-5">
+              {Array.isArray(options) && options.map((opt, i) => (
+                <button
+                  key={i}
+                  onClick={() => setSelected(i)}
+                  className="w-full text-right px-4 py-3 rounded-xl border text-sm font-medium transition-all"
+                  style={{
+                    borderColor: selected === i ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
+                    background: selected === i ? 'rgba(0,255,179,0.12)' : 'rgba(255,255,255,0.04)',
+                    color: selected === i ? 'var(--accent)' : 'var(--text)',
+                  }}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={handleSubmit}
+              disabled={selected === null || submitting}
+              className="w-full py-3 rounded-xl font-bold text-sm transition-all"
+              style={{
+                background: selected === null ? 'rgba(0,255,179,0.2)' : 'var(--accent)',
+                color: selected === null ? 'rgba(0,255,179,0.4)' : 'var(--bg)',
+              }}
+            >
+              {submitting ? '…' : (lang === 'fa' ? 'ثبت پاسخ' : 'Submit')}
+            </button>
+          </div>
+        )}
+
+        {/* Result phase */}
+        {result && (
+          <div className="px-5 pb-4 text-center">
+            {result === 'correct' ? (
+              <>
+                <div className="text-5xl mb-3">🎉</div>
+                <p className="font-black text-xl mb-1" style={{ color: 'var(--accent)' }}>
+                  {lang === 'fa' ? 'درست بود!' : 'Correct!'}
+                </p>
+                <p className="text-sm" style={{ color: 'var(--text-dim)' }}>
+                  {lang === 'fa' ? 'مأموریت تکمیل شد و امتیاز اعطا شد' : 'Mission completed and XP awarded'}
+                </p>
+              </>
+            ) : result === 'already' ? (
+              <>
+                <div className="text-5xl mb-3">🔒</div>
+                <p className="font-bold text-lg mb-1" style={{ color: '#fbbf24' }}>
+                  {lang === 'fa' ? 'قبلاً پاسخ داده‌اید' : 'Already answered'}
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="text-5xl mb-3">❌</div>
+                <p className="font-bold text-xl mb-1" style={{ color: '#f87171' }}>
+                  {lang === 'fa' ? 'اشتباه' : 'Incorrect'}
+                </p>
+                <p className="text-sm" style={{ color: 'var(--text-dim)' }}>
+                  {lang === 'fa' ? 'فقط یک بار می‌توانید پاسخ دهید — این مأموریت قفل شد' : 'You can only answer once — this mission is now locked'}
+                </p>
+              </>
+            )}
+            <button
+              onClick={onClose}
+              className="mt-5 w-full py-3 rounded-xl font-bold text-sm"
+              style={{ background: 'var(--accent)', color: 'var(--bg)' }}
+            >
+              {lang === 'fa' ? 'بستن' : 'Close'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main client component ───────────────────────────────────────────────────
 
 export default function QuestClient({ content, title, subtitle, title_en, subtitle_en, isHomeContext = false }) {
@@ -578,6 +825,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
   const [activeTab, setActiveTab] = useState("missions");
   const [isDark, setIsDark] = useState(true);
   const { lang, isRTL } = useLang();
+  const [openQuiz, setOpenQuiz] = useState(null);
 
   const [booths, setBooths] = useState([]);
   const [scannedIds, setScannedIds] = useState(new Set());
@@ -724,8 +972,20 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     return () => observer.disconnect();
   }, []);
 
+  function refreshQuest() {
+    fetch('/api/quest').then(r => r.json()).then(d => { if (Array.isArray(d.missions)) setLiveMissions(d.missions); }).catch(() => {});
+    fetch('/api/quest/badges').then(r => r.json()).then(d => { if (Array.isArray(d.badges)) setLiveBadges(d.badges); }).catch(() => {});
+  }
+
   const missionList = useMemo(
-    () => missions.map((m, i) => <MissionCard key={m.id ?? i} mission={m} xpUnit={labels.xpUnit} />),
+    () => missions.map((m, i) => (
+      <MissionCard
+        key={m.id ?? i}
+        mission={m}
+        xpUnit={labels.xpUnit}
+        onQuizClick={m.mission_type === 'quiz' ? () => setOpenQuiz({ ...m, isBadge: false }) : undefined}
+      />
+    )),
     [missions, labels.xpUnit]
   );
 
@@ -840,7 +1100,12 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
           />
         )}
 
-        {activeTab === "badges" && <BadgesTab badges={badges} />}
+        {activeTab === "badges" && (
+          <BadgesTab
+            badges={badges}
+            onQuizClick={(badge) => setOpenQuiz({ ...badge, isBadge: true })}
+          />
+        )}
       </div>
 
       <BoothsBottomSheet
@@ -855,6 +1120,15 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         logoBaseUrl={logoBaseUrl}
         xpUnit={labels.xpUnit}
       />
+
+      {openQuiz && (
+        <QuizModal
+          quiz={openQuiz}
+          lang={lang}
+          onClose={() => { setOpenQuiz(null); refreshQuest(); }}
+          onComplete={() => refreshQuest()}
+        />
+      )}
 
       <BottomNav />
     </main>

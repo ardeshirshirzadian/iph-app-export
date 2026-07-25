@@ -78,7 +78,8 @@ export async function POST(request) {
     const companyResult = await query(
       `SELECT id, brand_name_fa, brand_name_en, logo, hall_name, booth_no,
               is_sponsor, website, booth_uuid, booth_xp,
-              is_manual, linked_mission_id, linked_badge_id
+              is_manual, linked_mission_id, linked_badge_id,
+              repeatable_scan, repeatable_scan_hours
        FROM companies WHERE booth_uuid = $1`,
       [uuid]
     );
@@ -89,15 +90,37 @@ export async function POST(request) {
 
     const company = companyResult.rows[0];
 
-    const existingResult = await query(
-      `SELECT id FROM quest_scans
-       WHERE user_uuid = $1 AND company_id = $2
-         AND scanned_at > NOW() - INTERVAL '24 hours'`,
-      [userUuid, company.id]
-    );
-
-    if (existingResult.rows.length > 0) {
-      return NextResponse.json({ already_scanned: true, company });
+    if (company.repeatable_scan) {
+      const lastScanResult = await query(
+        `SELECT scanned_at FROM quest_scans
+         WHERE user_uuid = $1 AND company_id = $2
+         ORDER BY scanned_at DESC LIMIT 1`,
+        [userUuid, company.id]
+      );
+      if (lastScanResult.rows.length > 0) {
+        const elapsedMs = Date.now() - new Date(lastScanResult.rows[0].scanned_at).getTime();
+        const cooldownHours = Math.max(1, company.repeatable_scan_hours || 1);
+        const cooldownMs = cooldownHours * 60 * 60 * 1000;
+        if (elapsedMs < cooldownMs) {
+          const remainingMs = cooldownMs - elapsedMs;
+          return NextResponse.json({
+            status: 'cooldown',
+            minutes_remaining: Math.ceil(remainingMs / 60000),
+            seconds_remaining: Math.ceil(remainingMs / 1000),
+            company,
+          });
+        }
+      }
+    } else {
+      const existingResult = await query(
+        `SELECT id FROM quest_scans
+         WHERE user_uuid = $1 AND company_id = $2
+           AND scanned_at > NOW() - INTERVAL '24 hours'`,
+        [userUuid, company.id]
+      );
+      if (existingResult.rows.length > 0) {
+        return NextResponse.json({ already_scanned: true, company });
+      }
     }
 
     const xpEarned = company.booth_xp ?? 10;

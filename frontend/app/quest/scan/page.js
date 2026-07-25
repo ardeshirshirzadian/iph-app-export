@@ -13,7 +13,7 @@ export default function QRScanPage() {
   const [status, setStatus] = useState("requesting"); // requesting | scanning | error | success
   const [errorMsg, setErrorMsg] = useState("");
   const [toast, setToast] = useState("");
-  const [scanResult, setScanResult] = useState(null); // { company, alreadyScanned, points }
+  const [scanResult, setScanResult] = useState(null); // { company, alreadyScanned, cooldown, minutesRemaining, points }
   const { lang, isRTL } = useLang();
 
   const showToast = useCallback((msg) => {
@@ -59,6 +59,17 @@ export default function QRScanPage() {
         if (data.error === "booth_not_found") {
           showToast(t(lang, "scan_invalid_qr"));
           processingRef.current = false;
+          return;
+        }
+
+        if (data.status === 'cooldown') {
+          setScanResult({
+            company: data.company,
+            cooldown: true,
+            minutesRemaining: data.minutes_remaining,
+          });
+          setStatus("success");
+          setTimeout(() => router.replace("/quest"), 3000);
           return;
         }
 
@@ -299,11 +310,12 @@ export default function QRScanPage() {
           )}
 
           <div className="text-center">
-            {scanResult?.alreadyScanned ? (
-              <p
-                className="font-bold text-lg mb-2"
-                style={{ color: "#fbbf24" }}
-              >
+            {scanResult?.cooldown ? (
+              <p className="font-bold text-lg mb-2" style={{ color: "#fbbf24" }}>
+                {scanResult.minutesRemaining} {lang === "fa" ? "دقیقه دیگر مجدداً تلاش کنید" : `min remaining`}
+              </p>
+            ) : scanResult?.alreadyScanned ? (
+              <p className="font-bold text-lg mb-2" style={{ color: "#fbbf24" }}>
                 {t(lang, "scan_already_scanned")}
               </p>
             ) : (
@@ -329,7 +341,7 @@ export default function QRScanPage() {
               </p>
             )}
 
-            {!scanResult?.alreadyScanned && (
+            {!scanResult?.alreadyScanned && !scanResult?.cooldown && (
               <p className="text-white/40 text-sm mt-2">{t(lang, "scan_success_title")}</p>
             )}
           </div>

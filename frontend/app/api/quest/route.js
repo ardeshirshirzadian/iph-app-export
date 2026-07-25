@@ -66,6 +66,13 @@ async function calcProgress(mission, userUuid) {
         const scanned = parseInt(r.rows[0].cnt, 10);
         return mission.hall_match_mode === 'any' ? (scanned >= 1 ? 1 : 0) : scanned;
       }
+      case 'quiz': {
+        const r = await query(
+          `SELECT is_correct FROM quest_quiz_attempts WHERE mission_id = $1 AND user_uuid = $2`,
+          [mission.id, userUuid]
+        ).catch(() => ({ rows: [] }));
+        return r.rows.length > 0 && r.rows[0].is_correct ? 1 : 0;
+      }
       default:
         return 0;
     }
@@ -85,6 +92,14 @@ export async function GET() {
     const missions = await Promise.all(
       rows.map(async (m) => {
         const progress = await calcProgress(m, userUuid);
+        let quiz_attempted = false;
+        if (m.mission_type === 'quiz' && userUuid) {
+          const aR = await query(
+            `SELECT id FROM quest_quiz_attempts WHERE mission_id = $1 AND user_uuid = $2`,
+            [m.id, userUuid]
+          ).catch(() => ({ rows: [] }));
+          quiz_attempted = aR.rows.length > 0;
+        }
         return {
           id: m.id,
           title: m.title_fa,
@@ -100,6 +115,13 @@ export async function GET() {
           target_hall_name: m.target_hall_name ?? null,
           hall_match_mode: m.hall_match_mode ?? 'any',
           hall_scan_count: m.hall_scan_count ?? null,
+          quiz_question_fa: m.mission_type === 'quiz' ? (m.quiz_question_fa ?? null) : undefined,
+          quiz_question_en: m.mission_type === 'quiz' ? (m.quiz_question_en ?? null) : undefined,
+          quiz_options_fa: m.mission_type === 'quiz' ? (m.quiz_options_fa ?? null) : undefined,
+          quiz_options_en: m.mission_type === 'quiz' ? (m.quiz_options_en ?? null) : undefined,
+          quiz_hint_type: m.mission_type === 'quiz' ? (m.quiz_hint_type ?? null) : undefined,
+          quiz_hint_url: m.mission_type === 'quiz' ? (m.quiz_hint_url ?? null) : undefined,
+          quiz_attempted: m.mission_type === 'quiz' ? quiz_attempted : undefined,
         };
       })
     );

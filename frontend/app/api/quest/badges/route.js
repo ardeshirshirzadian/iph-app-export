@@ -93,6 +93,13 @@ async function calcEarned(badge, userUuid) {
         const scanned = parseInt(r.rows[0].cnt, 10);
         return scanned >= badge.threshold;
       }
+      case 'quiz': {
+        const r = await query(
+          `SELECT is_correct FROM quest_quiz_attempts WHERE badge_id = $1 AND user_uuid = $2`,
+          [badge.id, userUuid]
+        ).catch(() => ({ rows: [] }));
+        return r.rows.length > 0 && r.rows[0].is_correct;
+      }
       default:
         return false;
     }
@@ -114,16 +121,35 @@ export async function GET() {
     );
 
     const badges = await Promise.all(
-      rows.map(async (b) => ({
-        id: b.id,
-        name_fa: b.name_fa,
-        name_en: b.name_en,
-        description_fa: b.description_fa,
-        description_en: b.description_en,
-        icon: b.icon_value,
-        icon_size: b.icon_size ?? 36,
-        earned: await calcEarned(b, userUuid),
-      }))
+      rows.map(async (b) => {
+        const earned = await calcEarned(b, userUuid);
+        let quiz_attempted = false;
+        if (b.badge_type === 'quiz' && userUuid) {
+          const aR = await query(
+            `SELECT id FROM quest_quiz_attempts WHERE badge_id = $1 AND user_uuid = $2`,
+            [b.id, userUuid]
+          ).catch(() => ({ rows: [] }));
+          quiz_attempted = aR.rows.length > 0;
+        }
+        return {
+          id: b.id,
+          badge_type: b.badge_type,
+          name_fa: b.name_fa,
+          name_en: b.name_en,
+          description_fa: b.description_fa,
+          description_en: b.description_en,
+          icon: b.icon_value,
+          icon_size: b.icon_size ?? 36,
+          earned,
+          quiz_question_fa: b.badge_type === 'quiz' ? (b.quiz_question_fa ?? null) : undefined,
+          quiz_question_en: b.badge_type === 'quiz' ? (b.quiz_question_en ?? null) : undefined,
+          quiz_options_fa: b.badge_type === 'quiz' ? (b.quiz_options_fa ?? null) : undefined,
+          quiz_options_en: b.badge_type === 'quiz' ? (b.quiz_options_en ?? null) : undefined,
+          quiz_hint_type: b.badge_type === 'quiz' ? (b.quiz_hint_type ?? null) : undefined,
+          quiz_hint_url: b.badge_type === 'quiz' ? (b.quiz_hint_url ?? null) : undefined,
+          quiz_attempted: b.badge_type === 'quiz' ? quiz_attempted : undefined,
+        };
+      })
     );
 
     return NextResponse.json({ badges });

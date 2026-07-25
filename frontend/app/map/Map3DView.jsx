@@ -6,9 +6,9 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
-const BOOTH_H   = 22;    // height of each extruded booth block (map units)
-const FLOOR_GAP = 200;   // vertical separation between floors (map units)
-const ROUTE_Y   = 5;     // route tube sits this far above floor level
+const BOOTH_H   = 22;   // height of each extruded booth block (map units)
+const FLOOR_GAP = 200;  // vertical separation between floors (map units)
+const ROUTE_Y   = 5;    // route tube sits this far above floor level
 
 // ── Module-level helpers (no hooks) ───────────────────────────────────────────
 const PRESET_ICONS = {
@@ -141,9 +141,10 @@ export default function Map3DView({
     t.raycaster   = new THREE.Raycaster();
     t.boothEntries = []; // { mesh, booth, hall, mergedLabel, cx, cz }
     t.disposables  = []; // { geometry?, material? } — disposed on unmount
-    t.labelObjects    = [];
     t.elementObjects  = [];
     t.routeObjects    = [];
+    t.routeTextures   = [];
+    t.clock           = new THREE.Clock();
 
     // ── Build booths ──────────────────────────────────────────────────────────
     const matCache = {};
@@ -181,26 +182,6 @@ export default function Map3DView({
           t.scene.add(mesh);
           t.disposables.push({ geometry: geo });
           t.boothEntries.push({ mesh, booth: firstBooth, hall, mergedLabel, cx, cz });
-
-          // Booth number label (CSS2D — always faces camera)
-          if (booth.no) {
-            const div = document.createElement("div");
-            div.textContent = String(booth.no);
-            Object.assign(div.style, {
-              color: "rgba(255,255,255,0.85)",
-              fontSize: "10px",
-              fontWeight: "700",
-              fontFamily: "Vazirmatn, Inter, sans-serif",
-              pointerEvents: "none",
-              textShadow: "0 1px 3px rgba(0,0,0,0.9)",
-              userSelect: "none",
-              whiteSpace: "nowrap",
-            });
-            const lbl = new CSS2DObject(div);
-            lbl.position.set(cx, floorY + BOOTH_H + 3, cz);
-            t.scene.add(lbl);
-            t.labelObjects.push(lbl);
-          }
         }
       }
     }
@@ -303,6 +284,12 @@ export default function Map3DView({
     // ── RAF loop ──────────────────────────────────────────────────────────────
     function animate() {
       t.animId = requestAnimationFrame(animate);
+      const delta = t.clock.getDelta();
+
+      // Animate route flow textures (scroll UV offset toward destination)
+      if (t.routeTextures.length) {
+        for (const tex of t.routeTextures) tex.offset.x -= delta * 0.35;
+      }
 
       // Camera tween
       if (t.tween) {
@@ -355,18 +342,24 @@ export default function Map3DView({
     t.elementObjects.forEach((o) => t.scene.remove(o));
     t.elementObjects = [];
     for (const el of (mapElements ?? [])) {
-      const emoji   = getElementEmoji(el);
-      const floorY  = (el.floor ?? 0) * FLOOR_GAP;
-      const div     = document.createElement("div");
+      const emoji  = getElementEmoji(el);
+      const floorY = (el.floor ?? 0) * FLOOR_GAP;
+      const div    = document.createElement("div");
       div.textContent = emoji;
       Object.assign(div.style, {
         fontSize: "20px", lineHeight: "1", pointerEvents: "none",
         filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.8))",
       });
+      // Anchor Object3D sits at floor level; CSS2DObject offset is local so
+      // CSS2DRenderer derives world position via anchor.matrixWorld each frame,
+      // the same hierarchy pattern used for booth labels attached to their mesh.
+      const anchor = new THREE.Object3D();
+      anchor.position.set(el.x, floorY, el.y);
+      t.scene.add(anchor);
       const obj = new CSS2DObject(div);
-      obj.position.set(el.x, floorY + BOOTH_H + 10, el.y);
-      t.scene.add(obj);
-      t.elementObjects.push(obj);
+      obj.position.set(0, BOOTH_H + 10, 0); // local: floor + gap above booth height
+      anchor.add(obj);
+      t.elementObjects.push(anchor); // removing anchor from scene detaches obj too
     }
   }, [mapElements]);
 
@@ -374,49 +367,86 @@ export default function Map3DView({
   useEffect(() => {
     const t = tRef.current;
     if (!t?.scene) return;
-    // Dispose previous route geometry/materials; remove CSS2DObjects
+    // Dispose previous route objects, textures, and CSS2DObjects
     t.routeObjects.forEach((o) => {
       if (o instanceof THREE.Mesh) {
         o.geometry.dispose();
+        if (o.material.map) o.material.map.dispose();
         o.material.dispose();
       }
       t.scene.remove(o);
     });
     t.routeObjects = [];
+    t.routeTextures = [];
 
     if (!navRoute || navRoute.type === "computing" || navRoute.type === "no_connection") return;
 
-    // Helper: build a TubeGeometry along a 2D path at the given Y height
+    // Build a 1-D canvas texture with repeating bright dash / gap pattern
+    function createFlowTexture(hexColor) {
+      const W = 256;
+      const canvas = document.createElement("canvas");
+      canvas.width = W; canvas.height = 2;
+      const ctx = canvas.getContext("2d");
+      const col = parseColor(hexColor);
+      const r = Math.round(col.r * 255), g = Math.round(col.g * 255), b = Math.round(col.b * 255);
+      // 5 dashes across the texture; each dash = cosine pulse, trailing gap
+      for (let x = 0; x < W; x++) {
+        const phase = ((x / W) * 5) % 1; // 5 repeats
+        let alpha;
+        if (phase < 0.58) {
+          alpha = 0.3 + 0.7 * Math.pow(Math.sin((phase / 0.58) * Math.PI), 1.5);
+        } else {
+          alpha = 0;
+        }
+        ctx.fillStyle = `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
+        ctx.fillRect(x, 0, 1, 2);
+      }
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      return tex;
+    }
+
+    // Waze-style glowing navigation ribbon with animated directional flow
     function addRouteTube(path2D, floorY, hexColor) {
       if (!path2D || path2D.length < 2) return;
       const pts = path2D.map((p) => new THREE.Vector3(p.x, floorY + ROUTE_Y, p.y));
       try {
         const curve   = new THREE.CatmullRomCurve3(pts);
-        const tubeSeg = Math.max(pts.length * 4, 12);
-        const geo     = new THREE.TubeGeometry(curve, tubeSeg, 2.5, 6, false);
-        const mat     = new THREE.MeshBasicMaterial({ color: new THREE.Color(hexColor), transparent: true, opacity: 0.88 });
-        const mesh    = new THREE.Mesh(geo, mat);
-        t.scene.add(mesh);
-        t.routeObjects.push(mesh);
-        // Arrow cones — one every ~arrowSpacing world units along the tube
-        const arrowSpacing = Math.max((curve.getLength() / 6), 40);
-        const count = Math.floor(curve.getLength() / arrowSpacing);
-        for (let i = 1; i <= count; i++) {
-          const u   = i / (count + 1);
-          const pos = curve.getPointAt(u);
-          const tan = curve.getTangentAt(u);
-          const cGeo = new THREE.ConeGeometry(4, 10, 6);
-          const cMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(hexColor) });
-          const cone = new THREE.Mesh(cGeo, cMat);
-          cone.position.copy(pos);
-          cone.position.y += 5;
-          // Orient cone along tangent direction
-          const up = new THREE.Vector3(0, 1, 0);
-          const flat = new THREE.Vector3(tan.x, 0, tan.z).normalize();
-          cone.quaternion.setFromUnitVectors(up, flat);
-          t.scene.add(cone);
-          t.routeObjects.push(cone);
-        }
+        const len     = curve.getLength();
+        const tubeSeg = Math.max(pts.length * 6, 32);
+
+        // Animated flow texture — repeat density proportional to path length
+        const flowTex = createFlowTexture(hexColor);
+        flowTex.repeat.set(Math.max(3, Math.round(len / 55)), 1);
+        t.routeTextures.push(flowTex);
+
+        // Glowing core tube (uses additive blending for bloom-like glow)
+        const coreGeo = new THREE.TubeGeometry(curve, tubeSeg, 2.5, 8, false);
+        const coreMat = new THREE.MeshBasicMaterial({
+          color: new THREE.Color(hexColor),
+          map: flowTex,
+          transparent: true,
+          opacity: 1.0,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        });
+        const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+        t.scene.add(coreMesh);
+        t.routeObjects.push(coreMesh);
+
+        // Wide soft halo (gives the "thick glowing route" feel)
+        const haloGeo = new THREE.TubeGeometry(curve, tubeSeg, 7, 8, false);
+        const haloMat = new THREE.MeshBasicMaterial({
+          color: new THREE.Color(hexColor),
+          transparent: true,
+          opacity: 0.12,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        });
+        const haloMesh = new THREE.Mesh(haloGeo, haloMat);
+        t.scene.add(haloMesh);
+        t.routeObjects.push(haloMesh);
       } catch (_) { /* skip malformed paths */ }
     }
 
