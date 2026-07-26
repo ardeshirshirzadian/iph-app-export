@@ -38,6 +38,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
+import AppHeader from "@/app/components/AppHeader";
 import BottomNav from "../components/BottomNav";
 import { useLang } from "@/lib/useLang";
 import { toPersianDigits } from "@/lib/utils";
@@ -1698,66 +1699,80 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
     >
       {/* ── Page header ── */}
       <div
-        className="flex-shrink-0 flex items-center justify-between px-4 pt-4 pb-3"
+        className="flex-shrink-0"
         style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)", zIndex: 20 }}
       >
-        {!isHomeContext && (
-          <div>
-            <h1 className="text-lg font-bold leading-tight" style={{ color: "var(--text)" }}>
-              {(isEN ? title_en : title) || (isEN ? "Exhibition Map" : "نقشه نمایشگاه")}
-            </h1>
-            {(isEN ? subtitle_en : subtitle) && (
-              <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-                {isEN ? subtitle_en : subtitle}
-              </p>
-            )}
-          </div>
-        )}
+        {/* Standard app header: logo + notifications + cart */}
+        <div className="px-4">
+          <AppHeader />
+        </div>
 
-        {mapData && (
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => {
-                const next = !view3D;
-                view3DRef.current = next;
-                setView3D(next);
-                if (!next) requestAnimationFrame(() => resetView()); // only reset 2D on switch back
-              }}
-              aria-label="Toggle 3D view"
-              className="h-9 px-3 rounded-xl flex items-center justify-center text-xs font-bold transition-all active:scale-90"
-              style={{
-                background: view3D ? "var(--accent)" : "var(--surface)",
-                border: "1px solid var(--border)",
-                color: view3D ? "#021f20" : "var(--text)",
-                fontFamily: "inherit", cursor: "pointer",
-              }}
-            >{view3D ? "2D" : "3D"}</button>
-            <button
-              onClick={() => view3D ? map3DViewRef.current?.zoom(1.35) : zoomBy(1.35)}
-              aria-label="Zoom in"
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-xl font-bold transition-all active:scale-90"
-              style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "inherit", cursor: "pointer" }}
-            >+</button>
-            <button
-              onClick={() => view3D ? map3DViewRef.current?.zoom(0.74) : zoomBy(0.74)}
-              aria-label="Zoom out"
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-xl font-bold transition-all active:scale-90"
-              style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "inherit", cursor: "pointer" }}
-            >−</button>
-            <button
-              onClick={() => view3D ? map3DViewRef.current?.resetView() : resetView()}
-              aria-label="Reset view"
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-base transition-all active:scale-90"
-              style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", fontFamily: "inherit", cursor: "pointer" }}
-              title={isEN ? "Fit to screen" : "نمای کامل"}
-            >⊙</button>
-            <Link
-              href="/companies"
-              aria-label={isEN ? "Companies list" : "لیست شرکت‌ها"}
-              title={isEN ? "Companies" : "شرکت‌ها"}
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-base transition-all active:scale-90"
-              style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", textDecoration: "none" }}
-            >🏢</Link>
+        {/* Map controls row: title/subtitle + 3D/zoom/companies buttons.
+            Shown whenever there is something to display (title when not home
+            context, zoom buttons once mapData has loaded). */}
+        {(!isHomeContext || mapData) && (
+          <div className="flex items-center justify-between px-4 pb-3">
+            {!isHomeContext ? (
+              <div>
+                <h1 className="text-lg font-bold leading-tight" style={{ color: "var(--text)" }}>
+                  {(isEN ? title_en : title) || (isEN ? "Exhibition Map" : "نقشه نمایشگاه")}
+                </h1>
+                {(isEN ? subtitle_en : subtitle) && (
+                  <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+                    {isEN ? subtitle_en : subtitle}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div /> /* spacer so justify-between pushes buttons to the end */
+            )}
+
+            {mapData && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => {
+                    const next = !view3D;
+                    view3DRef.current = next;
+                    setView3D(next);
+                    if (!next) requestAnimationFrame(() => resetView()); // only reset 2D on switch back
+                  }}
+                  aria-label="Toggle 3D view"
+                  className="h-9 px-3 rounded-xl flex items-center justify-center text-xs font-bold transition-all active:scale-90"
+                  style={{
+                    background: view3D ? "var(--accent)" : "var(--surface)",
+                    border: "1px solid var(--border)",
+                    color: view3D ? "#021f20" : "var(--text)",
+                    fontFamily: "inherit", cursor: "pointer",
+                  }}
+                >{view3D ? "2D" : "3D"}</button>
+                <button
+                  onClick={() => view3D ? map3DViewRef.current?.zoom(1.35) : zoomBy(1.35)}
+                  aria-label="Zoom in"
+                  className="w-9 h-9 rounded-xl flex items-center justify-center text-xl font-bold transition-all active:scale-90"
+                  style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "inherit", cursor: "pointer" }}
+                >+</button>
+                <button
+                  onClick={() => view3D ? map3DViewRef.current?.zoom(0.74) : zoomBy(0.74)}
+                  aria-label="Zoom out"
+                  className="w-9 h-9 rounded-xl flex items-center justify-center text-xl font-bold transition-all active:scale-90"
+                  style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "inherit", cursor: "pointer" }}
+                >−</button>
+                <button
+                  onClick={() => view3D ? map3DViewRef.current?.resetView() : resetView()}
+                  aria-label="Reset view"
+                  className="w-9 h-9 rounded-xl flex items-center justify-center text-base transition-all active:scale-90"
+                  style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", fontFamily: "inherit", cursor: "pointer" }}
+                  title={isEN ? "Fit to screen" : "نمای کامل"}
+                >⊙</button>
+                <Link
+                  href="/companies"
+                  aria-label={isEN ? "Companies list" : "لیست شرکت‌ها"}
+                  title={isEN ? "Companies" : "شرکت‌ها"}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center text-base transition-all active:scale-90"
+                  style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", textDecoration: "none" }}
+                >🏢</Link>
+              </div>
+            )}
           </div>
         )}
       </div>
