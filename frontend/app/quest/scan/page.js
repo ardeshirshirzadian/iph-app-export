@@ -14,6 +14,7 @@ export default function QRScanPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [toast, setToast] = useState("");
   const [scanResult, setScanResult] = useState(null); // { company, alreadyScanned, cooldown, minutesRemaining, points }
+  const [logoErr, setLogoErr] = useState(false);
   const { lang, isRTL } = useLang();
 
   const showToast = useCallback((msg) => {
@@ -63,6 +64,7 @@ export default function QRScanPage() {
         }
 
         if (data.status === 'cooldown') {
+          setLogoErr(false);
           setScanResult({
             company: data.company,
             cooldown: true,
@@ -73,6 +75,7 @@ export default function QRScanPage() {
           return;
         }
 
+        setLogoErr(false);
         setScanResult({
           company: data.company,
           alreadyScanned: !!data.already_scanned,
@@ -145,7 +148,7 @@ export default function QRScanPage() {
     return (logoBaseUrl || "https://api.rasayesh.com/") + src;
   }
 
-  const logoUrl = scanResult?.company
+  const logoUrl = (scanResult?.company && !logoErr)
     ? getLogoUrl(
         typeof scanResult.company.logo === "string"
           ? (() => { try { return JSON.parse(scanResult.company.logo); } catch { return null; } })()
@@ -296,7 +299,7 @@ export default function QRScanPage() {
               className="w-24 h-24 rounded-2xl border-2 border-[#00ffb3] overflow-hidden flex items-center justify-center bg-white"
               style={{ animation: "successPulse 1.4s ease-in-out infinite" }}
             >
-              <img src={logoUrl} alt="" className="w-full h-full object-contain" />
+              <img src={logoUrl} alt="" onError={() => setLogoErr(true)} className="w-full h-full object-contain" />
             </div>
           ) : (
             <div

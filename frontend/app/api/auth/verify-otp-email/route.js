@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
+import { extractProfilePhotoUrl } from '@/lib/utils';
 
 const otpAttempts = new Map();
 const MAX_ATTEMPTS = 5;
@@ -162,7 +163,7 @@ async function upsertAppUser(u) {
       u.country_id ?? null, u.state_id ?? null, u.address_fa ?? null,
       u.address_en ?? null, u.postal_code ?? null, u.is_foreign ?? null,
       u.mobile_verified ?? null, u.email_verified ?? null,
-      u.profile_image ?? null, JSON.stringify(u),
+      extractProfilePhotoUrl(u.profile), JSON.stringify(u),
     ]
   );
 }

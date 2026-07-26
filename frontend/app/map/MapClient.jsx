@@ -568,7 +568,8 @@ function RouteInfoCard({ route, lang, isRTL, onClear }) {
 function BoothSheet({ booth, hall, mergedLabel, lang, isRTL, onClose }) {
   const isEN = lang === "en";
   const co = booth.company;
-  const logoUrl = getLogoUrl(co?.logo);
+  const [imgErr, setImgErr] = useState(false);
+  const logoUrl = imgErr ? null : getLogoUrl(co?.logo);
   const brandName = isEN
     ? (co?.brand_name_en || co?.brand_name_fa)
     : (co?.brand_name_fa || co?.brand_name_en);
@@ -612,7 +613,7 @@ function BoothSheet({ booth, hall, mergedLabel, lang, isRTL, onClose }) {
           >
             {logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={logoUrl} alt="" style={{ width: "80%", height: "80%", objectFit: "contain" }} />
+              <img src={logoUrl} alt="" onError={() => setImgErr(true)} style={{ width: "80%", height: "80%", objectFit: "contain" }} />
             ) : (
               <span style={{ fontSize: 28, color: "var(--accent)" }}>
                 {co?.brand_name_fa?.charAt(0) || co?.brand_name_en?.charAt(0) || "؟"}
@@ -1375,11 +1376,13 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
       }
       if (results.length >= 12) break;
     }
-    for (const el of mapElements) {
-      const t = ((el.title_fa || "") + " " + (el.title_en || "")).toLowerCase();
-      if (!t.includes(q)) continue;
-      results.push({ type: "element", id: `e-${el.id}`, name: el.title_fa, nameEn: el.title_en, emoji: getElementEmoji(el), floor: el.floor ?? 0, x: el.x, y: el.y });
-      if (results.length >= 15) break;
+    if (!view3D) {
+      for (const el of mapElements) {
+        const t = ((el.title_fa || "") + " " + (el.title_en || "")).toLowerCase();
+        if (!t.includes(q)) continue;
+        results.push({ type: "element", id: `e-${el.id}`, name: el.title_fa, nameEn: el.title_en, emoji: getElementEmoji(el), floor: el.floor ?? 0, x: el.x, y: el.y });
+        if (results.length >= 15) break;
+      }
     }
     for (const zone of mapZones) {
       if (!zone.title_fa) continue;
@@ -1390,7 +1393,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
       if (results.length >= 18) break;
     }
     return results;
-  }, [searchQuery, mapData, mapElements, mapZones, hallFloors]);
+  }, [searchQuery, mapData, mapElements, mapZones, hallFloors, view3D]);
 
   const startSearchResults = useMemo(() => {
     const q = startQuery.trim().toLowerCase();
@@ -1414,11 +1417,13 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
       }
       if (results.length >= 8) break;
     }
-    for (const el of mapElements) {
-      const t = ((el.title_fa || "") + " " + (el.title_en || "")).toLowerCase();
-      if (!t.includes(q)) continue;
-      results.push({ type: "element", id: `e-${el.id}`, name: el.title_fa, emoji: getElementEmoji(el), floor: el.floor ?? 0, x: el.x, y: el.y });
-      if (results.length >= 10) break;
+    if (!view3D) {
+      for (const el of mapElements) {
+        const t = ((el.title_fa || "") + " " + (el.title_en || "")).toLowerCase();
+        if (!t.includes(q)) continue;
+        results.push({ type: "element", id: `e-${el.id}`, name: el.title_fa, emoji: getElementEmoji(el), floor: el.floor ?? 0, x: el.x, y: el.y });
+        if (results.length >= 10) break;
+      }
     }
     for (const zone of mapZones) {
       if (!zone.title_fa) continue;
@@ -1429,7 +1434,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
       if (results.length >= 12) break;
     }
     return results;
-  }, [startQuery, mapData, mapElements, mapZones, hallFloors]);
+  }, [startQuery, mapData, mapElements, mapZones, hallFloors, view3D]);
 
   // ── Wayfinding helpers ─────────────────────────────────────────────────────
 
@@ -1767,7 +1772,6 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
             <Map3DView
               halls={hallGroups}
               hallColors={hallColors}
-              mapElements={mapElements}
               navRoute={navRoute}
               navStart={navStart}
               navDest={navDest}
@@ -1776,7 +1780,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
               onGroundTap={(x, y) => { if (tapStartMode) confirmStart(x, y); }}
               onBackgroundTap={() => { setSelectedBooth(null); setSearchOpen(false); setElementTooltip(null); setSignTooltip(null); }}
               controlRef={map3DViewRef}
-              lang={lang}
+              selectedBoothId={selectedBooth?.booth?.company?.id ?? null}
             />
           )}
 
@@ -1887,27 +1891,9 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                 })
               )}
 
-              {/* Admin-defined walls — rendered as solid polylines so admins and
-                  users can see where barriers are.  The same segments also block
-                  A* pathfinding via forbidden edges computed in buildWalkableGrid
-                  (Step 6).  Walls with no hall_name tag default to floor 0;
-                  admin should always set hall_name on multi-floor maps. */}
-              {mapWalls.map((wall) => {
-                if (!Array.isArray(wall.points) || wall.points.length < 2) return null;
-                const pts = wall.points.map(p => `${p.x},${p.y}`).join(" ");
-                return (
-                  <polyline
-                    key={`wall-${wall.id}`}
-                    points={pts}
-                    fill="none"
-                    stroke="rgba(239,68,68,0.72)"
-                    strokeWidth={Math.max(2, mapW / 140)}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    style={{ pointerEvents: "none" }}
-                  />
-                );
-              })}
+              {/* Wall polylines intentionally not rendered here — walls are
+                  invisible obstacles to users. They still block A* pathfinding
+                  via buildWalkableGrid (Step 6). Admin editing is in iph-apn. */}
 
               {/* Map signs (entrances, facilities, etc.) */}
               {(mapData.map_signs ?? []).map((sign) => {

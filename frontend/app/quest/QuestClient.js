@@ -471,6 +471,27 @@ function getLogoUrl(logo, baseUrl) {
   return (baseUrl || '') + src;
 }
 
+// Per-item component so each booth logo tracks its own load error independently.
+// On 404 (image exists in DB but missing on server), falls back to letter avatar.
+function BoothLogo({ logoUrl, firstLetter }) {
+  const [err, setErr] = useState(false);
+  if (!logoUrl || err) {
+    return (
+      <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--surface-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, fontWeight: 700, color: 'var(--text-dim)' }}>
+        {firstLetter}
+      </div>
+    );
+  }
+  return (
+    <img
+      src={logoUrl}
+      alt=""
+      onError={() => setErr(true)}
+      style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'contain', background: '#fff', flexShrink: 0, border: '1px solid rgba(255,255,255,0.1)' }}
+    />
+  );
+}
+
 function useCooldownTick() {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -574,20 +595,8 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
                 }`}
                 style={scanned ? undefined : { background: "var(--surface-2)", opacity: 0.7 }}
               >
-                {/* Logo or initial */}
-                {logoUrl ? (
-                  <img
-                    src={logoUrl}
-                    alt=""
-                    style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'contain', background: '#fff', flexShrink: 0, border: '1px solid rgba(255,255,255,0.1)' }}
-                  />
-                ) : (
-                  <div
-                    style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--surface-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, fontWeight: 700, color: 'var(--text-dim)' }}
-                  >
-                    {firstLetter}
-                  </div>
-                )}
+                {/* Logo or initial — BoothLogo handles onError fallback */}
+                <BoothLogo logoUrl={logoUrl} firstLetter={firstLetter} />
 
                 {/* Name + location */}
                 <div className="flex-1 min-w-0">

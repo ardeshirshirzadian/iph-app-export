@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const BOOTH_H   = 22;   // height of each extruded booth block (map units)
@@ -11,16 +10,6 @@ const FLOOR_GAP = 200;  // vertical separation between floors (map units)
 const ROUTE_Y   = 5;    // route tube sits this far above floor level
 
 // ── Module-level helpers (no hooks) ───────────────────────────────────────────
-const PRESET_ICONS = {
-  exit:"🚪", entrance:"🚶", wc:"🚻", cafe:"☕", restaurant:"🍽️",
-  prayer:"🕌", mic:"🎤", info:"ℹ️", medical:"🏥", parking:"🅿️", stairs:"🪜",
-};
-
-function getElementEmoji(el) {
-  if (el.icon_type === "preset") return PRESET_ICONS[el.icon_value] || "📍";
-  if (el.icon_type === "upload") return "📍";
-  return el.icon_value || "📍";
-}
 
 function hallToPointsArray(bounds) {
   if (!Array.isArray(bounds) || bounds.length < 2) return [];
@@ -63,22 +52,48 @@ function parseColor(c) {
   try { return new THREE.Color(c); } catch { return new THREE.Color(0x888888); }
 }
 
+function getHighlightColor(hexStr) {
+  const c = parseColor(hexStr);
+  const hsl = { h: 0, s: 0, l: 0 };
+  c.getHSL(hsl);
+  // Significantly brighten: clamp to [0.65, 0.88] lightness range
+  hsl.l = Math.min(0.88, Math.max(0.65, hsl.l + 0.30));
+  return c.setHSL(hsl.h, hsl.s, hsl.l);
+}
+
+const MARKER_SIZE = 48; // world-unit size for route start/end/stairs sprites
+
+function makeEmojiTexture(emoji) {
+  const SIZE = 80;
+  const canvas = document.createElement("canvas");
+  canvas.width  = SIZE;
+  canvas.height = SIZE;
+  const ctx = canvas.getContext("2d");
+  ctx.font         = `${Math.round(SIZE * 0.70)}px serif`;
+  ctx.textAlign    = "center";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor  = "rgba(0,0,0,0.85)";
+  ctx.shadowBlur   = 6;
+  ctx.fillText(emoji, SIZE / 2, SIZE / 2);
+  return new THREE.CanvasTexture(canvas);
+}
+
 // ── Map3DView component ────────────────────────────────────────────────────────
 // Coordinate mapping: map (x, y) → Three.js world (x, floorY, y).
 // Y axis is vertical/up; XZ plane is the floor.
 
 export default function Map3DView({
-  halls,        // hallGroups from MapClient (includes .floor, .groups)
-  hallColors,   // { [hallName]: hexColor }
-  mapElements,  // admin map_elements array
-  navRoute,     // null | { type, path?, pathA?, pathB?, stairsFrom?, stairsTo? }
-  navStart,     // null | { x, y, floor }
-  navDest,      // null | { x, y, floor }
-  tapStartMode, // bool — next tap sets route start
-  onBoothTap,   // (booth, hall, { cx, cy, mergedLabel }) → void
-  onGroundTap,  // (mapX, mapY) → void  — tap on empty ground in tapStartMode
+  halls,          // hallGroups from MapClient (includes .floor, .groups)
+  hallColors,     // { [hallName]: hexColor }
+  navRoute,       // null | { type, path?, pathA?, pathB?, stairsFrom?, stairsTo? }
+  navStart,       // null | { x, y, floor }
+  navDest,        // null | { x, y, floor }
+  tapStartMode,   // bool — next tap sets route start
+  onBoothTap,     // (booth, hall, { cx, cy, mergedLabel }) → void
+  onGroundTap,    // (mapX, mapY) → void  — tap on empty ground in tapStartMode
   onBackgroundTap, // () → void — tap on empty space (close sheets)
-  controlRef,   // ref whose .current receives { focusOnPoint, resetView, zoom }
+  controlRef,     // ref whose .current receives { focusOnPoint, resetView, zoom }
+  selectedBoothId, // company id of currently selected booth (or null)
 }) {
   const mountRef = useRef(null);
   const tRef     = useRef(null); // holds all Three.js state (scene, camera, …)
@@ -112,14 +127,6 @@ export default function Map3DView({
     t.renderer.setSize(W, H);
     el.appendChild(t.renderer.domElement);
 
-    // CSS2D renderer for labels
-    t.labelRenderer = new CSS2DRenderer();
-    t.labelRenderer.setSize(W, H);
-    Object.assign(t.labelRenderer.domElement.style, {
-      position: "absolute", top: "0", left: "0", pointerEvents: "none",
-    });
-    el.appendChild(t.labelRenderer.domElement);
-
     // Lighting
     t.scene.add(new THREE.AmbientLight(0xffffff, 0.65));
     const sun = new THREE.DirectionalLight(0xffffff, 0.9);
@@ -141,27 +148,18 @@ export default function Map3DView({
     t.raycaster   = new THREE.Raycaster();
     t.boothEntries = []; // { mesh, booth, hall, mergedLabel, cx, cz }
     t.disposables  = []; // { geometry?, material? } — disposed on unmount
-    t.elementObjects  = [];
-    t.routeObjects    = [];
-    t.routeTextures   = [];
-    t.clock           = new THREE.Clock();
+    t.routeObjects   = [];
+    t.routeTextures  = [];
+    t.clock          = new THREE.Clock();
 
     // ── Build booths ──────────────────────────────────────────────────────────
-    const matCache = {};
-    function getMat(colorStr) {
-      if (!matCache[colorStr]) {
-        const m = new THREE.MeshLambertMaterial({ color: parseColor(colorStr) });
-        matCache[colorStr] = m;
-        t.disposables.push({ material: m });
-      }
-      return matCache[colorStr];
-    }
+    // Per-booth materials (not shared) so individual booth colors can be updated
+    // independently for selection highlighting without affecting adjacent booths.
 
     const allXs = [], allZs = [];
     for (const hall of halls) {
-      const floorY = (hall.floor ?? 0) * FLOOR_GAP;
-      const color  = getHallColor(hall, hallColors);
-      const mat    = getMat(color);
+      const floorY  = (hall.floor ?? 0) * FLOOR_GAP;
+      const colorStr = getHallColor(hall, hallColors);
 
       for (const group of (hall.groups ?? [])) {
         const mergedLabel = boothRangeLabel(group.booths.map((b) => b.no));
@@ -177,11 +175,12 @@ export default function Map3DView({
           allXs.push(x0, x1); allZs.push(y0, y1);
 
           const geo  = new THREE.BoxGeometry(bw, BOOTH_H, bd);
+          const mat  = new THREE.MeshLambertMaterial({ color: parseColor(colorStr) });
           const mesh = new THREE.Mesh(geo, mat);
           mesh.position.set(cx, floorY + BOOTH_H / 2, cz);
           t.scene.add(mesh);
-          t.disposables.push({ geometry: geo });
-          t.boothEntries.push({ mesh, booth: firstBooth, hall, mergedLabel, cx, cz });
+          t.disposables.push({ geometry: geo, material: mat });
+          t.boothEntries.push({ mesh, booth: firstBooth, hall, mergedLabel, cx, cz, colorStr });
         }
       }
     }
@@ -302,7 +301,6 @@ export default function Map3DView({
 
       t.controls.update();
       t.renderer.render(t.scene, t.camera);
-      t.labelRenderer.render(t.scene, t.camera);
     }
     animate();
 
@@ -313,7 +311,6 @@ export default function Map3DView({
       t.camera.aspect = w / h;
       t.camera.updateProjectionMatrix();
       t.renderer.setSize(w, h);
-      t.labelRenderer.setSize(w, h);
     });
     t.resizeObs.observe(el);
 
@@ -325,51 +322,24 @@ export default function Map3DView({
       t.renderer.domElement.removeEventListener("click", onClick);
       t.controls.dispose();
       t.disposables.forEach((d) => { d.geometry?.dispose(); d.material?.dispose(); });
-      // CSS2DObjects just need scene removal (no geometry to dispose)
       t.scene.clear();
       t.renderer.dispose();
-      if (el.contains(t.renderer.domElement))      el.removeChild(t.renderer.domElement);
-      if (el.contains(t.labelRenderer.domElement)) el.removeChild(t.labelRenderer.domElement);
+      if (el.contains(t.renderer.domElement)) el.removeChild(t.renderer.domElement);
       if (controlRef) controlRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // scene built once; halls/hallColors are populated before mount
 
-  // ── Map elements — update when data changes ───────────────────────────────
-  useEffect(() => {
-    const t = tRef.current;
-    if (!t?.scene) return;
-    t.elementObjects.forEach((o) => t.scene.remove(o));
-    t.elementObjects = [];
-    for (const el of (mapElements ?? [])) {
-      const emoji  = getElementEmoji(el);
-      const floorY = (el.floor ?? 0) * FLOOR_GAP;
-      const div    = document.createElement("div");
-      div.textContent = emoji;
-      Object.assign(div.style, {
-        fontSize: "20px", lineHeight: "1", pointerEvents: "none",
-        filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.8))",
-      });
-      // Anchor Object3D sits at floor level; CSS2DObject offset is local so
-      // CSS2DRenderer derives world position via anchor.matrixWorld each frame,
-      // the same hierarchy pattern used for booth labels attached to their mesh.
-      const anchor = new THREE.Object3D();
-      anchor.position.set(el.x, floorY, el.y);
-      t.scene.add(anchor);
-      const obj = new CSS2DObject(div);
-      obj.position.set(0, BOOTH_H + 10, 0); // local: floor + gap above booth height
-      anchor.add(obj);
-      t.elementObjects.push(anchor); // removing anchor from scene detaches obj too
-    }
-  }, [mapElements]);
-
   // ── Route — rebuild when navRoute / markers change ────────────────────────
   useEffect(() => {
     const t = tRef.current;
     if (!t?.scene) return;
-    // Dispose previous route objects, textures, and CSS2DObjects
+    // Dispose previous route objects, textures, and sprites
     t.routeObjects.forEach((o) => {
-      if (o instanceof THREE.Mesh) {
+      if (o instanceof THREE.Sprite) {
+        o.material.map?.dispose();
+        o.material.dispose();
+      } else if (o instanceof THREE.Mesh) {
         o.geometry.dispose();
         if (o.material.map) o.material.map.dispose();
         o.material.dispose();
@@ -450,18 +420,15 @@ export default function Map3DView({
       } catch (_) { /* skip malformed paths */ }
     }
 
-    // Helper: CSS2D emoji pin marker
+    // Helper: emoji sprite marker for route start/end/stairs
     function addMarker(mx, mz, floorY, emoji) {
-      const div = document.createElement("div");
-      div.textContent = emoji;
-      Object.assign(div.style, {
-        fontSize: "24px", lineHeight: "1", pointerEvents: "none",
-        filter: "drop-shadow(0 2px 5px rgba(0,0,0,0.85))",
-      });
-      const obj = new CSS2DObject(div);
-      obj.position.set(mx, floorY + BOOTH_H + 16, mz);
-      t.scene.add(obj);
-      t.routeObjects.push(obj);
+      const tex    = makeEmojiTexture(emoji);
+      const mat    = new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false });
+      const sprite = new THREE.Sprite(mat);
+      sprite.position.set(mx, floorY + BOOTH_H + 16, mz);
+      sprite.scale.set(MARKER_SIZE, MARKER_SIZE, 1);
+      t.scene.add(sprite);
+      t.routeObjects.push(sprite);
     }
 
     if (navRoute.type === "single") {
@@ -481,6 +448,34 @@ export default function Map3DView({
       if (navDest)     addMarker(navDest.x,     navDest.y,     floorBY, "📍");
     }
   }, [navRoute, navStart, navDest]);
+
+  // ── Selection highlight — update booth material color when selected ───────────
+  useEffect(() => {
+    const t = tRef.current;
+    if (!t?.boothEntries) return;
+
+    // Reset previously highlighted meshes to their original hall color
+    if (t.highlightedEntries?.length) {
+      for (const entry of t.highlightedEntries) {
+        entry.mesh.material.color.copy(parseColor(entry.colorStr));
+      }
+      t.highlightedEntries = null;
+    }
+
+    if (!selectedBoothId) return;
+
+    // All meshes belonging to this company (a merged booth can span several boxes)
+    const entries = t.boothEntries.filter(
+      (e) => e.booth.company?.id === selectedBoothId
+    );
+    if (!entries.length) return;
+
+    const highlight = getHighlightColor(entries[0].colorStr);
+    for (const entry of entries) {
+      entry.mesh.material.color.copy(highlight);
+    }
+    t.highlightedEntries = entries;
+  }, [selectedBoothId]);
 
   return <div ref={mountRef} style={{ position: "absolute", inset: 0 }} />;
 }

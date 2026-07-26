@@ -98,7 +98,8 @@ function getPageNumbers(current, total) {
 function CompanyCard({ company, visibleFields, visibleFieldsEn, logoBaseUrl, lang, onNavigate }) {
   const isEN = lang === "en";
   const vf = isEN ? visibleFieldsEn : visibleFields;
-  const logoUrl = vf.logo ? getLogoUrl(company.logo, logoBaseUrl) : null;
+  const [imgErr, setImgErr] = useState(false);
+  const logoUrl = (vf.logo && !imgErr) ? getLogoUrl(company.logo, logoBaseUrl) : null;
   const tappable = Boolean(company.slug);
   const letter = company.brand_name_fa?.charAt(0) || company.brand_name_en?.charAt(0) || "؟";
 
@@ -130,6 +131,7 @@ function CompanyCard({ company, visibleFields, visibleFieldsEn, logoBaseUrl, lan
           <img
             src={logoUrl}
             alt={displayName || ""}
+            onError={() => setImgErr(true)}
             style={{ width: "100%", height: "100%", objectFit: "contain", padding: 8 }}
           />
         ) : (

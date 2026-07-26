@@ -7,6 +7,7 @@ import { gql } from "@apollo/client";
 import { getApolloClient } from "@/lib/apolloClient";
 import BottomNav from "../components/BottomNav";
 import PageHeader from "@/components/PageHeader";
+import ProfileCompletionBar from "../components/ProfileCompletionBar";
 import { useAuth } from "../../hooks/useAuth";
 import { toPersianDigits } from "@/lib/utils";
 import { useLang } from "@/lib/useLang";
@@ -44,71 +45,6 @@ const ATTENDEE_QUERY = gql`
   }
 `;
 
-const TRANSACTIONS_QUERY = gql`
-  {
-    attendeeTransactions {
-      id
-      total_price
-      discounted_price
-      discount_price
-      price_paid
-      status
-      success
-      verification_status
-      uuid
-      created_at
-      event { id title_fa title_en }
-      cart { id cart_items { entity_type entity_id snapshot } }
-    }
-  }
-`;
-
-const PANELS_QUERY = gql`
-  {
-    attendeePanels {
-      id
-      panel {
-        id title_fa title_en starts_at ends_at hall_fa hall_en
-        event { id title_fa title_en }
-      }
-    }
-  }
-`;
-
-const EVENT_PANELS_QUERY = gql`
-  query EventPanels($eventId: Int!) {
-    eventPanels(eventId: $eventId) { id }
-  }
-`;
-
-const IRANPHARMA_EVENT_IDS = new Set([1, 6, 14, 18, 26]);
-
-function parseSnapshot(raw) {
-  if (!raw) return {};
-  if (typeof raw === 'object') return raw;
-  try { return JSON.parse(raw); } catch { return {}; }
-}
-
-function buildDescription(cartItems) {
-  if (!cartItems?.length) return { fa: null, en: null };
-  const parts_fa = [];
-  const parts_en = [];
-  for (const item of cartItems) {
-    const snap = parseSnapshot(item.snapshot);
-    if (item.entity_type === 'EventExhibitionBook') {
-      parts_fa.push(`خرید کتاب: ${snap.title_fa || 'کتاب نمایشگاه'}`);
-      parts_en.push(`Book: ${snap.title_en || 'Exhibition Book'}`);
-    } else if (item.entity_type === 'EventRegistrationPlan') {
-      parts_fa.push(`ثبت‌نام: ${snap.title_fa || 'طرح ثبت‌نام'}`);
-      parts_en.push(`Registration: ${snap.title_en || 'Registration Plan'}`);
-    } else if (item.entity_type === 'EventPanel') {
-      parts_fa.push(`ثبت‌نام پنل: ${snap.title_fa || 'پنل'}`);
-      parts_en.push(`Panel: ${snap.title_en || 'Panel'}`);
-    }
-  }
-  return { fa: parts_fa.join('، ') || null, en: parts_en.join(', ') || null };
-}
-
 function maskNationalCode(code, lang) {
   if (!code || code.length < 7) return code;
   const masked = code.slice(0, 3) + "***" + code.slice(6);
@@ -119,57 +55,6 @@ function normalizePhone(mobile, lang) {
   if (!mobile) return mobile;
   const normalized = mobile.startsWith('+98') ? '0' + mobile.slice(3) : mobile;
   return lang === "fa" ? toPersianDigits(normalized) : normalized;
-}
-
-function formatPrice(price, lang) {
-  if (price == null) return "—";
-  if (Number(price) === 0) return lang === "fa" ? "رایگان" : "Free";
-  const n = Number(price).toLocaleString("en-US");
-  return lang === "fa" ? toPersianDigits(n) + " تومان" : n + " Toman";
-}
-
-function formatDateTime(dateStr, lang) {
-  if (!dateStr) return "—";
-  try {
-    if (lang === "fa") {
-      return new Date(dateStr).toLocaleString("fa-IR", {
-        year: "numeric", month: "long", day: "numeric",
-        hour: "2-digit", minute: "2-digit",
-      });
-    }
-    return new Date(dateStr).toLocaleString("en-US", {
-      year: "numeric", month: "short", day: "numeric",
-      hour: "2-digit", minute: "2-digit",
-    });
-  } catch {
-    return dateStr;
-  }
-}
-
-function formatDate(dateStr, lang) {
-  if (!dateStr) return "—";
-  try {
-    if (lang === "fa") {
-      return new Date(dateStr).toLocaleDateString("fa-IR", { year: "numeric", month: "long", day: "numeric" });
-    }
-    return new Date(dateStr).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
-  } catch {
-    return dateStr;
-  }
-}
-
-function getTxnBadge(txn, lang) {
-  const price = Number(txn.total_price ?? 0);
-  if (price === 0) {
-    return { label: lang === "fa" ? "رایگان" : "Free", color: "#00ffb3", bg: "rgba(0,255,179,0.1)" };
-  }
-  if (txn.success === true) {
-    return { label: lang === "fa" ? "موفق" : "Successful", color: "#22c55e", bg: "rgba(34,197,94,0.1)" };
-  }
-  if (txn.status === "NOK") {
-    return { label: lang === "fa" ? "ناموفق" : "Failed", color: "#ef4444", bg: "rgba(239,68,68,0.1)" };
-  }
-  return { label: lang === "fa" ? "نامشخص" : "Unknown", color: "#f59e0b", bg: "rgba(245,158,11,0.1)" };
 }
 
 function SkeletonBlock({ className }) {
@@ -203,14 +88,6 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en, 
   const [profileLoading, setProfileLoading] = useState(false);
   const { lang, isRTL } = useLang();
 
-  const [transactions, setTransactions] = useState([]);
-  const [txnLoading, setTxnLoading] = useState(false);
-  const [txnOpen, setTxnOpen] = useState(true);
-
-  const [panels, setPanels] = useState([]);
-  const [panelsLoading, setPanelsLoading] = useState(false);
-  const [panelsOpen, setPanelsOpen] = useState(true);
-
   const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
@@ -233,65 +110,6 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en, 
       })
       .catch(() => {})
       .finally(() => setProfileLoading(false));
-
-    setTxnLoading(true);
-    client.query({ query: TRANSACTIONS_QUERY })
-      .then(({ data }) => {
-        const raw = data?.attendeeTransactions ?? [];
-        const filtered = [...raw]
-          .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-          .filter(t =>
-            IRANPHARMA_EVENT_IDS.has(Number(t.event?.id)) &&
-            (t.total_price > 0 || t.discount_price > 0)
-          )
-          .map(t => {
-            const desc = buildDescription(t.cart?.cart_items);
-            return {
-              id: t.id,
-              uuid: t.uuid,
-              total_price: t.total_price,
-              discounted_price: t.discounted_price,
-              discount_price: t.discount_price,
-              price_paid: t.price_paid,
-              status: t.status,
-              success: t.success,
-              verification_status: t.verification_status,
-              created_at: t.created_at,
-              event_name: t.event?.title_fa ?? null,
-              items_description_fa: desc.fa,
-              items_description_en: desc.en,
-            };
-          });
-        setTransactions(filtered);
-      })
-      .catch(() => {})
-      .finally(() => setTxnLoading(false));
-
-    setPanelsLoading(true);
-    Promise.all([
-      client.query({ query: PANELS_QUERY }),
-      ...[1, 6, 14, 18, 26].map(eventId =>
-        client.query({ query: EVENT_PANELS_QUERY, variables: { eventId } })
-          .catch(() => ({ data: null }))
-      ),
-    ])
-      .then(([panelsResult, ...eventPanelResults]) => {
-        const iranPharmaPanelIds = new Set(
-          eventPanelResults.flatMap(r => (r.data?.eventPanels ?? []).map(p => Number(p.id)))
-        );
-        const items = panelsResult.data?.attendeePanels ?? [];
-        const mapped = items
-          .filter(item => iranPharmaPanelIds.has(Number(item.panel?.id)))
-          .map(item => ({
-            ...item.panel,
-            isOnline: false,
-            event_name: item.panel?.event?.title_fa ?? null,
-          }))
-          .sort((a, b) => new Date(b.starts_at) - new Date(a.starts_at));
-        setPanels(mapped);
-      })
-      .catch(() => {})
-      .finally(() => setPanelsLoading(false));
   }, [authReady, user?.id]);
 
   const fullNameFa = attendeeData ? `${attendeeData.firstname_fa || ""} ${attendeeData.lastname_fa || ""}`.trim() : "";
@@ -501,10 +319,13 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en, 
           </div>
         </div>
 
+        {/* Profile completion bar */}
+        <ProfileCompletionBar lang={lang} />
+
         {/* Presence card */}
         {profileLoading ? (
           <div
-            className="backdrop-blur-xl border border-[var(--border-accent)] rounded-3xl p-5 mb-4"
+            className="backdrop-blur-xl border border-[var(--border-accent)] rounded-3xl p-5 mb-4 mt-5"
             style={{ background: "var(--surface)" }}
           >
             <SkeletonBlock className="h-3 w-32 mb-3" />
@@ -512,7 +333,7 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en, 
           </div>
         ) : attendeeData ? (
           <div
-            className="backdrop-blur-xl border border-[var(--border-accent)] rounded-3xl p-5 mb-4"
+            className="backdrop-blur-xl border border-[var(--border-accent)] rounded-3xl p-5 mb-4 mt-5"
             style={{ background: "var(--surface)" }}
           >
             <p className="text-xs font-medium mb-2" style={{ color: "var(--text-dim)" }}>
@@ -528,161 +349,6 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en, 
             </p>
           </div>
         ) : null}
-
-        {/* Panels card */}
-        {panelsLoading ? (
-          <div
-            className="backdrop-blur-xl border border-[var(--border-accent)] rounded-3xl p-5 mb-4"
-            style={{ background: "var(--surface)" }}
-          >
-            <SkeletonBlock className="h-3 w-36 mb-4" />
-            <SkeletonBlock className="h-14 w-full mb-2" />
-            <SkeletonBlock className="h-14 w-full" />
-          </div>
-        ) : (
-          <div
-            className="backdrop-blur-xl border border-[var(--border-accent)] rounded-3xl p-5 mb-4"
-            style={{ background: "var(--surface)" }}
-          >
-            <button
-              className="w-full flex justify-between items-center mb-3"
-              onClick={() => setPanelsOpen(o => !o)}
-              style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
-            >
-              <span className="text-xs font-medium" style={{ color: "var(--text-dim)" }}>
-                {t(lang, "profile_my_panels")} ({lang === "fa" ? toPersianDigits(String(panels.length)) : panels.length})
-              </span>
-              <span style={{ color: "var(--text-dim)", fontSize: 12 }}>{panelsOpen ? "▲" : "▼"}</span>
-            </button>
-            {panelsOpen && (
-              panels.length === 0 ? (
-                <p className="text-sm text-center py-2" style={{ color: "var(--text-dim)" }}>
-                  {t(lang, "profile_no_panels")}
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {panels.map((w, i) => (
-                    <div
-                      key={i}
-                      className="rounded-2xl p-3"
-                      style={{ background: "rgba(255,255,255,0.05)" }}
-                    >
-                      <p className="text-sm font-medium mb-1" style={{ color: "var(--text)" }}>
-                        {lang === "en" && w.title_en ? w.title_en : w.title_fa}
-                      </p>
-                      {w.event_name && (
-                        <p className="text-xs mb-1" style={{ color: "var(--text-dim)" }}>
-                          {w.event_name}
-                        </p>
-                      )}
-                      <div className="flex gap-3 flex-wrap items-center">
-                        <span className="text-xs" style={{ color: "var(--text-dim)" }}>
-                          {formatDateTime(w.starts_at, lang)}
-                        </span>
-                        {(lang === "en" ? w.hall_en : w.hall_fa) && (
-                          <span
-                            className="text-xs px-2 py-0.5 rounded-full"
-                            style={{ background: "rgba(0,255,179,0.1)", color: "#00ffb3" }}
-                          >
-                            {lang === "en" ? w.hall_en : w.hall_fa}
-                          </span>
-                        )}
-                        {w.isOnline && (
-                          <span
-                            className="text-xs px-2 py-0.5 rounded-full"
-                            style={{ background: "rgba(0,255,179,0.1)", color: "#00ffb3" }}
-                          >
-                            {t(lang, "profile_online")}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )
-            )}
-          </div>
-        )}
-
-        {/* Transactions card */}
-        {txnLoading ? (
-          <div
-            className="backdrop-blur-xl border border-[var(--border-accent)] rounded-3xl p-5 mb-4"
-            style={{ background: "var(--surface)" }}
-          >
-            <SkeletonBlock className="h-3 w-36 mb-4" />
-            <SkeletonBlock className="h-16 w-full mb-2" />
-            <SkeletonBlock className="h-16 w-full" />
-          </div>
-        ) : (
-          <div
-            className="backdrop-blur-xl border border-[var(--border-accent)] rounded-3xl p-5 mb-4"
-            style={{ background: "var(--surface)" }}
-          >
-            <button
-              className="w-full flex justify-between items-center mb-3"
-              onClick={() => setTxnOpen(o => !o)}
-              style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
-            >
-              <span className="text-xs font-medium" style={{ color: "var(--text-dim)" }}>
-                {t(lang, "profile_transactions")} ({lang === "fa" ? toPersianDigits(String(transactions.length)) : transactions.length})
-              </span>
-              <span style={{ color: "var(--text-dim)", fontSize: 12 }}>{txnOpen ? "▲" : "▼"}</span>
-            </button>
-            {txnOpen && (
-              transactions.length === 0 ? (
-                <p className="text-sm text-center py-2" style={{ color: "var(--text-dim)" }}>
-                  {t(lang, "profile_no_transactions")}
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {transactions.map((txn, i) => {
-                    const badge = getTxnBadge(txn, lang);
-                    return (
-                      <div
-                        key={i}
-                        className="rounded-2xl p-3"
-                        style={{ background: "rgba(255,255,255,0.05)" }}
-                      >
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="text-sm font-bold" style={{ color: "var(--text)" }}>
-                            {formatPrice(txn.total_price, lang)}
-                          </span>
-                          <span
-                            className="text-xs px-2 py-0.5 rounded-full"
-                            style={{ background: badge.bg, color: badge.color }}
-                          >
-                            {badge.label}
-                          </span>
-                        </div>
-                        {(lang === "fa" ? txn.items_description_fa : txn.items_description_en) && (
-                          <p className="text-xs mb-1" style={{ color: "var(--text-dim)" }}>
-                            {lang === "fa" ? txn.items_description_fa : txn.items_description_en}
-                          </p>
-                        )}
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs" style={{ color: "var(--text-dim)" }}>
-                            {formatDate(txn.created_at, lang)}
-                          </span>
-                          {txn.id && (
-                            <span className="text-xs" style={{ color: "var(--text-dim)", direction: "ltr" }}>
-                              #{lang === "fa" ? toPersianDigits(String(txn.id)) : txn.id}
-                            </span>
-                          )}
-                        </div>
-                        {txn.event_name && (
-                          <p className="text-xs mt-1" style={{ color: "var(--text-dim)" }}>
-                            {txn.event_name}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )
-            )}
-          </div>
-        )}
 
         {/* Logout button */}
         <button

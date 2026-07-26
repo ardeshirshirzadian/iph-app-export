@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
+import { extractProfilePhotoUrl } from '@/lib/utils';
 
 // In-memory OTP attempt tracking: mobile -> attemptCount
 const otpAttempts = new Map();
@@ -202,7 +203,7 @@ async function upsertAppUser(u) {
       u.is_foreign ?? null,
       u.mobile_verified ?? null,
       u.email_verified ?? null,
-      u.profile_image ?? null,
+      extractProfilePhotoUrl(u.profile),
       JSON.stringify(u),
     ]
   );

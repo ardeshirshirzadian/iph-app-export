@@ -1,5 +1,25 @@
 const FA = '۰۱۲۳۴۵۶۷۸۹';
 
+const RASAYESH_BASE = 'https://api.rasayesh.com/';
+
+// Mirrors the profile?.jpg?.['128'] pattern used in ProfileClient.jsx.
+// Tries jpg → webp → png, largest size first, returns absolute URL or null.
+export function extractProfilePhotoUrl(profile) {
+  if (!profile || typeof profile !== 'object') return null;
+  const formats = ['jpg', 'webp', 'png'];
+  const sizes = ['256', '128', '64'];
+  for (const fmt of formats) {
+    if (!profile[fmt] || typeof profile[fmt] !== 'object') continue;
+    for (const size of sizes) {
+      const path = profile[fmt][size];
+      if (path && typeof path === 'string') {
+        return RASAYESH_BASE + path;
+      }
+    }
+  }
+  return null;
+}
+
 export function toLocalMobile(mobile) {
   if (!mobile) return '';
   if (mobile.startsWith('+98')) return '0' + mobile.slice(3);
