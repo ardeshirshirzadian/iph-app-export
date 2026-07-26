@@ -284,7 +284,7 @@ function MissionCard({ mission, xpUnit, onQuizClick }) {
             {done ? (
               <span className="text-xs font-bold" style={{ color: "var(--accent)" }}>پاسخ صحیح ✓</span>
             ) : quizAttempted ? (
-              <span className="text-xs font-medium" style={{ color: "#f87171" }}>پاسخ داده شده (قفل شده)</span>
+              <span className="text-xs font-medium" style={{ color: "#f87171" }}>پاسخ داده شده</span>
             ) : (
               <span className="text-xs font-bold px-3 py-0.5 rounded-full"
                 style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
@@ -445,7 +445,7 @@ function BadgesTab({ badges, onQuizClick }) {
                 کسب شده
               </div>
             ) : isQuiz && badge.quiz_attempted ? (
-              <div className="mt-2 text-[10px]" style={{ color: "#f87171" }}>قفل شده</div>
+              <div className="mt-2 text-[10px]" style={{ color: "#f87171" }}>پاسخ داده شده</div>
             ) : isQuiz ? (
               <div className="mt-2 text-[10px] font-bold" style={{ color: "var(--accent)" }}>شرکت کن ←</div>
             ) : null}

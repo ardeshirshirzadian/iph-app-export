@@ -6,6 +6,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const BOOTH_H   = 22;   // height of each extruded booth block (map units)
+const ZONE_H    = 10;   // height of named zone blocks (shorter, flatter than booths)
 const FLOOR_GAP = 200;  // vertical separation between floors (map units)
 const ROUTE_Y   = 5;    // route tube sits this far above floor level
 
@@ -85,23 +86,26 @@ function makeEmojiTexture(emoji) {
 export default function Map3DView({
   halls,          // hallGroups from MapClient (includes .floor, .groups)
   hallColors,     // { [hallName]: hexColor }
+  zones,          // named map_zones (title_fa truthy) to render as 3D blocks
   navRoute,       // null | { type, path?, pathA?, pathB?, stairsFrom?, stairsTo? }
   navStart,       // null | { x, y, floor }
   navDest,        // null | { x, y, floor }
   tapStartMode,   // bool — next tap sets route start
   onBoothTap,     // (booth, hall, { cx, cy, mergedLabel }) → void
+  onZoneTap,      // (zone, { cx, cy }) → void
   onGroundTap,    // (mapX, mapY) → void  — tap on empty ground in tapStartMode
   onBackgroundTap, // () → void — tap on empty space (close sheets)
   controlRef,     // ref whose .current receives { focusOnPoint, resetView, zoom }
   selectedBoothId, // company id of currently selected booth (or null)
+  selectedZoneId,  // zone.id of currently selected zone (or null)
 }) {
   const mountRef = useRef(null);
   const tRef     = useRef(null); // holds all Three.js state (scene, camera, …)
   // Keep callbacks fresh without recreating the scene
-  const cbRef    = useRef({ onBoothTap, tapStartMode, onGroundTap, onBackgroundTap });
+  const cbRef    = useRef({ onBoothTap, onZoneTap, tapStartMode, onGroundTap, onBackgroundTap });
   useEffect(() => {
-    cbRef.current = { onBoothTap, tapStartMode, onGroundTap, onBackgroundTap };
-  }, [onBoothTap, tapStartMode, onGroundTap, onBackgroundTap]);
+    cbRef.current = { onBoothTap, onZoneTap, tapStartMode, onGroundTap, onBackgroundTap };
+  }, [onBoothTap, onZoneTap, tapStartMode, onGroundTap, onBackgroundTap]);
 
   // ── Scene setup (runs once on mount, halls is populated before mount) ────────
   useEffect(() => {
@@ -146,7 +150,8 @@ export default function Map3DView({
     t.controls.zoomSpeed       = 1.0;
 
     t.raycaster   = new THREE.Raycaster();
-    t.boothEntries = []; // { mesh, booth, hall, mergedLabel, cx, cz }
+    t.boothEntries = []; // { mesh, booth, hall, mergedLabel, cx, cz, colorStr }
+    t.zoneEntries  = []; // { mesh, zone, cx, cz, colorStr }
     t.disposables  = []; // { geometry?, material? } — disposed on unmount
     t.routeObjects   = [];
     t.routeTextures  = [];
@@ -183,6 +188,35 @@ export default function Map3DView({
           t.boothEntries.push({ mesh, booth: firstBooth, hall, mergedLabel, cx, cz, colorStr });
         }
       }
+    }
+
+    // ── Build named zones — flat boxes, shorter than booths ──────────────────
+    for (const zone of (zones ?? [])) {
+      const colorStr = hallColors[zone.hall_name] || "#00ffb3";
+      const shape = zone.shape_type || "rectangle";
+      let cx, cz, bw, bd;
+      if (shape === "circle") {
+        cx = zone.cx ?? 0; cz = zone.cy ?? 0;
+        bw = bd = Math.max((zone.radius ?? 50) * 2, 1);
+      } else if (shape === "polygon" && Array.isArray(zone.points) && zone.points.length >= 3) {
+        const xs = zone.points.map((p) => p.x), ys = zone.points.map((p) => p.y);
+        const x0 = Math.min(...xs), x1 = Math.max(...xs);
+        const y0 = Math.min(...ys), y1 = Math.max(...ys);
+        cx = (x0 + x1) / 2; cz = (y0 + y1) / 2;
+        bw = Math.max(x1 - x0, 1); bd = Math.max(y1 - y0, 1);
+      } else {
+        const x1 = zone.x1 ?? 0, x2 = zone.x2 ?? 0;
+        const y1 = zone.y1 ?? 0, y2 = zone.y2 ?? 0;
+        cx = (x1 + x2) / 2; cz = (y1 + y2) / 2;
+        bw = Math.max(Math.abs(x2 - x1), 1); bd = Math.max(Math.abs(y2 - y1), 1);
+      }
+      const geo = new THREE.BoxGeometry(bw, ZONE_H, bd);
+      const mat = new THREE.MeshLambertMaterial({ color: parseColor(colorStr), transparent: true, opacity: 0.6 });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(cx, ZONE_H / 2, cz);
+      t.scene.add(mesh);
+      t.disposables.push({ geometry: geo, material: mat });
+      t.zoneEntries.push({ mesh, zone, cx, cz, colorStr });
     }
 
     // ── Camera initial position ───────────────────────────────────────────────
@@ -225,6 +259,16 @@ export default function Map3DView({
             entry.booth, entry.hall,
             { cx: entry.cx, cy: entry.cz, mergedLabel: entry.mergedLabel }
           );
+          return;
+        }
+      }
+
+      // Zone hit
+      const zoneHits = t.raycaster.intersectObjects(t.zoneEntries.map((z) => z.mesh), false);
+      if (zoneHits.length) {
+        const entry = t.zoneEntries.find((z) => z.mesh === zoneHits[0].object);
+        if (entry) {
+          cbRef.current.onZoneTap?.(entry.zone, { cx: entry.cx, cy: entry.cz });
           return;
         }
       }
@@ -476,6 +520,30 @@ export default function Map3DView({
     }
     t.highlightedEntries = entries;
   }, [selectedBoothId]);
+
+  // ── Zone selection highlight ───────────────────────────────────────────────
+  useEffect(() => {
+    const t = tRef.current;
+    if (!t?.zoneEntries) return;
+
+    if (t.highlightedZoneEntries?.length) {
+      for (const entry of t.highlightedZoneEntries) {
+        entry.mesh.material.color.copy(parseColor(entry.colorStr));
+      }
+      t.highlightedZoneEntries = null;
+    }
+
+    if (!selectedZoneId) return;
+
+    const entries = t.zoneEntries.filter((e) => e.zone.id === selectedZoneId);
+    if (!entries.length) return;
+
+    const highlight = getHighlightColor(entries[0].colorStr);
+    for (const entry of entries) {
+      entry.mesh.material.color.copy(highlight);
+    }
+    t.highlightedZoneEntries = entries;
+  }, [selectedZoneId]);
 
   return <div ref={mountRef} style={{ position: "absolute", inset: 0 }} />;
 }

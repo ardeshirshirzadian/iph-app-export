@@ -692,6 +692,71 @@ function BoothSheet({ booth, hall, mergedLabel, lang, isRTL, onClose }) {
   );
 }
 
+// ── Zone Sheet ────────────────────────────────────────────────────────────────
+
+function ZoneSheet({ zone, lang, isRTL, onClose, onNavigate }) {
+  const isEN = lang === "en";
+  const title = isEN ? (zone.title_en || zone.title_fa) : zone.title_fa;
+  return (
+    <div
+      className="fixed inset-x-0 bottom-0 z-[55] rounded-t-3xl"
+      style={{
+        background: "rgba(2,20,21,0.97)",
+        backdropFilter: "blur(28px)",
+        borderTop: "1px solid rgba(0,255,179,0.25)",
+        paddingBottom: "calc(4.5rem + env(safe-area-inset-bottom))",
+      }}
+      dir={isRTL ? "rtl" : "ltr"}
+    >
+      <div className="flex justify-center pt-3 pb-2">
+        <div className="w-10 h-1 rounded-full" style={{ background: "rgba(255,255,255,0.2)" }} />
+      </div>
+      <div className="px-5 pb-2">
+        <div className="flex items-center gap-3 mb-4">
+          <div
+            className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+            style={{ background: "rgba(0,255,179,0.08)", border: "1px solid rgba(0,255,179,0.2)" }}
+          >
+            <span style={{ fontSize: 24 }}>🏛️</span>
+          </div>
+          <div>
+            <p className="font-bold text-base leading-snug" style={{ color: "var(--text)" }}>
+              {title}
+            </p>
+            {zone.hall_name && (
+              <p className="text-xs mt-0.5" style={{ color: "var(--accent)" }}>
+                📍 {isEN ? `Hall ${zone.hall_name}` : `سالن ${zone.hall_name}`}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => { onNavigate(); onClose(); }}
+            className="flex-1 py-3 rounded-xl font-bold text-sm transition-all active:scale-95"
+            style={{ background: "var(--accent)", color: "#021f20", fontFamily: "inherit", cursor: "pointer", border: "none" }}
+          >
+            {isEN ? "Set as destination" : "تنظیم به عنوان مقصد"}
+          </button>
+          <button
+            onClick={onClose}
+            className="px-5 py-3 rounded-xl text-sm font-medium transition-all active:scale-95"
+            style={{
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              color: "var(--text-muted)",
+              fontFamily: "inherit",
+              cursor: "pointer",
+            }}
+          >
+            {isEN ? "Close" : "بستن"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Sign Tooltip ───────────────────────────────────────────────────────────────
 
 function SignTooltip({ sign, sx, sy, lang }) {
@@ -808,6 +873,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null); // null | string
   const [selectedBooth, setSelectedBooth] = useState(null); // { booth, hall }
+  const [selectedZone, setSelectedZone] = useState(null);   // zone object | null
   const [signTooltip, setSignTooltip] = useState(null); // { sign, sx, sy }
   // CHANGE 3-A: new state for hall colors, map elements, element tooltip
   const [hallColors, setHallColors] = useState({});
@@ -1303,6 +1369,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
     e.stopPropagation();
     if (dragRef.current.moved) return;
     const label = boothRangeLabel(group.booths.map((b) => b.no));
+    setSelectedZone(null);
     setSelectedBooth({ booth: group.booths[0], hall, mergedLabel: label || null });
   }
 
@@ -1310,7 +1377,21 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
     e.stopPropagation();
     if (dragRef.current.moved) return;
     if (!booth.company) return; // vacant — no sheet
+    setSelectedZone(null);
     setSelectedBooth({ booth, hall, mergedLabel: null });
+  }
+
+  function onZoneClick(e, zone) {
+    e.stopPropagation();
+    if (dragRef.current.moved) return;
+    setSelectedBooth(null);
+    setSelectedZone(zone);
+  }
+
+  function onZone3DTap(zone, meta) {
+    if (tapStartMode) { confirmStart(meta.cx, meta.cy); return; }
+    setSelectedBooth(null);
+    setSelectedZone(zone);
   }
 
   function onSignClick(e, sign) {
@@ -1333,6 +1414,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
     // meta = { cx: mapX, cy: mapY, mergedLabel }
     if (tapStartMode) { confirmStart(meta.cx, meta.cy); return; }
     if (!booth.company) return;
+    setSelectedZone(null);
     setSelectedBooth({ booth, hall, mergedLabel: meta.mergedLabel || null });
   }
 
@@ -1669,6 +1751,13 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
               style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", fontFamily: "inherit", cursor: "pointer" }}
               title={isEN ? "Fit to screen" : "نمای کامل"}
             >⊙</button>
+            <Link
+              href="/companies"
+              aria-label={isEN ? "Companies list" : "لیست شرکت‌ها"}
+              title={isEN ? "Companies" : "شرکت‌ها"}
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-base transition-all active:scale-90"
+              style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", textDecoration: "none" }}
+            >🏢</Link>
           </div>
         )}
       </div>
@@ -1772,15 +1861,18 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
             <Map3DView
               halls={hallGroups}
               hallColors={hallColors}
+              zones={mapZones.filter((z) => z.title_fa)}
               navRoute={navRoute}
               navStart={navStart}
               navDest={navDest}
               tapStartMode={tapStartMode}
               onBoothTap={onBooth3DTap}
+              onZoneTap={onZone3DTap}
               onGroundTap={(x, y) => { if (tapStartMode) confirmStart(x, y); }}
-              onBackgroundTap={() => { setSelectedBooth(null); setSearchOpen(false); setElementTooltip(null); setSignTooltip(null); }}
+              onBackgroundTap={() => { setSelectedBooth(null); setSelectedZone(null); setSearchOpen(false); setElementTooltip(null); setSignTooltip(null); }}
               controlRef={map3DViewRef}
               selectedBoothId={selectedBooth?.booth?.company?.id ?? null}
+              selectedZoneId={selectedZone?.id ?? null}
             />
           )}
 
@@ -1844,6 +1936,61 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                   >
                     {hall.name}
                   </text>
+                );
+              })}
+
+              {/* Named zones — rendered below booths so booths appear on top */}
+              {mapZones.filter((z) => z.title_fa).map((zone) => {
+                const color = hallColors[zone.hall_name] || "#00ffb3";
+                const isActive = selectedZone?.id === zone.id;
+                const fill   = isActive ? `${color}bb` : `${color}40`;
+                const stroke = isActive ? color : `${color}80`;
+                const sw     = isActive ? 2 : 1.5;
+                const shapeProps = {
+                  fill, stroke, strokeWidth: sw,
+                  style: { cursor: "pointer" },
+                  onClick: (e) => onZoneClick(e, zone),
+                };
+                const shape  = zone.shape_type || "rectangle";
+                const center = zoneCenter(zone);
+
+                let labelFs = 12;
+                if (shape === "circle") {
+                  labelFs = Math.max(6, (zone.radius ?? 50) * 0.25);
+                } else if (shape === "polygon" && Array.isArray(zone.points)) {
+                  const xs = zone.points.map((p) => p.x), ys = zone.points.map((p) => p.y);
+                  labelFs = Math.max(6, Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) * 0.12);
+                } else {
+                  labelFs = Math.max(6, Math.min(Math.abs((zone.x2 ?? 0) - (zone.x1 ?? 0)), Math.abs((zone.y2 ?? 0) - (zone.y1 ?? 0))) * 0.12);
+                }
+
+                return (
+                  <g key={`z-${zone.id}`}>
+                    {shape === "circle" ? (
+                      <circle cx={zone.cx} cy={zone.cy} r={zone.radius} {...shapeProps} />
+                    ) : shape === "polygon" && Array.isArray(zone.points) && zone.points.length >= 3 ? (
+                      <polygon points={zone.points.map((p) => `${p.x},${p.y}`).join(" ")} {...shapeProps} />
+                    ) : (
+                      <rect
+                        x={zone.x1} y={zone.y1}
+                        width={Math.abs((zone.x2 ?? 0) - (zone.x1 ?? 0))}
+                        height={Math.abs((zone.y2 ?? 0) - (zone.y1 ?? 0))}
+                        {...shapeProps}
+                      />
+                    )}
+                    <text
+                      x={center.x} y={center.y}
+                      textAnchor="middle" dominantBaseline="central"
+                      fontSize={labelFs}
+                      fontWeight="700"
+                      fill={color}
+                      fillOpacity={isActive ? 1 : 0.75}
+                      stroke="none"
+                      style={{ userSelect: "none", pointerEvents: "none" }}
+                    >
+                      {zone.title_fa}
+                    </text>
+                  </g>
                 );
               })}
 
@@ -2133,6 +2280,27 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
             lang={lang}
             isRTL={isRTL}
             onClose={() => setSelectedBooth(null)}
+          />
+        </>
+      )}
+
+      {/* ── Zone sheet + backdrop ── */}
+      {selectedZone && (
+        <>
+          <div
+            className="fixed inset-0 z-[53]"
+            style={{ background: "rgba(0,0,0,0.45)" }}
+            onClick={() => setSelectedZone(null)}
+          />
+          <ZoneSheet
+            zone={selectedZone}
+            lang={lang}
+            isRTL={isRTL}
+            onClose={() => setSelectedZone(null)}
+            onNavigate={() => {
+              const c = zoneCenter(selectedZone);
+              selectDestination({ x: c.x, y: c.y, name: selectedZone.title_fa, nameEn: selectedZone.title_en, floor: 0 });
+            }}
           />
         </>
       )}
