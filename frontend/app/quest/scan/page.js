@@ -13,7 +13,7 @@ export default function QRScanPage() {
   const [status, setStatus] = useState("requesting"); // requesting | scanning | error | success
   const [errorMsg, setErrorMsg] = useState("");
   const [toast, setToast] = useState("");
-  const [scanResult, setScanResult] = useState(null); // { company, alreadyScanned, cooldown, minutesRemaining, points }
+  const [scanResult, setScanResult] = useState(null); // { company, alreadyScanned, cooldown, outsideWindow, startHour, endHour, minutesRemaining, points }
   const [logoErr, setLogoErr] = useState(false);
   const { lang, isRTL } = useLang();
 
@@ -60,6 +60,19 @@ export default function QRScanPage() {
         if (data.error === "booth_not_found") {
           showToast(t(lang, "scan_invalid_qr"));
           processingRef.current = false;
+          return;
+        }
+
+        if (data.status === 'outside_window') {
+          setLogoErr(false);
+          setScanResult({
+            company: data.company,
+            outsideWindow: true,
+            startHour: data.start_hour,
+            endHour: data.end_hour,
+          });
+          setStatus("success");
+          setTimeout(() => router.replace("/quest"), 3500);
           return;
         }
 
@@ -294,12 +307,19 @@ export default function QRScanPage() {
       {status === "success" && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 z-10 px-8">
           {/* Check icon or logo */}
-          {logoUrl ? (
+          {logoUrl && !scanResult?.outsideWindow ? (
             <div
               className="w-24 h-24 rounded-2xl border-2 border-[#00ffb3] overflow-hidden flex items-center justify-center bg-white"
               style={{ animation: "successPulse 1.4s ease-in-out infinite" }}
             >
               <img src={logoUrl} alt="" onError={() => setLogoErr(true)} className="w-full h-full object-contain" />
+            </div>
+          ) : scanResult?.outsideWindow ? (
+            <div className="w-24 h-24 rounded-full bg-amber-500/20 border-2 border-amber-400 flex items-center justify-center">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
             </div>
           ) : (
             <div
@@ -313,7 +333,18 @@ export default function QRScanPage() {
           )}
 
           <div className="text-center">
-            {scanResult?.cooldown ? (
+            {scanResult?.outsideWindow ? (
+              <>
+                <p className="font-bold text-lg mb-1" style={{ color: "#f59e0b" }}>
+                  {lang === "fa" ? "خارج از بازه فعال" : "Outside active hours"}
+                </p>
+                <p className="text-sm mb-2" style={{ color: "rgba(255,255,255,0.55)" }}>
+                  {lang === "fa"
+                    ? `این غرفه فقط بین ساعت ${scanResult.startHour} تا ${scanResult.endHour} امتیاز تکراری می‌دهد`
+                    : `Repeat scoring active ${scanResult.startHour}:00–${scanResult.endHour}:00`}
+                </p>
+              </>
+            ) : scanResult?.cooldown ? (
               <p className="font-bold text-lg mb-2" style={{ color: "#fbbf24" }}>
                 {scanResult.minutesRemaining} {lang === "fa" ? "دقیقه دیگر مجدداً تلاش کنید" : `min remaining`}
               </p>
@@ -344,7 +375,7 @@ export default function QRScanPage() {
               </p>
             )}
 
-            {!scanResult?.alreadyScanned && !scanResult?.cooldown && (
+            {!scanResult?.alreadyScanned && !scanResult?.cooldown && !scanResult?.outsideWindow && (
               <p className="text-white/40 text-sm mt-2">{t(lang, "scan_success_title")}</p>
             )}
           </div>

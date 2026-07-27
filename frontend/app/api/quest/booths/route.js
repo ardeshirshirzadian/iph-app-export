@@ -16,10 +16,11 @@ export async function GET() {
       query(
         `SELECT id, brand_name_fa, brand_name_en, hall_name, booth_no,
                 booth_uuid, logo, is_sponsor, booth_xp,
-                repeatable_scan, repeatable_scan_hours
+                repeatable_scan, repeatable_scan_hours,
+                repeatable_start_hour, repeatable_end_hour
          FROM companies
          WHERE hall_name IS NOT NULL AND booth_uuid IS NOT NULL
-         ORDER BY hall_name ASC, booth_no ASC`
+         ORDER BY repeatable_scan DESC, hall_name ASC, booth_no ASC`
       ),
       query("SELECT value FROM app_settings WHERE key = 'companies_config'"),
     ]);

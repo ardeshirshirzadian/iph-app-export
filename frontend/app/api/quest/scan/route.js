@@ -97,7 +97,8 @@ export async function POST(request) {
       `SELECT id, brand_name_fa, brand_name_en, logo, hall_name, booth_no,
               is_sponsor, website, booth_uuid, booth_xp,
               is_manual, linked_mission_id, linked_badge_id,
-              repeatable_scan, repeatable_scan_hours
+              repeatable_scan, repeatable_scan_hours,
+              repeatable_start_hour, repeatable_end_hour
        FROM companies WHERE booth_uuid = $1`,
       [uuid]
     );
@@ -109,6 +110,18 @@ export async function POST(request) {
     const company = companyResult.rows[0];
 
     if (company.repeatable_scan) {
+      const startH = company.repeatable_start_hour ?? 0;
+      const endH = company.repeatable_end_hour ?? 24;
+      const currentHour = new Date().getHours();
+      if (currentHour < startH || currentHour >= endH) {
+        return NextResponse.json({
+          status: 'outside_window',
+          start_hour: startH,
+          end_hour: endH,
+          company,
+        });
+      }
+
       const lastScanResult = await query(
         `SELECT scanned_at FROM quest_scans
          WHERE user_uuid = $1 AND company_id = $2

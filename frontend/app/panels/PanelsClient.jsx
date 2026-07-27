@@ -440,11 +440,11 @@ export default function PanelsClient({ title, subtitle, title_en, subtitle_en, i
       lang={lang}
     >
       <div
-        className="fixed top-0 right-0 w-72 h-72 rounded-full blur-3xl pointer-events-none"
+        className="dark-only fixed top-0 right-0 w-72 h-72 rounded-full blur-3xl pointer-events-none"
         style={{ background: "rgba(0,255,179,0.04)", zIndex: 0 }}
       />
       <div
-        className="fixed bottom-0 left-0 w-80 h-80 rounded-full blur-3xl pointer-events-none"
+        className="dark-only fixed bottom-0 left-0 w-80 h-80 rounded-full blur-3xl pointer-events-none"
         style={{ background: "rgba(5,64,65,0.5)", zIndex: 0 }}
       />
 

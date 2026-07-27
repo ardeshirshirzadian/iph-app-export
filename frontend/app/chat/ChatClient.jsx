@@ -123,7 +123,7 @@ export default function ChatClient({ title, subtitle, title_en, subtitle_en, isH
       style={{ background: "var(--bg)", color: "var(--text)", height: "100dvh" }}
     >
       {/* Background glow */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+      <div className="dark-only fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-0 right-0 w-[500px] h-[500px] rounded-full blur-3xl" style={{ background: "color-mix(in srgb, var(--accent) 5%, transparent)" }} />
         <div className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full blur-3xl" style={{ background: "var(--surface)" }} />
       </div>

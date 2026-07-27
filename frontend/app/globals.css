@@ -39,6 +39,8 @@ html.light {
   --sheet-bg: rgba(240, 250, 248, 0.98);
   --overlay: rgba(15, 36, 32, 0.4);
 }
+/* Hide dark-mode decorative blur glows in light theme */
+html.light .dark-only { display: none !important; }
 /* News post body HTML */
 .prose-news p { margin-bottom: 1rem; }
 .prose-news h1, .prose-news h2, .prose-news h3 { color: var(--text); font-weight: 700; margin: 1.25rem 0 0.5rem; }

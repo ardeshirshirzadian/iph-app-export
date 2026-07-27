@@ -123,7 +123,7 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en, 
       className="min-h-screen"
       style={{ background: "var(--bg)", color: "var(--text)" }}
     >
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+      <div className="dark-only fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[#00ffb3]/5 rounded-full blur-3xl" />
         <div className="absolute bottom-0 left-0 w-[350px] h-[350px] bg-[#054041]/60 rounded-full blur-3xl" />
       </div>

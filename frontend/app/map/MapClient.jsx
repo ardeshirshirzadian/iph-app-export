@@ -226,6 +226,35 @@ function getHallColor(hall, hallColors) {
   return hallColors[hall.name] || hall.color || "#00ffb3";
 }
 
+// Returns an SVG path `d` string tracing only the OUTER boundary of a merged
+// group. Edges shared by two booth polygons (internal dividers) are omitted;
+// edges belonging to exactly one polygon (outer perimeter) are included.
+function groupOuterEdges(booths) {
+  // snap absorbs floating-point drift (~0.001 units) in the API's booth coordinates
+  const snap = v => Math.round(v * 100) / 100;
+  const counts = new Map();
+  for (const b of booths) {
+    const pts = b.bounds ?? [];
+    const n = pts.length;
+    for (let i = 0; i < n; i++) {
+      const a = pts[i], bPt = pts[(i + 1) % n];
+      const ax = snap(a.x), ay = snap(a.y), bx = snap(bPt.x), by = snap(bPt.y);
+      const key = ax < bx || (ax === bx && ay <= by)
+        ? `${ax}|${ay}|${bx}|${by}`
+        : `${bx}|${by}|${ax}|${ay}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  const parts = [];
+  for (const [key, cnt] of counts) {
+    if (cnt === 1) {
+      const [ax, ay, bx, by] = key.split('|').map(Number);
+      parts.push(`M${ax},${ay}L${bx},${by}`);
+    }
+  }
+  return parts.join(' ');
+}
+
 
 // Samples a [{x,y}] polyline at regular arc-length intervals and returns
 // [{x, y, angle}] where angle (degrees) is the tangent direction at each point.
@@ -956,7 +985,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
     if (boothLabelsWrapRef.current) {
       boothLabelsWrapRef.current.style.setProperty("--map-s", scale);
       if (!gestureActiveRef.current) {
-        const show = fitScaleRef.current > 0 && scale > fitScaleRef.current * 1.8;
+        const show = fitScaleRef.current > 0 && scale > fitScaleRef.current * 3.0;
         boothLabelsWrapRef.current.style.opacity = show ? "1" : "0";
       }
     }
@@ -1036,7 +1065,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
       if (routeLayerRef.current) routeLayerRef.current.style.visibility = "";
       if (boothLabelsWrapRef.current) {
         const { scale } = tRef.current;
-        const show = fitScaleRef.current > 0 && scale > fitScaleRef.current * 1.8;
+        const show = fitScaleRef.current > 0 && scale > fitScaleRef.current * 3.0;
         boothLabelsWrapRef.current.style.opacity = show ? "1" : "0";
       }
     }, 120);
@@ -1745,25 +1774,6 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                     fontFamily: "inherit", cursor: "pointer",
                   }}
                 >{view3D ? "2D" : "3D"}</button>
-                <button
-                  onClick={() => view3D ? map3DViewRef.current?.zoom(1.35) : zoomBy(1.35)}
-                  aria-label="Zoom in"
-                  className="w-9 h-9 rounded-xl flex items-center justify-center text-xl font-bold transition-all active:scale-90"
-                  style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "inherit", cursor: "pointer" }}
-                >+</button>
-                <button
-                  onClick={() => view3D ? map3DViewRef.current?.zoom(0.74) : zoomBy(0.74)}
-                  aria-label="Zoom out"
-                  className="w-9 h-9 rounded-xl flex items-center justify-center text-xl font-bold transition-all active:scale-90"
-                  style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "inherit", cursor: "pointer" }}
-                >−</button>
-                <button
-                  onClick={() => view3D ? map3DViewRef.current?.resetView() : resetView()}
-                  aria-label="Reset view"
-                  className="w-9 h-9 rounded-xl flex items-center justify-center text-base transition-all active:scale-90"
-                  style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", fontFamily: "inherit", cursor: "pointer" }}
-                  title={isEN ? "Fit to screen" : "نمای کامل"}
-                >⊙</button>
                 <Link
                   href="/companies"
                   aria-label={isEN ? "Companies list" : "لیست شرکت‌ها"}
@@ -1806,7 +1816,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
         }}
       >
         {/* background glows */}
-        <div className="absolute top-0 right-0 w-72 h-72 rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(0,255,179,0.03)", zIndex: 0 }} />
+        <div className="dark-only absolute top-0 right-0 w-72 h-72 rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(0,255,179,0.03)", zIndex: 0 }} />
 
         {loading && <MapSkeleton />}
 
@@ -1841,6 +1851,58 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
             lang={lang}
             isRTL={isRTL}
           />
+        )}
+
+        {/* Floating zoom + reset-view buttons — positioned over map, right side */}
+        {mapData && (
+          <div
+            className="absolute z-[24] flex flex-col gap-2"
+            style={{ right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
+          >
+            <button
+              onClick={(e) => { e.stopPropagation(); view3D ? map3DViewRef.current?.zoom(1.35) : zoomBy(1.35); }}
+              aria-label="Zoom in"
+              className="w-11 h-11 rounded-full flex items-center justify-center text-xl font-bold transition-all active:scale-90"
+              style={{
+                background: "var(--nav-bg)",
+                border: "1px solid var(--border)",
+                color: "var(--text)",
+                fontFamily: "inherit", cursor: "pointer",
+                boxShadow: "0 2px 14px rgba(0,0,0,0.45)",
+                backdropFilter: "blur(8px)",
+                pointerEvents: "auto",
+              }}
+            >+</button>
+            <button
+              onClick={(e) => { e.stopPropagation(); view3D ? map3DViewRef.current?.zoom(0.74) : zoomBy(0.74); }}
+              aria-label="Zoom out"
+              className="w-11 h-11 rounded-full flex items-center justify-center text-xl font-bold transition-all active:scale-90"
+              style={{
+                background: "var(--nav-bg)",
+                border: "1px solid var(--border)",
+                color: "var(--text)",
+                fontFamily: "inherit", cursor: "pointer",
+                boxShadow: "0 2px 14px rgba(0,0,0,0.45)",
+                backdropFilter: "blur(8px)",
+                pointerEvents: "auto",
+              }}
+            >−</button>
+            <button
+              onClick={(e) => { e.stopPropagation(); view3D ? map3DViewRef.current?.resetView() : resetView(); }}
+              aria-label="Reset view"
+              className="w-11 h-11 rounded-full flex items-center justify-center text-base transition-all active:scale-90"
+              style={{
+                background: "var(--nav-bg)",
+                border: "1px solid var(--border)",
+                color: "var(--text)",
+                fontFamily: "inherit", cursor: "pointer",
+                boxShadow: "0 2px 14px rgba(0,0,0,0.45)",
+                backdropFilter: "blur(8px)",
+                pointerEvents: "auto",
+              }}
+              title={isEN ? "Fit to screen" : "نمای کامل"}
+            >⊙</button>
+          </div>
         )}
 
         {/* Tap-to-start overlay hint */}
@@ -2017,7 +2079,9 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                   const active = !isVacant && selectedBooth
                     && selectedBooth.booth.company?.id === group.company?.id;
                   const hc = getHallColor(hall, hallColors);
-                  return group.booths.map((booth) => {
+
+                  // Individual booth fill polygons
+                  const els = group.booths.map((booth) => {
                     const pts = toPoints(booth.bounds);
                     if (!pts) return null;
                     return (
@@ -2032,15 +2096,15 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                             : "rgba(255,255,255,0.04)"
                         }
                         stroke={
-                          isMerged && !active
-                            ? "none"
+                          isMerged
+                            ? "none"            // always suppress internal dividers; outer path handles the border
                             : active
                             ? hc
                             : !isVacant
-                            ? `${hc}99`
-                            : "rgba(255,255,255,0.1)"
+                            ? `${hc}cc`
+                            : "rgba(255,255,255,0.15)"
                         }
-                        strokeWidth={active ? (isMerged ? 2 : 3) : 1}
+                        strokeWidth={active ? 3.5 : 2.5}
                         style={{ cursor: !isVacant ? "pointer" : "default" }}
                         onClick={(e) =>
                           isMerged
@@ -2050,6 +2114,27 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                       />
                     );
                   });
+
+                  // For merged groups: draw a single path tracing only the outer boundary
+                  // (shared internal edges are omitted, so no internal dividers appear)
+                  if (isMerged) {
+                    const outerPath = groupOuterEdges(group.booths);
+                    if (outerPath) {
+                      els.push(
+                        <path
+                          key={`gb-${group.company.id}`}
+                          d={outerPath}
+                          fill="none"
+                          stroke={active ? hc : `${hc}cc`}
+                          strokeWidth={active ? 4 : 2.5}
+                          strokeLinecap="round"
+                          style={{ pointerEvents: "none" }}
+                        />
+                      );
+                    }
+                  }
+
+                  return els;
                 })
               )}
 

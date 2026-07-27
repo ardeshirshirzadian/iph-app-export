@@ -509,6 +509,24 @@ function getCooldownMinutes(lastScanAt, hours, now) {
   return remaining > 0 ? Math.ceil(remaining / 60000) : 0;
 }
 
+function toPersianNum(n) {
+  return String(n).replace(/[0-9]/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
+}
+
+function repeatRuleLabel(booth, lang) {
+  const hours = booth.repeatable_scan_hours || 1;
+  const startH = booth.repeatable_start_hour ?? 0;
+  const endH = booth.repeatable_end_hour ?? 24;
+  const isFullDay = startH === 0 && endH >= 24;
+  if (lang === 'fa') {
+    const h = toPersianNum(hours);
+    if (isFullDay) return `🔄 هر ${h} ساعت`;
+    return `🔄 هر ${h} ساعت (${toPersianNum(startH)} تا ${toPersianNum(endH)})`;
+  }
+  if (isFullDay) return `🔄 Every ${hours}h`;
+  return `🔄 Every ${hours}h (${startH}:00–${endH}:00)`;
+}
+
 function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedIds, boothsLoading, logoBaseUrl, xpUnit }) {
   const [visible, setVisible] = useState(false);
   const now = useCooldownTick();
@@ -618,14 +636,15 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
                       {booth.booth_no && <> • {lang === 'fa' ? 'غرفه' : 'Booth'} {booth.booth_no}</>}
                     </div>
                   )}
-                  {cooldownMins !== null && (
-                    cooldownMins === 0 ? (
-                      <div className="text-[10px] leading-4 mt-0.5 font-medium" style={{ color: "var(--accent)" }}>
-                        🔄 {lang === 'fa' ? 'قابل اسکن مجدد' : 'Ready to scan again'}
+                  {booth.repeatable_scan && (
+                    cooldownMins !== null && cooldownMins > 0 ? (
+                      <div className="text-[10px] leading-4 mt-0.5" style={{ color: "#f59e0b" }}>
+                        {lang === 'fa' ? `🔄 بازنشانی: ${toPersianNum(cooldownMins)} دقیقه دیگر` : `🔄 Resets in ${cooldownMins} min`}
                       </div>
                     ) : (
-                      <div className="text-[10px] leading-4 mt-0.5" style={{ color: "#f59e0b" }}>
-                        🔄 {lang === 'fa' ? `بازنشانی: ${cooldownMins} دقیقه دیگر` : `Resets in ${cooldownMins} min`}
+                      <div className="text-[10px] leading-4 mt-0.5" style={{ color: cooldownMins === 0 ? "var(--accent)" : "var(--text-dim)" }}>
+                        {repeatRuleLabel(booth, lang)}
+                        {cooldownMins === 0 && (lang === 'fa' ? ' ✓' : ' ✓')}
                       </div>
                     )
                   )}
@@ -1029,7 +1048,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
 
   return (
     <main dir={isRTL ? "rtl" : "ltr"} lang={lang} className="min-h-screen" style={{ background: "var(--bg)", color: "var(--text)" }}>
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+      <div className="dark-only fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[#00ffb3]/5 rounded-full blur-3xl" />
         <div className="absolute bottom-0 left-0 w-[350px] h-[350px] bg-[#054041]/60 rounded-full blur-3xl" />
       </div>
