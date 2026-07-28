@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { ensureQuestBadgesTable, ensureAttendanceLogTable, ensureBadgeProgressTable } from '@/lib/initQuestBadges';
+import { ensureFeaturedBoothState, getFeaturedBoothCountdown } from '@/lib/featuredBoothHelper';
 
 async function getUserUuid() {
   const cookieStore = await cookies();
@@ -100,6 +101,13 @@ async function calcEarned(badge, userUuid) {
         ).catch(() => ({ rows: [] }));
         return r.rows.length > 0 && r.rows[0].is_correct;
       }
+      case 'featured_booth': {
+        const r = await query(
+          'SELECT 1 FROM quest_badge_progress WHERE badge_id = $1 AND user_uuid = $2 AND earned = true',
+          [badge.id, userUuid]
+        );
+        return r.rows.length > 0;
+      }
       default:
         return false;
     }
@@ -131,6 +139,34 @@ export async function GET() {
           ).catch(() => ({ rows: [] }));
           quiz_attempted = aR.rows.length > 0;
         }
+        // Countdown for featured_booth badges
+        let featured_booth_next_rotation = undefined;
+        // Pool companies: all candidates visible to user, golden selection hidden.
+        let featured_booth_pool_companies = undefined;
+        if (b.badge_type === 'featured_booth') {
+          if (Array.isArray(b.featured_booth_pool) && b.featured_booth_pool.length >= 2) {
+            await ensureFeaturedBoothState(b, 'badge').catch(() => {});
+          }
+          const selectedAt = await getFeaturedBoothCountdown(b.id, 'badge');
+          if (selectedAt) {
+            const nextMs = new Date(selectedAt).getTime() +
+              Math.max(1, b.featured_booth_rotation_hours ?? 1) * 3_600_000;
+            featured_booth_next_rotation = new Date(nextMs).toISOString();
+          }
+          const pool = b.featured_booth_pool;
+          if (Array.isArray(pool) && pool.length > 0) {
+            const { rows: poolRows } = await query(
+              `SELECT id AS company_id, brand_name_fa, brand_name_en, logo, hall_name, booth_no
+               FROM companies WHERE id = ANY($1::int[])
+               ORDER BY hall_name ASC NULLS LAST, booth_no ASC NULLS LAST`,
+              [pool]
+            ).catch(() => ({ rows: [] }));
+            featured_booth_pool_companies = poolRows;
+          } else {
+            featured_booth_pool_companies = [];
+          }
+        }
+
         return {
           id: b.id,
           badge_type: b.badge_type,
@@ -148,6 +184,8 @@ export async function GET() {
           quiz_hint_type: b.badge_type === 'quiz' ? (b.quiz_hint_type ?? null) : undefined,
           quiz_hint_url: b.badge_type === 'quiz' ? (b.quiz_hint_url ?? null) : undefined,
           quiz_attempted: b.badge_type === 'quiz' ? quiz_attempted : undefined,
+          featured_booth_next_rotation,
+          featured_booth_pool_companies,
         };
       })
     );

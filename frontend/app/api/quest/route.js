@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
+import { ensureFeaturedBoothState, getFeaturedBoothCountdown } from '@/lib/featuredBoothHelper';
 
 async function getUserUuid() {
   const cookieStore = await cookies();
@@ -73,6 +74,13 @@ async function calcProgress(mission, userUuid) {
         ).catch(() => ({ rows: [] }));
         return r.rows.length > 0 && r.rows[0].is_correct ? 1 : 0;
       }
+      case 'featured_booth': {
+        const r = await query(
+          `SELECT completed FROM quest_user_progress WHERE mission_id = $1 AND user_uuid = $2`,
+          [mission.id, userUuid]
+        );
+        return r.rows.length > 0 && r.rows[0].completed ? 1 : 0;
+      }
       default:
         return 0;
     }
@@ -100,6 +108,39 @@ export async function GET() {
           ).catch(() => ({ rows: [] }));
           quiz_attempted = aR.rows.length > 0;
         }
+
+        // Countdown for featured_booth: return next rotation timestamp (no golden
+        // booth identity revealed — only WHEN the next rotation occurs).
+        let featured_booth_next_rotation = undefined;
+        // Pool companies for featured_booth: show all candidates so the user knows
+        // which booths to visit. Does NOT reveal which is currently golden.
+        let featured_booth_pool_companies = undefined;
+        if (m.mission_type === 'featured_booth') {
+          // Lazily ensure a state row exists so the countdown is non-null on first load.
+          if (Array.isArray(m.featured_booth_pool) && m.featured_booth_pool.length >= 2) {
+            await ensureFeaturedBoothState(m, 'mission').catch(() => {});
+          }
+          const selectedAt = await getFeaturedBoothCountdown(m.id, 'mission');
+          if (selectedAt) {
+            const nextMs = new Date(selectedAt).getTime() +
+              Math.max(1, m.featured_booth_rotation_hours ?? 1) * 3_600_000;
+            featured_booth_next_rotation = new Date(nextMs).toISOString();
+          }
+          // Resolve company details for every pool member (no golden booth revealed).
+          const pool = m.featured_booth_pool;
+          if (Array.isArray(pool) && pool.length > 0) {
+            const { rows: poolRows } = await query(
+              `SELECT id AS company_id, brand_name_fa, brand_name_en, logo, hall_name, booth_no
+               FROM companies WHERE id = ANY($1::int[])
+               ORDER BY hall_name ASC NULLS LAST, booth_no ASC NULLS LAST`,
+              [pool]
+            ).catch(() => ({ rows: [] }));
+            featured_booth_pool_companies = poolRows;
+          } else {
+            featured_booth_pool_companies = [];
+          }
+        }
+
         return {
           id: m.id,
           title: m.title_fa,
@@ -122,6 +163,8 @@ export async function GET() {
           quiz_hint_type: m.mission_type === 'quiz' ? (m.quiz_hint_type ?? null) : undefined,
           quiz_hint_url: m.mission_type === 'quiz' ? (m.quiz_hint_url ?? null) : undefined,
           quiz_attempted: m.mission_type === 'quiz' ? quiz_attempted : undefined,
+          featured_booth_next_rotation,
+          featured_booth_pool_companies,
         };
       })
     );

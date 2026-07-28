@@ -19,6 +19,9 @@ const CREATE_BADGES_TABLE = `
     target_hall_name VARCHAR(50),
     hall_match_mode VARCHAR(10) NOT NULL DEFAULT 'any',
     hall_scan_count INT,
+    featured_booth_pool         JSONB,
+    featured_booth_bonus_xp     INT NOT NULL DEFAULT 500,
+    featured_booth_rotation_hours INT NOT NULL DEFAULT 1,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
   )

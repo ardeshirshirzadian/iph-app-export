@@ -44,6 +44,7 @@ import { useLang } from "@/lib/useLang";
 import { toPersianDigits } from "@/lib/utils";
 import { buildFloorGrids, findMultiFloorRoute, pathLength } from "@/lib/mapPathfinding";
 import Map3DView from "./Map3DView";
+import { groupOuterLoops } from "./mapUtils.js";
 
 const RASAYESH_BASE = "https://api.rasayesh.com/";
 const DRAG_THRESHOLD = 6; // px movement before a touch is treated as a drag (not a tap)
@@ -227,32 +228,20 @@ function getHallColor(hall, hallColors) {
 }
 
 // Returns an SVG path `d` string tracing only the OUTER boundary of a merged
-// group. Edges shared by two booth polygons (internal dividers) are omitted;
-// edges belonging to exactly one polygon (outer perimeter) are included.
+// group as disconnected edge segments (M x,y L x,y …). Internal edges shared
+// by two booth polygons are omitted. Delegates to the shared groupOuterLoops
+// utility in mapUtils.js which both 2D and 3D code import.
 function groupOuterEdges(booths) {
-  // snap absorbs floating-point drift (~0.001 units) in the API's booth coordinates
-  const snap = v => Math.round(v * 100) / 100;
-  const counts = new Map();
-  for (const b of booths) {
-    const pts = b.bounds ?? [];
-    const n = pts.length;
-    for (let i = 0; i < n; i++) {
-      const a = pts[i], bPt = pts[(i + 1) % n];
-      const ax = snap(a.x), ay = snap(a.y), bx = snap(bPt.x), by = snap(bPt.y);
-      const key = ax < bx || (ax === bx && ay <= by)
-        ? `${ax}|${ay}|${bx}|${by}`
-        : `${bx}|${by}|${ax}|${ay}`;
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-  }
+  const loops = groupOuterLoops(booths);
   const parts = [];
-  for (const [key, cnt] of counts) {
-    if (cnt === 1) {
-      const [ax, ay, bx, by] = key.split('|').map(Number);
-      parts.push(`M${ax},${ay}L${bx},${by}`);
+  for (const loop of loops) {
+    const n = loop.length;
+    for (let i = 0; i < n; i++) {
+      const a = loop[i], b = loop[(i + 1) % n];
+      parts.push(`M${a.x},${a.y}L${b.x},${b.y}`);
     }
   }
-  return parts.join(' ');
+  return parts.join(" ");
 }
 
 

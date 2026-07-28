@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { ensureBadgeProgressTable } from '@/lib/initQuestBadges';
+import { ensureFeaturedBoothState } from '@/lib/featuredBoothHelper';
 
 const RASAYESH_BASE = 'https://api.rasayesh.com/';
 
@@ -154,7 +155,54 @@ export async function POST(request) {
       }
     }
 
-    const xpEarned = company.booth_xp ?? 10;
+    // ── Featured booth golden-booth check ──────────────────────────────────────
+    // Look for any active featured_booth missions/badges where the scanned company
+    // is in the pool.  This check is intentionally low-cost: pools are small and
+    // the query is bounded to active featured_booth rows only.
+    let bonusXp     = 0;
+    let bonusMission = null; // { id, featured_booth_bonus_xp }
+    let bonusBadge   = null;
+
+    try {
+      const { rows: fbMissions } = await query(
+        `SELECT id, featured_booth_pool, featured_booth_bonus_xp, featured_booth_rotation_hours
+         FROM quest_content
+         WHERE is_active = true AND mission_type = 'featured_booth'
+           AND featured_booth_pool IS NOT NULL`
+      );
+      for (const m of fbMissions) {
+        const pool = Array.isArray(m.featured_booth_pool) ? m.featured_booth_pool : [];
+        if (!pool.includes(company.id)) continue;
+        const goldenId = await ensureFeaturedBoothState(m, 'mission');
+        if (goldenId === company.id) {
+          bonusXp      = Math.max(bonusXp, m.featured_booth_bonus_xp ?? 500);
+          bonusMission = m;
+        }
+      }
+
+      const { rows: fbBadges } = await query(
+        `SELECT id, featured_booth_pool, featured_booth_bonus_xp, featured_booth_rotation_hours
+         FROM quest_badges
+         WHERE is_active = true AND badge_type = 'featured_booth'
+           AND featured_booth_pool IS NOT NULL`
+      );
+      for (const b of fbBadges) {
+        const pool = Array.isArray(b.featured_booth_pool) ? b.featured_booth_pool : [];
+        if (!pool.includes(company.id)) continue;
+        const goldenId = await ensureFeaturedBoothState(b, 'badge');
+        if (goldenId === company.id) {
+          bonusXp    = Math.max(bonusXp, b.featured_booth_bonus_xp ?? 500);
+          bonusBadge = b;
+        }
+      }
+    } catch (fbErr) {
+      console.error('[quest/scan] featured_booth check failed:', fbErr.message);
+    }
+
+    // Total XP: regular booth XP + golden-booth bonus (if any)
+    const baseXp    = company.booth_xp ?? 10;
+    const xpEarned  = baseXp + bonusXp;
+
     await query(
       `INSERT INTO quest_scans (user_uuid, company_id, booth_uuid, xp_earned)
        VALUES ($1, $2, $3, $4)`,
@@ -185,7 +233,32 @@ export async function POST(request) {
       }
     }
 
-    return NextResponse.json({ success: true, points: xpEarned, company });
+    // Featured booth golden-booth mission/badge completion
+    if (bonusMission) {
+      await query(
+        `INSERT INTO quest_user_progress (mission_id, user_uuid, completed, completed_at)
+         VALUES ($1, $2, true, NOW())
+         ON CONFLICT (mission_id, user_uuid) DO UPDATE SET completed = true, completed_at = NOW()`,
+        [bonusMission.id, userUuid]
+      ).catch(() => {});
+    }
+    if (bonusBadge) {
+      await ensureBadgeProgressTable();
+      await query(
+        `INSERT INTO quest_badge_progress (badge_id, user_uuid, earned, earned_at)
+         VALUES ($1, $2, true, NOW())
+         ON CONFLICT (badge_id, user_uuid) DO UPDATE SET earned = true, earned_at = NOW()`,
+        [bonusBadge.id, userUuid]
+      ).catch(() => {});
+    }
+
+    // Build response — bonus fields only present when golden booth was hit
+    const response = { success: true, points: xpEarned, company };
+    if (bonusXp > 0) {
+      response.bonus     = true;
+      response.bonus_xp  = bonusXp;
+    }
+    return NextResponse.json(response);
   } catch (err) {
     console.error('[quest/scan]', err.message);
     return NextResponse.json({ error: 'server_error' }, { status: 500 });

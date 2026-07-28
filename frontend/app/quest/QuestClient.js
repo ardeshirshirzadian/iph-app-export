@@ -8,6 +8,7 @@ import Link from "next/link";
 import BottomNav from "../components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { useLang } from "@/lib/useLang";
+import { toPersianDigits } from "@/lib/utils";
 
 // ── Hardcoded non-CMS constants ────────────────────────────────────────────
 // These represent live gameplay state, not static content — they stay here
@@ -123,7 +124,7 @@ function LevelTimeline({ currentLevel, thresholds, levelColors }) {
   );
 }
 
-function UserCard({ user, thresholds, levelColors, labels }) {
+function UserCard({ user, thresholds, levelColors, labels, lang }) {
   const { pct, current, currentIdx, next } = useMemo(
     () => getXpProgress(user.xp, thresholds),
     [user.xp, thresholds]
@@ -161,7 +162,7 @@ function UserCard({ user, thresholds, levelColors, labels }) {
 
       <div className="flex items-center justify-between text-sm mb-2">
         <span style={{ color: "var(--text-muted)" }}>{labels.xpLabel}</span>
-        <span className="font-bold" style={{ color: "var(--accent)" }}>{user.xp} {labels.xpUnit}</span>
+        <span className="font-bold" style={{ color: "var(--accent)" }}>{dNum(user.xp, lang)} {labels.xpUnit}</span>
       </div>
 
       <div className="h-2.5 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
@@ -181,7 +182,7 @@ function UserCard({ user, thresholds, levelColors, labels }) {
             {labels.nextLevelPrefix} {next.name}
           </span>
           <span className="text-xs" style={{ color: "var(--text-faint)" }}>
-            {next.min - user.xp} {labels.xpRemainingSuffix}
+            {dNum(next.min - user.xp, lang)} {labels.xpRemainingSuffix}
           </span>
         </div>
       )}
@@ -233,22 +234,51 @@ function ScanButton({ isDark, label }) {
   );
 }
 
-function MissionCard({ mission, xpUnit, onQuizClick }) {
+function useLiveNow(active) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, [active]);
+  return now;
+}
+
+function featuredBoothCountdownText(nextRotationIso, lang, now) {
+  if (!nextRotationIso) return null;
+  const remaining = new Date(nextRotationIso).getTime() - now;
+  if (remaining <= 0) return lang === 'fa' ? '⟳ در حال چرخش...' : '⟳ Rotating soon...';
+  const minutes = Math.ceil(remaining / 60_000);
+  return lang === 'fa'
+    ? `⟳ چرخش بعدی: ${toPersianNum(minutes)} دقیقه دیگر`
+    : `⟳ Next rotation: ${minutes} min`;
+}
+
+function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, lang: langProp }) {
   const pct = useMemo(
     () => (mission.total > 0 ? Math.round((mission.progress / mission.total) * 100) : 0),
     [mission.progress, mission.total]
   );
   const done = mission.progress >= mission.total;
   const isQuiz = mission.mission_type === 'quiz';
+  const isFeaturedBooth = mission.mission_type === 'featured_booth';
   const quizAttempted = isQuiz && !!mission.quiz_attempted;
   const quizClickable = isQuiz && !done && !quizAttempted && typeof onQuizClick === 'function';
+  const featuredClickable = isFeaturedBooth && typeof onFeaturedClick === 'function';
+
+  const now = useLiveNow(isFeaturedBooth && !done);
+  const countdownText = isFeaturedBooth
+    ? featuredBoothCountdownText(mission.featured_booth_next_rotation, langProp, now)
+    : null;
+
+  const handleClick = quizClickable ? onQuizClick : featuredClickable ? onFeaturedClick : undefined;
 
   return (
     <div
-      onClick={quizClickable ? onQuizClick : undefined}
+      onClick={handleClick}
       className={`backdrop-blur-xl border rounded-2xl p-4 flex items-center gap-4 transition-colors ${
         done ? "border-[#00ffb3]/30 bg-[#00ffb3]/5" : "border-[var(--border)]"
-      } ${quizClickable ? "cursor-pointer active:scale-[0.98]" : ""}`}
+      } ${(quizClickable || featuredClickable) ? "cursor-pointer active:scale-[0.98]" : ""}`}
       style={done ? undefined : { background: "var(--surface-2)" }}
     >
       <div
@@ -273,13 +303,29 @@ function MissionCard({ mission, xpUnit, onQuizClick }) {
             {mission.title}
           </span>
           <span className="text-xs font-bold flex-shrink-0 mr-2" style={{ color: "var(--accent)" }}>
-            +{mission.xpReward} {xpUnit || "XP"}
+            +{dNum(mission.xpReward, langProp)} {xpUnit || "XP"}
           </span>
         </div>
         <p className="text-xs leading-6 mb-1.5 truncate" style={{ color: "var(--text-dim)" }}>
           {mission.description}
         </p>
-        {isQuiz ? (
+        {isFeaturedBooth ? (
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              {done ? (
+                <span className="text-xs font-bold" style={{ color: "var(--accent)" }}>✓ کشف شد!</span>
+              ) : countdownText ? (
+                <span className="text-xs" style={{ color: "var(--text-dim)" }}>{countdownText}</span>
+              ) : null}
+            </div>
+            {featuredClickable && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+                style={{ background: "rgba(0,255,179,0.12)", color: "var(--accent)" }}>
+                {langProp === 'fa' ? 'مشاهده غرفه‌ها ←' : 'See booths →'}
+              </span>
+            )}
+          </div>
+        ) : isQuiz ? (
           <div className="flex items-center gap-2">
             {done ? (
               <span className="text-xs font-bold" style={{ color: "var(--accent)" }}>پاسخ صحیح ✓</span>
@@ -301,7 +347,7 @@ function MissionCard({ mission, xpUnit, onQuizClick }) {
               />
             </div>
             <span className="text-xs flex-shrink-0" style={{ color: "var(--text-dim)" }}>
-              {mission.progress}/{mission.total}
+              {dNum(mission.progress, langProp)}/{dNum(mission.total, langProp)}
             </span>
           </div>
         )}
@@ -332,7 +378,7 @@ function AvatarPlaceholder({ size = 32 }) {
   );
 }
 
-function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUnit }) {
+function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUnit, lang }) {
   const levelNameToColor = useMemo(() => {
     const map = {};
     thresholds.forEach((t, i) => { map[t.name] = levelColors[i] || levelColors[levelColors.length - 1]; });
@@ -357,7 +403,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
                 <span className="text-lg">{RANK_ICONS[user.rank]}</span>
               ) : (
                 <span className="text-sm font-bold" style={{ color: isMe ? "var(--accent)" : "var(--text-dim)" }}>
-                  {user.rank}
+                  {dNum(user.rank, lang)}
                 </span>
               )}
             </div>
@@ -384,7 +430,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
             </div>
             <div className="text-left flex-shrink-0">
               <p className="text-sm font-black leading-5" style={{ color: isMe ? "var(--accent)" : "var(--text)" }}>
-                {user.xp}
+                {dNum(user.xp, lang)}
               </p>
               <p className="text-[10px] leading-4" style={{ color: "var(--text-dim)" }}>{xpUnit || "XP"}</p>
             </div>
@@ -401,57 +447,86 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
   );
 }
 
-function BadgesTab({ badges, onQuizClick }) {
+function BadgeCard({ badge, onQuizClick, onFeaturedClick, lang }) {
+  const isQuiz = badge.badge_type === 'quiz';
+  const isFeaturedBooth = badge.badge_type === 'featured_booth';
+  const quizClickable = isQuiz && !badge.earned && !badge.quiz_attempted && typeof onQuizClick === 'function';
+  const featuredClickable = isFeaturedBooth && typeof onFeaturedClick === 'function';
+
+  const now = useLiveNow(isFeaturedBooth && !badge.earned);
+  const countdownText = isFeaturedBooth
+    ? featuredBoothCountdownText(badge.featured_booth_next_rotation, lang, now)
+    : null;
+
+  const handleBadgeClick = quizClickable ? () => onQuizClick(badge) : featuredClickable ? () => onFeaturedClick(badge) : undefined;
+
+  return (
+    <div
+      onClick={handleBadgeClick}
+      className={`rounded-2xl p-4 border text-center transition-colors ${
+        badge.earned ? "border-[#00ffb3]/30 bg-[#00ffb3]/5" : "border-[var(--border)]"
+      } ${(quizClickable || featuredClickable) ? "cursor-pointer active:scale-[0.97]" : ""}`}
+      style={badge.earned ? undefined : { background: "var(--surface-2)", opacity: quizClickable || isFeaturedBooth ? 1 : 0.5 }}
+    >
+      <div
+        className="w-14 h-14 rounded-2xl mx-auto mb-3 flex items-center justify-center"
+        style={{ background: badge.earned ? "rgba(0,255,179,0.15)" : "var(--surface-hover)" }}
+      >
+        {badge.icon && badge.icon.startsWith('/') ? (
+          <img src={badge.icon} alt="" style={{ width: badge.icon_size ?? 36, height: badge.icon_size ?? 36, objectFit: 'contain' }} />
+        ) : (
+          <span style={{ fontSize: badge.icon_size ?? 36, lineHeight: 1 }}>{badge.icon}</span>
+        )}
+      </div>
+      <p className="text-sm font-bold leading-6"
+        style={{ color: badge.earned ? "var(--accent)" : "var(--text-muted)" }}>
+        {badge.name}
+      </p>
+      <p className="text-[11px] leading-5 mt-0.5" style={{ color: "var(--text-dim)" }}>
+        {badge.description}
+      </p>
+      {badge.earned ? (
+        <div
+          className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full"
+          style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}
+        >
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          کسب شده
+        </div>
+      ) : isFeaturedBooth ? (
+        <div className="mt-2 flex flex-col items-center gap-1">
+          {countdownText && <div className="text-[10px]" style={{ color: "var(--text-dim)" }}>{countdownText}</div>}
+          {featuredClickable && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+              style={{ background: "rgba(0,255,179,0.12)", color: "var(--accent)" }}>
+              {lang === 'fa' ? 'مشاهده غرفه‌ها ←' : 'See booths →'}
+            </span>
+          )}
+        </div>
+      ) : isQuiz && badge.quiz_attempted ? (
+        <div className="mt-2 text-[10px]" style={{ color: "#f87171" }}>پاسخ داده شده</div>
+      ) : isQuiz ? (
+        <div className="mt-2 text-[10px] font-bold" style={{ color: "var(--accent)" }}>شرکت کن ←</div>
+      ) : null}
+    </div>
+  );
+}
+
+function BadgesTab({ badges, onQuizClick, onFeaturedClick, lang }) {
   return (
     <div className="grid grid-cols-2 gap-3">
-      {badges.map((badge, idx) => {
-        const isQuiz = badge.badge_type === 'quiz';
-        const quizClickable = isQuiz && !badge.earned && !badge.quiz_attempted && typeof onQuizClick === 'function';
-        return (
-          <div
-            key={badge.id ?? idx}
-            onClick={quizClickable ? () => onQuizClick(badge) : undefined}
-            className={`rounded-2xl p-4 border text-center transition-colors ${
-              badge.earned ? "border-[#00ffb3]/30 bg-[#00ffb3]/5" : "border-[var(--border)]"
-            } ${quizClickable ? "cursor-pointer active:scale-[0.97]" : ""}`}
-            style={badge.earned ? undefined : { background: "var(--surface-2)", opacity: quizClickable ? 1 : 0.5 }}
-          >
-            <div
-              className="w-14 h-14 rounded-2xl mx-auto mb-3 flex items-center justify-center"
-              style={{ background: badge.earned ? "rgba(0,255,179,0.15)" : "var(--surface-hover)" }}
-            >
-              {badge.icon && badge.icon.startsWith('/') ? (
-                <img src={badge.icon} alt="" style={{ width: badge.icon_size ?? 36, height: badge.icon_size ?? 36, objectFit: 'contain' }} />
-              ) : (
-                <span style={{ fontSize: badge.icon_size ?? 36, lineHeight: 1 }}>{badge.icon}</span>
-              )}
-            </div>
-            <p className="text-sm font-bold leading-6"
-              style={{ color: badge.earned ? "var(--accent)" : "var(--text-muted)" }}>
-              {badge.name}
-            </p>
-            <p className="text-[11px] leading-5 mt-0.5" style={{ color: "var(--text-dim)" }}>
-              {badge.description}
-            </p>
-            {badge.earned ? (
-              <div
-                className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full"
-                style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}
-              >
-                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                  strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-                کسب شده
-              </div>
-            ) : isQuiz && badge.quiz_attempted ? (
-              <div className="mt-2 text-[10px]" style={{ color: "#f87171" }}>پاسخ داده شده</div>
-            ) : isQuiz ? (
-              <div className="mt-2 text-[10px] font-bold" style={{ color: "var(--accent)" }}>شرکت کن ←</div>
-            ) : null}
-          </div>
-        );
-      })}
+      {badges.map((badge, idx) => (
+        <BadgeCard
+          key={badge.id ?? idx}
+          badge={badge}
+          onQuizClick={onQuizClick}
+          onFeaturedClick={onFeaturedClick}
+          lang={lang}
+        />
+      ))}
     </div>
   );
 }
@@ -509,9 +584,12 @@ function getCooldownMinutes(lastScanAt, hours, now) {
   return remaining > 0 ? Math.ceil(remaining / 60000) : 0;
 }
 
-function toPersianNum(n) {
-  return String(n).replace(/[0-9]/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
+// dNum: apply Persian digits when lang==='fa', otherwise plain string
+function dNum(n, lang) {
+  return lang === 'fa' ? toPersianDigits(n) : String(n);
 }
+// toPersianNum kept for callers that are already inside a lang==='fa' guard
+function toPersianNum(n) { return toPersianDigits(n); }
 
 function repeatRuleLabel(booth, lang) {
   const hours = booth.repeatable_scan_hours || 1;
@@ -632,8 +710,8 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
                   </div>
                   {booth.hall_name && (
                     <div className="text-[11px] leading-4" style={{ color: "var(--text-dim)" }}>
-                      {lang === 'fa' ? 'سالن' : 'Hall'} {booth.hall_name}
-                      {booth.booth_no && <> • {lang === 'fa' ? 'غرفه' : 'Booth'} {booth.booth_no}</>}
+                      {lang === 'fa' ? 'سالن' : 'Hall'} {dNum(booth.hall_name, lang)}
+                      {booth.booth_no && <> • {lang === 'fa' ? 'غرفه' : 'Booth'} {dNum(booth.booth_no, lang)}</>}
                     </div>
                   )}
                   {booth.repeatable_scan && (
@@ -652,7 +730,7 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
 
                 {/* XP */}
                 <span className="text-xs font-bold flex-shrink-0" style={{ color: "var(--accent)" }}>
-                  +{booth.xp} {xpUnit || "XP"}
+                  +{dNum(booth.xp, lang)} {xpUnit || "XP"}
                 </span>
 
                 {/* Scanned indicator */}
@@ -678,6 +756,111 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
               </div>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Featured Booth Pool Sheet ──────────────────────────────────────────────
+
+function FeaturedBoothPoolSheet({ open, onClose, item, isRTL, lang, logoBaseUrl }) {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      const timer = setTimeout(() => setVisible(true), 10);
+      return () => clearTimeout(timer);
+    } else {
+      setVisible(false);
+    }
+  }, [open]);
+
+  if (!open && !visible) return null;
+
+  const companies = item?.featured_booth_pool_companies || [];
+  const isBadge = !!item?.isFeaturedBadge;
+  const itemTitle = item?.title || item?.name || (lang === 'fa' ? 'غرفه‌های این ماموریت' : 'Mission Booths');
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center">
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300"
+        style={{ opacity: visible ? 1 : 0 }}
+        onClick={onClose}
+      />
+      <div
+        dir={isRTL ? "rtl" : "ltr"}
+        className="relative w-full max-w-md backdrop-blur-xl border-t border-x border-[var(--border)] rounded-t-3xl transition-transform duration-300 ease-out"
+        style={{ background: "var(--sheet-bg)", transform: visible ? "translateY(0)" : "translateY(100%)" }}
+      >
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 rounded-full" style={{ background: "var(--border)" }} />
+        </div>
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border)]">
+          <div>
+            <h2 className="font-bold text-base leading-7" style={{ color: "var(--text)" }}>
+              {lang === 'fa' ? (isBadge ? 'غرفه‌های این بج' : 'غرفه‌های این ماموریت') : (isBadge ? 'Badge Booths' : 'Mission Booths')}
+            </h2>
+            <p className="text-xs leading-5" style={{ color: "var(--text-dim)" }}>{itemTitle}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full flex items-center justify-center transition-colors"
+            style={{ background: "var(--surface-2)", color: "var(--text-dim)" }}
+            onMouseEnter={e => { e.currentTarget.style.background = "var(--surface-hover)"; e.currentTarget.style.color = "var(--text)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "var(--surface-2)"; e.currentTarget.style.color = "var(--text-dim)"; }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+              strokeWidth="2.5" strokeLinecap="round" stroke="currentColor">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="overflow-y-auto max-h-[65vh] px-4 pt-3 pb-8">
+          {/* Framing message — tells user what to do without revealing the active booth */}
+          <div className="mb-3 px-1 py-2.5 rounded-xl text-xs leading-6"
+            style={{ background: "rgba(0,255,179,0.06)", color: "var(--text-dim)", borderRight: isRTL ? "3px solid rgba(0,255,179,0.3)" : "none", borderLeft: !isRTL ? "3px solid rgba(0,255,179,0.3)" : "none", paddingRight: isRTL ? 10 : 6, paddingLeft: !isRTL ? 10 : 6 }}>
+            {lang === 'fa'
+              ? 'یکی از این غرفه‌ها به‌صورت تصادفی انتخاب شده — غرفه فعال را با اسکن QR هر کدام پیدا کن.'
+              : 'One of these booths is randomly selected as the active target — find it by scanning the QR code of each.'}
+          </div>
+
+          <div className="space-y-2">
+            {companies.length === 0 ? (
+              <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
+                {lang === 'fa' ? 'غرفه‌ای در این استخر ثبت نشده' : 'No booths in this pool'}
+              </div>
+            ) : companies.map((c) => {
+              const name = lang === 'fa'
+                ? (c.brand_name_fa || c.brand_name_en || '—')
+                : (c.brand_name_en || c.brand_name_fa || '—');
+              const logoUrl = getLogoUrl(c.logo, logoBaseUrl);
+              const firstLetter = (c.brand_name_fa || c.brand_name_en || '؟').charAt(0);
+              return (
+                <div key={c.company_id}
+                  className="flex items-center gap-3 rounded-2xl px-3 py-2.5 border border-[var(--border)]"
+                  style={{ background: "var(--surface-2)" }}
+                >
+                  <BoothLogo logoUrl={logoUrl} firstLetter={firstLetter} />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm font-medium leading-6 truncate block" style={{ color: "var(--text)" }}>
+                      {name}
+                    </span>
+                    {(c.hall_name || c.booth_no) && (
+                      <div className="text-[11px] leading-4" style={{ color: "var(--text-dim)" }}>
+                        {c.hall_name && <>{lang === 'fa' ? 'سالن' : 'Hall'} {dNum(c.hall_name, lang)}</>}
+                        {c.hall_name && c.booth_no && <> • </>}
+                        {c.booth_no && <>{lang === 'fa' ? 'غرفه' : 'Booth'} {dNum(c.booth_no, lang)}</>}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
@@ -878,6 +1061,7 @@ function QuizModal({ quiz, onClose, onComplete, lang }) {
 
 export default function QuestClient({ content, title, subtitle, title_en, subtitle_en, isHomeContext = false }) {
   const [boothsOpen, setBoothsOpen] = useState(false);
+  const [openFeaturedPool, setOpenFeaturedPool] = useState(null);
   const [activeTab, setActiveTab] = useState("missions");
   const [isDark, setIsDark] = useState(true);
   const { lang, isRTL } = useLang();
@@ -1040,10 +1224,12 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         key={m.id ?? i}
         mission={m}
         xpUnit={labels.xpUnit}
+        lang={lang}
         onQuizClick={m.mission_type === 'quiz' ? () => setOpenQuiz({ ...m, isBadge: false }) : undefined}
+        onFeaturedClick={m.mission_type === 'featured_booth' ? () => setOpenFeaturedPool(m) : undefined}
       />
     )),
-    [missions, labels.xpUnit]
+    [missions, labels.xpUnit, lang]
   );
 
   return (
@@ -1065,6 +1251,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
           thresholds={levelThresholds}
           levelColors={LEVEL_COLORS_BY_IDX}
           labels={labels}
+          lang={lang}
         />
 
         <div className="flex justify-center my-8">
@@ -1102,11 +1289,10 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
           <>
             <div className="grid grid-cols-3 gap-3 mb-6">
               {(() => {
-                const toFA = (n) => lang === 'fa' ? String(n).replace(/[0-9]/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]) : String(n);
                 return [
-                  { label: labels.statXpLabel,      value: toFA(questStats.xp),          unit: labels.xpUnit, icon: "⚡", onClick: null,                      highlight: false },
-                  { label: labels.statScannedLabel, value: toFA(questStats.total_scans), unit: "غرفه", icon: "📍", onClick: () => setBoothsOpen(true), highlight: true  },
-                  { label: labels.statRankLabel,    value: currentUserRank ? toFA(currentUserRank) : "—", unit: "", icon: "🏅", onClick: null, highlight: false },
+                  { label: labels.statXpLabel,      value: dNum(questStats.xp, lang),          unit: labels.xpUnit, icon: "⚡", onClick: null,                      highlight: false },
+                  { label: labels.statScannedLabel, value: dNum(questStats.total_scans, lang), unit: "غرفه", icon: "📍", onClick: () => setBoothsOpen(true), highlight: true  },
+                  { label: labels.statRankLabel,    value: currentUserRank ? dNum(currentUserRank, lang) : "—", unit: "", icon: "🏅", onClick: null, highlight: false },
                 ];
               })().map((stat) => (
                 <div
@@ -1154,6 +1340,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
             thresholds={levelThresholds}
             currentUserUuid={currentUserUuid}
             xpUnit={labels.xpUnit}
+            lang={lang}
           />
         )}
 
@@ -1161,6 +1348,8 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
           <BadgesTab
             badges={badges}
             onQuizClick={(badge) => setOpenQuiz({ ...badge, isBadge: true })}
+            onFeaturedClick={(badge) => setOpenFeaturedPool({ ...badge, isFeaturedBadge: true })}
+            lang={lang}
           />
         )}
       </div>
@@ -1176,6 +1365,15 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         boothsLoading={boothsLoading}
         logoBaseUrl={logoBaseUrl}
         xpUnit={labels.xpUnit}
+      />
+
+      <FeaturedBoothPoolSheet
+        open={!!openFeaturedPool}
+        onClose={() => setOpenFeaturedPool(null)}
+        item={openFeaturedPool}
+        isRTL={isRTL}
+        lang={lang}
+        logoBaseUrl={logoBaseUrl}
       />
 
       {openQuiz && (

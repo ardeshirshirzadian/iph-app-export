@@ -13,7 +13,7 @@ export default function QRScanPage() {
   const [status, setStatus] = useState("requesting"); // requesting | scanning | error | success
   const [errorMsg, setErrorMsg] = useState("");
   const [toast, setToast] = useState("");
-  const [scanResult, setScanResult] = useState(null); // { company, alreadyScanned, cooldown, outsideWindow, startHour, endHour, minutesRemaining, points }
+  const [scanResult, setScanResult] = useState(null); // { company, alreadyScanned, cooldown, outsideWindow, startHour, endHour, minutesRemaining, points, bonus, bonus_xp }
   const [logoErr, setLogoErr] = useState(false);
   const { lang, isRTL } = useLang();
 
@@ -93,9 +93,12 @@ export default function QRScanPage() {
           company: data.company,
           alreadyScanned: !!data.already_scanned,
           points: data.points || 10,
+          bonus: !!data.bonus,
+          bonus_xp: data.bonus_xp || 0,
         });
         setStatus("success");
-        setTimeout(() => router.replace("/quest"), 2500);
+        // Give the golden-booth celebration a bit more time to read
+        setTimeout(() => router.replace("/quest"), data.bonus ? 4000 : 2500);
       } catch {
         showToast(t(lang, "server_error"));
         processingRef.current = false;
@@ -352,6 +355,20 @@ export default function QRScanPage() {
               <p className="font-bold text-lg mb-2" style={{ color: "#fbbf24" }}>
                 {t(lang, "scan_already_scanned")}
               </p>
+            ) : scanResult?.bonus ? (
+              <>
+                <p
+                  className="font-black text-3xl mb-1"
+                  style={{ color: "#ffd700", textShadow: "0 0 24px rgba(255,215,0,0.7)" }}
+                >
+                  +{scanResult.points} XP!
+                </p>
+                <p className="font-bold text-base mb-1" style={{ color: "#ffd700" }}>
+                  {lang === "fa"
+                    ? `🎉 تبریک! +${scanResult.bonus_xp} امتیاز غرفه برتر گرفتید`
+                    : `🎉 Golden Booth! +${scanResult.bonus_xp} bonus XP`}
+                </p>
+              </>
             ) : (
               <p
                 className="text-[#00ffb3] font-black text-3xl mb-2"

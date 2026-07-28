@@ -3,12 +3,18 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { groupOuterLoops, insetPolygonLoop } from "./mapUtils.js";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const BOOTH_H   = 22;   // height of each extruded booth block (map units)
 const ZONE_H    = 10;   // height of named zone blocks (shorter, flatter than booths)
 const FLOOR_GAP = 200;  // vertical separation between floors (map units)
 const ROUTE_Y   = 5;    // route tube sits this far above floor level
+// Inward offset applied to each company group's merged outer polygon (map units
+// per side).  Creates a visible gap between DIFFERENT companies' 3D blocks while
+// booths within the same company's merged block remain seamlessly joined.
+// Total gap between two adjacent company blocks ≈ 2 × BOOTH_GAP (~8 units).
+const BOOTH_GAP = 4;
 
 // ── Module-level helpers (no hooks) ───────────────────────────────────────────
 
@@ -158,34 +164,80 @@ export default function Map3DView({
     t.clock          = new THREE.Clock();
 
     // ── Build booths ──────────────────────────────────────────────────────────
-    // Per-booth materials (not shared) so individual booth colors can be updated
-    // independently for selection highlighting without affecting adjacent booths.
+    // One ExtrudeGeometry per company group — booths belonging to the same company
+    // are merged into a single seamless 3D block using groupOuterLoops() (the same
+    // algorithm that drives the 2D SVG outer-boundary strokes).  An inward polygon
+    // offset (insetPolygonLoop) is applied to the merged outer boundary before
+    // extrusion so adjacent COMPANY groups are visually separated, while individual
+    // booths within a company appear as one continuous block with no internal seams.
+    //
+    // Raycasting: each merged mesh stores group.booths[0] as the representative
+    // booth; the selection highlight then filters boothEntries by company?.id so
+    // all meshes belonging to the same company highlight together.
+    //
+    // Isolation: booth.bounds data is never mutated; pathfinding and 2D rendering
+    // are completely unaffected.
 
     const allXs = [], allZs = [];
     for (const hall of halls) {
-      const floorY  = (hall.floor ?? 0) * FLOOR_GAP;
+      const floorY   = (hall.floor ?? 0) * FLOOR_GAP;
       const colorStr = getHallColor(hall, hallColors);
 
       for (const group of (hall.groups ?? [])) {
+        if (!group.booths.length) continue;
         const mergedLabel = boothRangeLabel(group.booths.map((b) => b.no));
         const firstBooth  = group.booths[0];
-        for (const booth of group.booths) {
-          const pts = hallToPointsArray(booth.bounds);
-          if (pts.length < 3) continue;
-          const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
-          const x0 = Math.min(...xs), x1 = Math.max(...xs);
-          const y0 = Math.min(...ys), y1 = Math.max(...ys);
-          const bw = Math.max(x1 - x0, 1), bd = Math.max(y1 - y0, 1);
-          const cx = (x0 + x1) / 2, cz = (y0 + y1) / 2;
-          allXs.push(x0, x1); allZs.push(y0, y1);
 
-          const geo  = new THREE.BoxGeometry(bw, BOOTH_H, bd);
-          const mat  = new THREE.MeshLambertMaterial({ color: parseColor(colorStr) });
-          const mesh = new THREE.Mesh(geo, mat);
-          mesh.position.set(cx, floorY + BOOTH_H / 2, cz);
-          t.scene.add(mesh);
-          t.disposables.push({ geometry: geo, material: mat });
-          t.boothEntries.push({ mesh, booth: firstBooth, hall, mergedLabel, cx, cz, colorStr });
+        // Bounding box of all booths in the group (for camera centering)
+        const allGroupPts = group.booths.flatMap((b) => b.bounds ?? []);
+        if (!allGroupPts.length) continue;
+        const gxs = allGroupPts.map((p) => p.x), gzs = allGroupPts.map((p) => p.y);
+        const gx0 = Math.min(...gxs), gx1 = Math.max(...gxs);
+        const gz0 = Math.min(...gzs), gz1 = Math.max(...gzs);
+        const cx  = (gx0 + gx1) / 2,  cz = (gz0 + gz1) / 2;
+        allXs.push(gx0, gx1); allZs.push(gz0, gz1);
+
+        const loops = groupOuterLoops(group.booths);
+
+        if (loops.length > 0) {
+          // Normal path: extrude the inset merged outer polygon
+          for (const rawLoop of loops) {
+            if (rawLoop.length < 3) continue;
+            const loop = insetPolygonLoop(rawLoop, BOOTH_GAP);
+            if (!loop || loop.length < 3) continue;
+
+            // THREE.Shape is defined in the XY plane.  Map Y increases downward,
+            // Three.js Y is up — negate Y here; geo.rotateX(-π/2) maps the shape's
+            // Z axis onto the world's -Y axis, placing the shape flat on the floor.
+            const shape = new THREE.Shape(loop.map((p) => new THREE.Vector2(p.x, -p.y)));
+            const geo   = new THREE.ExtrudeGeometry(shape, { depth: BOOTH_H, bevelEnabled: false });
+            geo.rotateX(-Math.PI / 2);
+            const mat  = new THREE.MeshLambertMaterial({ color: parseColor(colorStr) });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.y = floorY;
+            t.scene.add(mesh);
+            t.disposables.push({ geometry: geo, material: mat });
+            t.boothEntries.push({ mesh, booth: firstBooth, hall, mergedLabel, cx, cz, colorStr });
+          }
+        } else {
+          // Fallback: degenerate group data — render per-booth boxes with gap
+          for (const booth of group.booths) {
+            const pts = hallToPointsArray(booth.bounds);
+            if (pts.length < 3) continue;
+            const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+            const x0 = Math.min(...xs), x1 = Math.max(...xs);
+            const y0 = Math.min(...ys), y1 = Math.max(...ys);
+            const bw  = Math.max(x1 - x0 - BOOTH_GAP * 2, 1);
+            const bd  = Math.max(y1 - y0 - BOOTH_GAP * 2, 1);
+            const bcx = (x0 + x1) / 2, bcz = (y0 + y1) / 2;
+            const geo  = new THREE.BoxGeometry(bw, BOOTH_H, bd);
+            const mat  = new THREE.MeshLambertMaterial({ color: parseColor(colorStr) });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(bcx, floorY + BOOTH_H / 2, bcz);
+            t.scene.add(mesh);
+            t.disposables.push({ geometry: geo, material: mat });
+            t.boothEntries.push({ mesh, booth: firstBooth, hall, mergedLabel, cx, cz, colorStr });
+          }
         }
       }
     }
