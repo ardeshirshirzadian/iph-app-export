@@ -16,6 +16,12 @@ const ROUTE_Y   = 5;    // route tube sits this far above floor level
 // Total gap between two adjacent company blocks ≈ 2 × BOOTH_GAP (~8 units).
 const BOOTH_GAP = 4;
 
+// ── First-person walkthrough constants ────────────────────────────────────────
+const EYE_H      = 14;   // camera height above floor during walkthrough (≈1.9m at 15 units/m scale)
+const WALK_SPEED  = 75;  // map units per second (≈5 m/s — snappy but not disorienting)
+const LOOK_AHEAD  = 35;  // units ahead on path to pick the look-at target
+const LOOK_LAG    = 3.0; // look-direction lerp rate per second (higher = snappier turns)
+
 // ── Module-level helpers (no hooks) ───────────────────────────────────────────
 
 function hallToPointsArray(bounds) {
@@ -373,6 +379,48 @@ export default function Map3DView({
           t.camera.position.copy(t.controls.target).addScaledVector(dir, nd);
           t.controls.update();
         },
+
+        // First-person walkthrough: animate camera along the pre-built walkthroughPath.
+        // Returns true if the walkthrough started successfully, false if no path is available.
+        startWalkthrough(onComplete) {
+          if (!t.walkthroughPath || t.walkthroughPath.length < 2) return false;
+          if (t.walk) { t.walk = null; }
+          // Piecewise-linear CurvePath so the walkthrough camera follows the exact
+          // A* route without cutting booth corners (same reason as addRouteTube above).
+          const curve = new THREE.CurvePath();
+          const wpts  = t.walkthroughPath;
+          for (let i = 0; i < wpts.length - 1; i++) curve.add(new THREE.LineCurve3(wpts[i], wpts[i + 1]));
+          const curveLen = curve.getLength();
+          if (curveLen < 1) return false;
+          // Cancel any in-flight overview tween and disable user orbit input
+          t.tween = null;
+          t.controls.enabled = false;
+          // Jump camera to start of path, facing the first look-ahead point
+          const startPt = curve.getPointAt(0);
+          const lookT   = Math.min(1, LOOK_AHEAD / curveLen);
+          const lookPt  = curve.getPointAt(lookT);
+          lookPt.y = startPt.y - 3;
+          t.camera.position.copy(startPt);
+          t.camera.lookAt(lookPt);
+          t.walk = {
+            curve,
+            curveLen,
+            progress:   0,
+            smoothLook: lookPt.clone(),
+            onComplete: onComplete ?? null,
+          };
+          return true;
+        },
+
+        // Stop the walkthrough early. Leaves the camera at its current position
+        // and re-enables OrbitControls so the user can look around from there.
+        stopWalkthrough() {
+          if (!t.walk) return;
+          const finalLook = t.walk.smoothLook.clone();
+          t.walk = null;
+          t.controls.enabled = true;
+          t.controls.target.copy(finalLook);
+        },
       };
     }
 
@@ -386,8 +434,8 @@ export default function Map3DView({
         for (const tex of t.routeTextures) tex.offset.x -= delta * 0.35;
       }
 
-      // Camera tween
-      if (t.tween) {
+      // Camera tween (skip during first-person walkthrough)
+      if (!t.walk && t.tween) {
         const p = Math.min(1, (performance.now() - t.tween.t0) / t.tween.dur);
         const e = 1 - (1 - p) ** 3; // cubic ease-out
         t.controls.target.lerpVectors(t.tween.startTarget, t.tween.endTarget, e);
@@ -395,7 +443,37 @@ export default function Map3DView({
         if (p >= 1) t.tween = null;
       }
 
-      t.controls.update();
+      // ── First-person walkthrough ─────────────────────────────────────────────
+      // Drives camera position + orientation along the pre-built walkthroughPath
+      // using only refs + direct Three.js calls — no React state per frame.
+      if (t.walk) {
+        const ws = t.walk;
+        ws.progress = Math.min(ws.progress + delta * WALK_SPEED, ws.curveLen);
+        const tParam = ws.progress / ws.curveLen;
+        const pos    = ws.curve.getPointAt(tParam);
+        t.camera.position.copy(pos);
+
+        // Smooth look-ahead: target a point LOOK_AHEAD units further along the path,
+        // held at a slight downward angle (pos.y - 3) for a natural walking POV.
+        const lookT = Math.min(1.0, (ws.progress + LOOK_AHEAD) / ws.curveLen);
+        const ahead = ws.curve.getPointAt(lookT);
+        ahead.y = pos.y - 3;
+        ws.smoothLook.lerp(ahead, Math.min(1, delta * LOOK_LAG));
+        t.camera.lookAt(ws.smoothLook);
+
+        if (tParam >= 1.0) {
+          // Reached destination — hand control back to OrbitControls
+          const finalLook = ws.smoothLook.clone();
+          const cb = ws.onComplete;
+          t.walk = null;
+          t.controls.enabled = true;
+          t.controls.target.copy(finalLook);
+          if (cb) cb();
+        }
+      }
+
+      // OrbitControls update — skip during active walkthrough to avoid fighting camera
+      if (!t.walk) t.controls.update();
       t.renderer.render(t.scene, t.camera);
     }
     animate();
@@ -445,6 +523,10 @@ export default function Map3DView({
     t.routeObjects = [];
     t.routeTextures = [];
 
+    // Stop any in-progress first-person walkthrough whenever the route changes
+    if (t.walk) { t.walk = null; t.controls.enabled = true; }
+    t.walkthroughPath = null;
+
     if (!navRoute || navRoute.type === "computing" || navRoute.type === "no_connection") return;
 
     // Build a 1-D canvas texture with repeating bright dash / gap pattern
@@ -478,7 +560,12 @@ export default function Map3DView({
       if (!path2D || path2D.length < 2) return;
       const pts = path2D.map((p) => new THREE.Vector3(p.x, floorY + ROUTE_Y, p.y));
       try {
-        const curve   = new THREE.CatmullRomCurve3(pts);
+        // Use piecewise-linear CurvePath (not CatmullRomCurve3) so the tube exactly
+        // follows the A*-computed waypoints. CatmullRomCurve3 smooths corners with a
+        // spline that can deviate inward at turns and visually cut through booth blocks,
+        // undoing the obstacle avoidance that A* already correctly computed.
+        const curve = new THREE.CurvePath();
+        for (let i = 0; i < pts.length - 1; i++) curve.add(new THREE.LineCurve3(pts[i], pts[i + 1]));
         const len     = curve.getLength();
         const tubeSeg = Math.max(pts.length * 6, 32);
 
@@ -532,6 +619,9 @@ export default function Map3DView({
       addRouteTube(navRoute.path, floorY, "#00ffb3");
       if (navStart) addMarker(navStart.x, navStart.y, floorY, "🏁");
       if (navDest)  addMarker(navDest.x,  navDest.y,  floorY, "📍");
+      // Build walkthrough path at eye-level height
+      const wpts = (navRoute.path ?? []).map(p => new THREE.Vector3(p.x, floorY + EYE_H, p.y));
+      t.walkthroughPath = wpts.length >= 2 ? wpts : null;
     } else if (navRoute.type === "multi_floor") {
       const { pathA, pathB, stairsFrom, stairsTo } = navRoute;
       const floorAY = (navStart?.floor ?? 0) * FLOOR_GAP;
@@ -542,6 +632,23 @@ export default function Map3DView({
       if (stairsFrom)  addMarker(stairsFrom.x,  stairsFrom.y,  floorAY, "🪜");
       if (stairsTo)    addMarker(stairsTo.x,    stairsTo.y,    floorBY, "🪜");
       if (navDest)     addMarker(navDest.x,     navDest.y,     floorBY, "📍");
+      // Build walkthrough path: floor-A segment + 3 interpolated transition
+      // waypoints across the staircase + floor-B segment. CatmullRomCurve3
+      // smooths the vertical ramp, creating a natural "going upstairs" feel.
+      const ptsA = (pathA ?? []).map(p => new THREE.Vector3(p.x, floorAY + EYE_H, p.y));
+      const ptsB = (pathB ?? []).map(p => new THREE.Vector3(p.x, floorBY + EYE_H, p.y));
+      if (ptsA.length >= 2 && ptsB.length >= 2) {
+        const lastA = ptsA[ptsA.length - 1], firstB = ptsB[0];
+        const mid = [1, 2, 3].map(i => {
+          const f = i / 4;
+          return new THREE.Vector3(
+            lastA.x + (firstB.x - lastA.x) * f,
+            lastA.y + (firstB.y - lastA.y) * f,
+            lastA.z + (firstB.z - lastA.z) * f,
+          );
+        });
+        t.walkthroughPath = [...ptsA, ...mid, ...ptsB];
+      }
     }
   }, [navRoute, navStart, navDest]);
 

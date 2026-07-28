@@ -487,7 +487,7 @@ function StartPanel({ lang, isRTL, onTapMode, onScanMode, startQuery, setStartQu
 
 // ── Route Info Card ────────────────────────────────────────────────────────────
 
-function RouteInfoCard({ route, lang, isRTL, onClear }) {
+function RouteInfoCard({ route, lang, isRTL, onClear, is3D = false, walkActive = false, onStartNav, onStopNav }) {
   if (!route) return null;
   const isEN = lang === "en";
 
@@ -503,9 +503,9 @@ function RouteInfoCard({ route, lang, isRTL, onClear }) {
   };
   // Info row inside the card: icon + text, respects RTL text direction
   const infoRow = { display: "flex", alignItems: "center", gap: 12, direction: isRTL ? "rtl" : "ltr" };
-  // Button row: always LTR so "حذف مسیر" sits on the RIGHT end, away from MapLegend
+  // Button row: always LTR so buttons sit on the RIGHT end, away from MapLegend
   // which is anchored to the left (bottom-left corner).
-  const btnRow = { display: "flex", justifyContent: "flex-end", direction: "ltr" };
+  const btnRow = { display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, direction: "ltr" };
   const clearBtn = (
     <button
       onClick={onClear}
@@ -559,25 +559,63 @@ function RouteInfoCard({ route, lang, isRTL, onClear }) {
   const meters = Math.max(1, Math.round(totalDist / 15));
   const minutes = Math.max(1, Math.round(meters / 72)); // 1.2 m/s walking
 
+  // "شروع ناوبری" / "پایان ناوبری" — only visible in 3D mode with a rendered route
+  const navBtn = is3D ? (
+    walkActive ? (
+      <button
+        onClick={onStopNav}
+        style={{
+          background: "rgba(249,115,22,0.12)", border: "1px solid rgba(249,115,22,0.5)",
+          borderRadius: 8, padding: "6px 14px", color: "#f97316",
+          fontFamily: "inherit", fontSize: 12, cursor: "pointer", fontWeight: 700, flexShrink: 0,
+        }}
+      >
+        {isEN ? "⏹ Stop Nav" : "⏹ پایان ناوبری"}
+      </button>
+    ) : (
+      <button
+        onClick={onStartNav}
+        style={{
+          background: "rgba(0,255,179,0.10)", border: "1px solid rgba(0,255,179,0.5)",
+          borderRadius: 8, padding: "6px 14px", color: "var(--accent)",
+          fontFamily: "inherit", fontSize: 12, cursor: "pointer", fontWeight: 700, flexShrink: 0,
+        }}
+      >
+        {isEN ? "▶ Navigate" : "▶ شروع ناوبری"}
+      </button>
+    )
+  ) : null;
+
   return (
     <div className="absolute z-[20]" style={{ ...cardStyle, border: "1px solid rgba(0,255,179,0.3)" }}>
       <div style={infoRow}>
-        <span style={{ fontSize: 22 }}>{isMultiFloor ? "🪜" : "🧭"}</span>
+        <span style={{ fontSize: 22 }}>{walkActive ? "🚶" : isMultiFloor ? "🪜" : "🧭"}</span>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--accent)" }}>
-            {isEN ? `≈ ${meters} m · ${minutes} min` : `≈ ${meters} متر · ${toPersianDigits(minutes)} دقیقه`}
-          </div>
-          {isMultiFloor && (
-            <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 1 }}>
-              {isEN ? "Route includes floor change via staircase" : "مسیر شامل تغییر طبقه از پله است"}
+          {walkActive ? (
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--accent)" }}>
+              {isEN ? "Navigation in progress…" : "در حال ناوبری..."}
             </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "var(--accent)" }}>
+                {isEN ? `≈ ${meters} m · ${minutes} min` : `≈ ${meters} متر · ${toPersianDigits(minutes)} دقیقه`}
+              </div>
+              {isMultiFloor && (
+                <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 1 }}>
+                  {isEN ? "Route includes floor change via staircase" : "مسیر شامل تغییر طبقه از پله است"}
+                </div>
+              )}
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                {isEN ? "Estimated walking time" : "زمان تقریبی پیاده‌روی"}
+              </div>
+            </>
           )}
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-            {isEN ? "Estimated walking time" : "زمان تقریبی پیاده‌روی"}
-          </div>
         </div>
       </div>
-      <div style={btnRow}>{clearBtn}</div>
+      <div style={btnRow}>
+        {navBtn}
+        {clearBtn}
+      </div>
     </div>
   );
 }
@@ -910,6 +948,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const [navRoute, setNavRoute] = useState(null);     // result from findMultiFloorRoute
   const [startPanelOpen, setStartPanelOpen] = useState(false);
   const [tapStartMode, setTapStartMode] = useState(false);
+  const [walkActive, setWalkActive] = useState(false); // 3D first-person walkthrough in progress
 
   // Search
   const [searchQuery, setSearchQuery] = useState("");
@@ -1637,6 +1676,10 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   }
 
   function clearNav() {
+    if (walkActive) {
+      map3DViewRef.current?.stopWalkthrough();
+      setWalkActive(false);
+    }
     setNavDest(null); setNavStart(null); setNavRoute(null);
     setStartPanelOpen(false); setTapStartMode(false);
     setSearchQuery(""); setSearchOpen(false);
@@ -1842,8 +1885,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
           />
         )}
 
-        {/* Floating zoom + reset-view buttons — positioned over map, right side */}
-        {mapData && (
+        {/* Floating zoom + reset-view buttons — hidden during first-person walkthrough */}
+        {mapData && !(view3D && walkActive) && (
           <div
             className="absolute z-[24] flex flex-col gap-2"
             style={{ right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
@@ -2336,9 +2379,26 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
           </div>
           )}
 
-          {/* Route info card — visible in both 2D and 3D modes */}
+          {/* Route info card — visible in both 2D and 3D modes.
+              In 3D mode the card also shows the "شروع ناوبری" walkthrough button. */}
           {navRoute && (
-            <RouteInfoCard route={navRoute} lang={lang} isRTL={isRTL} onClear={clearNav} />
+            <RouteInfoCard
+              route={navRoute}
+              lang={lang}
+              isRTL={isRTL}
+              onClear={clearNav}
+              is3D={view3D}
+              walkActive={walkActive}
+              onStartNav={() => {
+                if (map3DViewRef.current?.startWalkthrough(() => setWalkActive(false))) {
+                  setWalkActive(true);
+                }
+              }}
+              onStopNav={() => {
+                map3DViewRef.current?.stopWalkthrough();
+                setWalkActive(false);
+              }}
+            />
           )}
           </>
         )}
