@@ -839,16 +839,32 @@ function FeaturedBoothPoolSheet({ open, onClose, item, isRTL, lang, logoBaseUrl 
                 : (c.brand_name_en || c.brand_name_fa || '—');
               const logoUrl = getLogoUrl(c.logo, logoBaseUrl);
               const firstLetter = (c.brand_name_fa || c.brand_name_en || '؟').charAt(0);
+              const gotBonus = !!c.user_got_bonus;
+              const scanned  = !!c.user_scanned;
               return (
                 <div key={c.company_id}
-                  className="flex items-center gap-3 rounded-2xl px-3 py-2.5 border border-[var(--border)]"
-                  style={{ background: "var(--surface-2)" }}
+                  className="flex items-center gap-3 rounded-2xl px-3 py-2.5 border"
+                  style={
+                    gotBonus
+                      ? { background: "rgba(251,191,36,0.07)", borderColor: "rgba(251,191,36,0.35)" }
+                      : scanned
+                        ? { background: "rgba(0,255,179,0.05)", borderColor: "rgba(0,255,179,0.2)" }
+                        : { background: "var(--surface-2)", borderColor: "var(--border)" }
+                  }
                 >
                   <BoothLogo logoUrl={logoUrl} firstLetter={firstLetter} />
                   <div className="flex-1 min-w-0">
-                    <span className="text-sm font-medium leading-6 truncate block" style={{ color: "var(--text)" }}>
-                      {name}
-                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-sm font-medium leading-6 truncate" style={{ color: "var(--text)" }}>
+                        {name}
+                      </span>
+                      {gotBonus && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                          style={{ background: "rgba(251,191,36,0.18)", color: "#fbbf24" }}>
+                          {lang === 'fa' ? '🎉 جایزه گرفتی!' : '🎉 Bonus earned!'}
+                        </span>
+                      )}
+                    </div>
                     {(c.hall_name || c.booth_no) && (
                       <div className="text-[11px] leading-4" style={{ color: "var(--text-dim)" }}>
                         {c.hall_name && <>{lang === 'fa' ? 'سالن' : 'Hall'} {dNum(c.hall_name, lang)}</>}
@@ -857,6 +873,22 @@ function FeaturedBoothPoolSheet({ open, onClose, item, isRTL, lang, logoBaseUrl 
                       </div>
                     )}
                   </div>
+                  {/* Scan status indicator */}
+                  {gotBonus ? (
+                    <div className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-base"
+                      style={{ background: "rgba(251,191,36,0.18)" }}>
+                      ⭐
+                    </div>
+                  ) : scanned ? (
+                    <div className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center"
+                      style={{ background: "rgba(0,255,179,0.15)" }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                        strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
+                        style={{ stroke: "var(--accent)" }}>
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </div>
+                  ) : null}
                 </div>
               );
             })}

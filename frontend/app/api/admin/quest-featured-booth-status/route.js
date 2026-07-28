@@ -3,8 +3,8 @@ import { query } from '@/lib/db';
 import { verifyAdminToken } from '@/lib/adminAuth';
 import { cookies } from 'next/headers';
 
-function getAdmin() {
-  const cookieStore = cookies();
+async function getAdmin() {
+  const cookieStore = await cookies();
   const token = cookieStore.get('iph_admin_session')?.value;
   return verifyAdminToken(token, process.env.ADMIN_SECRET);
 }
@@ -38,7 +38,7 @@ function formatItem(row, type) {
 // Admin-only. Returns the current golden booth for every active featured_booth
 // mission and badge without triggering any rotation — read-only state snapshot.
 export async function GET() {
-  if (!getAdmin()) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await getAdmin())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const { rows: missionRows } = await query(`

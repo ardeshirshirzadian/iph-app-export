@@ -93,6 +93,9 @@ export async function POST(request) {
     await query(`
       ALTER TABLE quest_scans ADD COLUMN IF NOT EXISTS xp_earned INT DEFAULT 10
     `);
+    await query(`
+      ALTER TABLE quest_scans ADD COLUMN IF NOT EXISTS is_featured_booth_bonus BOOLEAN DEFAULT false
+    `);
 
     const companyResult = await query(
       `SELECT id, brand_name_fa, brand_name_en, logo, hall_name, booth_no,
@@ -204,9 +207,9 @@ export async function POST(request) {
     const xpEarned  = baseXp + bonusXp;
 
     await query(
-      `INSERT INTO quest_scans (user_uuid, company_id, booth_uuid, xp_earned)
-       VALUES ($1, $2, $3, $4)`,
-      [userUuid, company.id, uuid, xpEarned]
+      `INSERT INTO quest_scans (user_uuid, company_id, booth_uuid, xp_earned, is_featured_booth_bonus)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [userUuid, company.id, uuid, xpEarned, bonusXp > 0]
     );
 
     // Cache user display name so leaderboard doesn't need live Rasayesh calls

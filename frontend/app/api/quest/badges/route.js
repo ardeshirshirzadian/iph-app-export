@@ -161,7 +161,26 @@ export async function GET() {
                ORDER BY hall_name ASC NULLS LAST, booth_no ASC NULLS LAST`,
               [pool]
             ).catch(() => ({ rows: [] }));
-            featured_booth_pool_companies = poolRows;
+            // Per-company scan status for the authenticated user.
+            let scanMap = {};
+            if (userUuid && poolRows.length > 0) {
+              const ids = poolRows.map(r => r.company_id);
+              const { rows: scanRows } = await query(
+                `SELECT company_id, bool_or(is_featured_booth_bonus) AS got_bonus
+                 FROM quest_scans
+                 WHERE user_uuid = $1 AND company_id = ANY($2::int[])
+                 GROUP BY company_id`,
+                [userUuid, ids]
+              ).catch(() => ({ rows: [] }));
+              for (const sr of scanRows) {
+                scanMap[sr.company_id] = { got_bonus: sr.got_bonus };
+              }
+            }
+            featured_booth_pool_companies = poolRows.map(c => ({
+              ...c,
+              user_scanned: !!scanMap[c.company_id],
+              user_got_bonus: !!(scanMap[c.company_id]?.got_bonus),
+            }));
           } else {
             featured_booth_pool_companies = [];
           }
