@@ -392,6 +392,10 @@ export default function Map3DView({
           for (let i = 0; i < wpts.length - 1; i++) curve.add(new THREE.LineCurve3(wpts[i], wpts[i + 1]));
           const curveLen = curve.getLength();
           if (curveLen < 1) return false;
+          // Precompute cumulative arc-length to each waypoint for discrete step-forward/back
+          const wptArcLengths = [0];
+          for (let i = 1; i < wpts.length; i++)
+            wptArcLengths.push(wptArcLengths[i - 1] + wpts[i - 1].distanceTo(wpts[i]));
           // Cancel any in-flight overview tween and disable user orbit input
           t.tween = null;
           t.controls.enabled = false;
@@ -405,9 +409,11 @@ export default function Map3DView({
           t.walk = {
             curve,
             curveLen,
-            progress:   0,
-            smoothLook: lookPt.clone(),
-            onComplete: onComplete ?? null,
+            progress:       0,
+            smoothLook:     lookPt.clone(),
+            paused:         false,
+            wptArcLengths,
+            onComplete:     onComplete ?? null,
           };
           return true;
         },
@@ -420,6 +426,44 @@ export default function Map3DView({
           t.walk = null;
           t.controls.enabled = true;
           t.controls.target.copy(finalLook);
+        },
+
+        pauseWalkthrough()  { if (t.walk) t.walk.paused = true;  },
+        resumeWalkthrough() { if (t.walk) t.walk.paused = false; },
+
+        // Discrete step: jump camera to previous/next waypoint along the route.
+        // Works regardless of paused state — if playing, animation resumes from
+        // the new position; if paused, camera stays frozen at the new waypoint.
+        stepForward() {
+          if (!t.walk) return;
+          const ws = t.walk;
+          const nextAL = ws.wptArcLengths.find(al => al > ws.progress + 0.5);
+          ws.progress  = nextAL !== undefined ? Math.min(nextAL, ws.curveLen) : ws.curveLen;
+          const tParam = ws.progress / ws.curveLen;
+          const pos    = ws.curve.getPointAt(tParam);
+          t.camera.position.copy(pos);
+          const lookT  = Math.min(1.0, (ws.progress + LOOK_AHEAD) / ws.curveLen);
+          const ahead  = ws.curve.getPointAt(lookT);
+          ahead.y = pos.y - 3;
+          ws.smoothLook.copy(ahead); // snap look immediately; RAF lerp continues from here
+          t.camera.lookAt(ws.smoothLook);
+        },
+        stepBack() {
+          if (!t.walk) return;
+          const ws = t.walk;
+          let prevAL = 0;
+          for (let i = ws.wptArcLengths.length - 1; i >= 0; i--) {
+            if (ws.wptArcLengths[i] < ws.progress - 0.5) { prevAL = ws.wptArcLengths[i]; break; }
+          }
+          ws.progress  = prevAL;
+          const tParam = ws.progress / ws.curveLen;
+          const pos    = ws.curve.getPointAt(tParam);
+          t.camera.position.copy(pos);
+          const lookT  = Math.min(1.0, (ws.progress + LOOK_AHEAD) / ws.curveLen);
+          const ahead  = ws.curve.getPointAt(lookT);
+          ahead.y = pos.y - 3;
+          ws.smoothLook.copy(ahead);
+          t.camera.lookAt(ws.smoothLook);
         },
       };
     }
@@ -448,7 +492,10 @@ export default function Map3DView({
       // using only refs + direct Three.js calls — no React state per frame.
       if (t.walk) {
         const ws = t.walk;
-        ws.progress = Math.min(ws.progress + delta * WALK_SPEED, ws.curveLen);
+        // Advance position only when not paused
+        if (!ws.paused) {
+          ws.progress = Math.min(ws.progress + delta * WALK_SPEED, ws.curveLen);
+        }
         const tParam = ws.progress / ws.curveLen;
         const pos    = ws.curve.getPointAt(tParam);
         t.camera.position.copy(pos);
@@ -461,8 +508,8 @@ export default function Map3DView({
         ws.smoothLook.lerp(ahead, Math.min(1, delta * LOOK_LAG));
         t.camera.lookAt(ws.smoothLook);
 
-        if (tParam >= 1.0) {
-          // Reached destination — hand control back to OrbitControls
+        // Auto-complete only when playing (not paused) and fully traversed
+        if (!ws.paused && tParam >= 1.0) {
           const finalLook = ws.smoothLook.clone();
           const cb = ws.onComplete;
           t.walk = null;

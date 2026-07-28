@@ -14,17 +14,11 @@ import { toPersianDigits } from "@/lib/utils";
 // These represent live gameplay state, not static content — they stay here
 // until real quest logic replaces them.
 
-const BASE_THRESHOLDS = [
-  { min: 0,   max: 200      },
-  { min: 200, max: 500      },
-  { min: 500, max: Infinity },
+const FALLBACK_LEVELS = [
+  { name_fa: "تازه‌وارد", name_en: "Newcomer", icon_value: "🌱", icon_size: 14, min_xp: 0,   max_xp: 200,  color: "#64748b" },
+  { name_fa: "کاوشگر",    name_en: "Explorer", icon_value: "🕵️",  icon_size: 14, min_xp: 200, max_xp: 500,  color: "#22c55e" },
+  { name_fa: "کاربلد",    name_en: "Expert",   icon_value: "😎",  icon_size: 14, min_xp: 500, max_xp: null, color: "#f59e0b" },
 ];
-
-const FALLBACK_LEVEL_ICONS = ["🌱", "🕵️", "😎"];
-
-const FALLBACK_LEVEL_NAMES = ["تازه‌وارد", "کاوشگر", "کاربلد"];
-
-const LEVEL_COLORS_BY_IDX = ["#64748b", "#22c55e", "#f59e0b"];
 
 const RANK_ICONS = { 1: "🥇", 2: "🥈", 3: "🥉" };
 
@@ -1110,6 +1104,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
   const [liveLeaderboard, setLiveLeaderboard] = useState(null);
   const [currentUserUuid, setCurrentUserUuid] = useState(null);
   const [currentUserRank, setCurrentUserRank] = useState(null);
+  const [liveLevels, setLiveLevels] = useState(null);
 
   useEffect(() => {
     fetch('/api/quest/booths')
@@ -1157,17 +1152,31 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    fetch('/api/quest/levels')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d.levels) && d.levels.length > 0) setLiveLevels(d.levels); })
+      .catch(() => {});
+  }, []);
+
   const c = useMemo(() => ({
     ...(content?.main || {}),
     ...(lang === 'en' ? (content?.main_en || {}) : {}),
   }), [content?.main, content?.main_en, lang]);
 
-  // Build level thresholds using CMS names + icons but hardcoded XP ranges
-  const levelThresholds = useMemo(() => [
-    { name: c.level_0_name || FALLBACK_LEVEL_NAMES[0], icon: iconOf(c.icon_level_0) || FALLBACK_LEVEL_ICONS[0], iconSize: iconSizeOf(c.icon_level_0, 14), ...BASE_THRESHOLDS[0] },
-    { name: c.level_1_name || FALLBACK_LEVEL_NAMES[1], icon: iconOf(c.icon_level_1) || FALLBACK_LEVEL_ICONS[1], iconSize: iconSizeOf(c.icon_level_1, 14), ...BASE_THRESHOLDS[1] },
-    { name: c.level_2_name || FALLBACK_LEVEL_NAMES[2], icon: iconOf(c.icon_level_2) || FALLBACK_LEVEL_ICONS[2], iconSize: iconSizeOf(c.icon_level_2, 14), ...BASE_THRESHOLDS[2] },
-  ], [c]);
+  const levelThresholds = useMemo(() => {
+    const source = liveLevels && liveLevels.length > 0 ? liveLevels : FALLBACK_LEVELS;
+    return source.map(l => ({
+      name: lang === 'en' ? (l.name_en || l.name_fa) : l.name_fa,
+      icon: l.icon_value,
+      iconSize: l.icon_size ?? 14,
+      min: l.min_xp,
+      max: l.max_xp !== null && l.max_xp !== undefined ? l.max_xp : Infinity,
+      color: l.color || '#64748b',
+    }));
+  }, [liveLevels, lang]);
+
+  const levelColors = useMemo(() => levelThresholds.map(l => l.color), [levelThresholds]);
 
   const missions = useMemo(() => {
     // Prefer live missions from /api/quest (real DB + real progress)
@@ -1281,7 +1290,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
             xp: questStats.xp,
           }}
           thresholds={levelThresholds}
-          levelColors={LEVEL_COLORS_BY_IDX}
+          levelColors={levelColors}
           labels={labels}
           lang={lang}
         />
@@ -1368,7 +1377,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         {activeTab === "leaderboard" && (
           <LeaderboardTab
             users={leaderboard}
-            levelColors={LEVEL_COLORS_BY_IDX}
+            levelColors={levelColors}
             thresholds={levelThresholds}
             currentUserUuid={currentUserUuid}
             xpUnit={labels.xpUnit}

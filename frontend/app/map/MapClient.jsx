@@ -487,7 +487,7 @@ function StartPanel({ lang, isRTL, onTapMode, onScanMode, startQuery, setStartQu
 
 // ── Route Info Card ────────────────────────────────────────────────────────────
 
-function RouteInfoCard({ route, lang, isRTL, onClear, is3D = false, walkActive = false, onStartNav, onStopNav }) {
+function RouteInfoCard({ route, lang, isRTL, onClear, is3D = false, walkActive = false, walkPaused = false, onStartNav, onStopNav, onPauseNav, onResumeNav, onStepForward, onStepBack }) {
   if (!route) return null;
   const isEN = lang === "en";
 
@@ -559,19 +559,31 @@ function RouteInfoCard({ route, lang, isRTL, onClear, is3D = false, walkActive =
   const meters = Math.max(1, Math.round(totalDist / 15));
   const minutes = Math.max(1, Math.round(meters / 72)); // 1.2 m/s walking
 
-  // "شروع ناوبری" / "پایان ناوبری" — only visible in 3D mode with a rendered route
+  // Navigation controls — only visible in 3D mode.
+  // Before start: single "▶ شروع ناوبری" button.
+  // During walkthrough: ⏮ step-back | ⏸/▶ pause-resume | ⏭ step-forward | ⏹ stop.
   const navBtn = is3D ? (
     walkActive ? (
-      <button
-        onClick={onStopNav}
-        style={{
-          background: "rgba(249,115,22,0.12)", border: "1px solid rgba(249,115,22,0.5)",
-          borderRadius: 8, padding: "6px 14px", color: "#f97316",
-          fontFamily: "inherit", fontSize: 12, cursor: "pointer", fontWeight: 700, flexShrink: 0,
-        }}
-      >
-        {isEN ? "⏹ Stop Nav" : "⏹ پایان ناوبری"}
-      </button>
+      <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+        <button
+          onClick={onStepBack}
+          title={isEN ? "Previous waypoint" : "نقطه قبلی"}
+          style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "6px 11px", color: "var(--text)", fontFamily: "inherit", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
+        >⏮</button>
+        <button
+          onClick={walkPaused ? onResumeNav : onPauseNav}
+          style={{ background: walkPaused ? "rgba(0,255,179,0.10)" : "rgba(255,255,255,0.07)", border: `1px solid ${walkPaused ? "rgba(0,255,179,0.5)" : "rgba(255,255,255,0.15)"}`, borderRadius: 8, padding: "6px 11px", color: walkPaused ? "var(--accent)" : "var(--text)", fontFamily: "inherit", fontSize: 12, cursor: "pointer", fontWeight: 700, flexShrink: 0 }}
+        >{walkPaused ? (isEN ? "▶ Resume" : "▶ ادامه") : (isEN ? "⏸ Pause" : "⏸ توقف")}</button>
+        <button
+          onClick={onStepForward}
+          title={isEN ? "Next waypoint" : "نقطه بعدی"}
+          style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "6px 11px", color: "var(--text)", fontFamily: "inherit", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
+        >⏭</button>
+        <button
+          onClick={onStopNav}
+          style={{ background: "rgba(249,115,22,0.12)", border: "1px solid rgba(249,115,22,0.5)", borderRadius: 8, padding: "6px 11px", color: "#f97316", fontFamily: "inherit", fontSize: 12, cursor: "pointer", fontWeight: 700, flexShrink: 0 }}
+        >{isEN ? "⏹ Stop" : "⏹ پایان"}</button>
+      </div>
     ) : (
       <button
         onClick={onStartNav}
@@ -949,6 +961,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const [startPanelOpen, setStartPanelOpen] = useState(false);
   const [tapStartMode, setTapStartMode] = useState(false);
   const [walkActive, setWalkActive] = useState(false); // 3D first-person walkthrough in progress
+  const [walkPaused, setWalkPaused] = useState(false); // walkthrough paused mid-route
 
   // Search
   const [searchQuery, setSearchQuery] = useState("");
@@ -1679,6 +1692,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
     if (walkActive) {
       map3DViewRef.current?.stopWalkthrough();
       setWalkActive(false);
+      setWalkPaused(false);
     }
     setNavDest(null); setNavStart(null); setNavRoute(null);
     setStartPanelOpen(false); setTapStartMode(false);
@@ -2389,15 +2403,31 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
               onClear={clearNav}
               is3D={view3D}
               walkActive={walkActive}
+              walkPaused={walkPaused}
               onStartNav={() => {
-                if (map3DViewRef.current?.startWalkthrough(() => setWalkActive(false))) {
+                if (map3DViewRef.current?.startWalkthrough(() => {
+                  setWalkActive(false);
+                  setWalkPaused(false);
+                })) {
                   setWalkActive(true);
+                  setWalkPaused(false);
                 }
               }}
               onStopNav={() => {
                 map3DViewRef.current?.stopWalkthrough();
                 setWalkActive(false);
+                setWalkPaused(false);
               }}
+              onPauseNav={() => {
+                map3DViewRef.current?.pauseWalkthrough();
+                setWalkPaused(true);
+              }}
+              onResumeNav={() => {
+                map3DViewRef.current?.resumeWalkthrough();
+                setWalkPaused(false);
+              }}
+              onStepForward={() => map3DViewRef.current?.stepForward()}
+              onStepBack={() => map3DViewRef.current?.stepBack()}
             />
           )}
           </>
