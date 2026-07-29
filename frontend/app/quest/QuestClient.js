@@ -248,7 +248,7 @@ function featuredBoothCountdownText(nextRotationIso, lang, now) {
     : `⟳ Next rotation: ${minutes} min`;
 }
 
-function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, lang: langProp }) {
+function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyClick, onSocialShareClick, lang: langProp }) {
   const pct = useMemo(
     () => (mission.total > 0 ? Math.round((mission.progress / mission.total) * 100) : 0),
     [mission.progress, mission.total]
@@ -256,23 +256,35 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, lang: lang
   const done = mission.progress >= mission.total;
   const isQuiz = mission.mission_type === 'quiz';
   const isFeaturedBooth = mission.mission_type === 'featured_booth';
+  const isSurvey = mission.mission_type === 'survey';
+  const isSocialShare = mission.mission_type === 'social_share';
   const quizAttempted = isQuiz && !!mission.quiz_attempted;
+  const surveySubmitted = isSurvey && !!mission.survey_submitted;
+  const socialShareStatus = isSocialShare ? (mission.social_share_status || null) : null;
+  const socialShareNote = isSocialShare ? (mission.social_share_note || null) : null;
   const quizClickable = isQuiz && !done && !quizAttempted && typeof onQuizClick === 'function';
+  const surveyClickable = isSurvey && !done && !surveySubmitted && typeof onSurveyClick === 'function';
   const featuredClickable = isFeaturedBooth && typeof onFeaturedClick === 'function';
+  // Social share: clickable if no pending submission, not yet approved
+  const socialShareClickable = isSocialShare && !done && socialShareStatus !== 'pending' && typeof onSocialShareClick === 'function';
 
   const now = useLiveNow(isFeaturedBooth && !done);
   const countdownText = isFeaturedBooth
     ? featuredBoothCountdownText(mission.featured_booth_next_rotation, langProp, now)
     : null;
 
-  const handleClick = quizClickable ? onQuizClick : featuredClickable ? onFeaturedClick : undefined;
+  const handleClick = quizClickable ? onQuizClick
+    : surveyClickable ? onSurveyClick
+    : socialShareClickable ? onSocialShareClick
+    : featuredClickable ? onFeaturedClick
+    : undefined;
 
   return (
     <div
       onClick={handleClick}
       className={`backdrop-blur-xl border rounded-2xl p-4 flex items-center gap-4 transition-colors ${
         done ? "border-[#00ffb3]/30 bg-[#00ffb3]/5" : "border-[var(--border)]"
-      } ${(quizClickable || featuredClickable) ? "cursor-pointer active:scale-[0.98]" : ""}`}
+      } ${(quizClickable || surveyClickable || socialShareClickable || featuredClickable) ? "cursor-pointer active:scale-[0.98]" : ""}`}
       style={done ? undefined : { background: "var(--surface-2)" }}
     >
       <div
@@ -329,6 +341,41 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, lang: lang
               <span className="text-xs font-bold px-3 py-0.5 rounded-full"
                 style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
                 شرکت کن ←
+              </span>
+            )}
+          </div>
+        ) : isSurvey ? (
+          <div className="flex items-center gap-2">
+            {done || surveySubmitted ? (
+              <span className="text-xs font-bold" style={{ color: "var(--accent)" }}>پاسخ داده شده ✓</span>
+            ) : (
+              <span className="text-xs font-bold px-3 py-0.5 rounded-full"
+                style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
+                {langProp === 'fa' ? 'شرکت در نظرسنجی ←' : 'Take Survey →'}
+              </span>
+            )}
+          </div>
+        ) : isSocialShare ? (
+          <div className="flex flex-col gap-1">
+            {done || socialShareStatus === 'approved' ? (
+              <span className="text-xs font-bold" style={{ color: "var(--accent)" }}>تایید شد ✅</span>
+            ) : socialShareStatus === 'pending' ? (
+              <span className="text-xs font-medium" style={{ color: '#f59e0b' }}>در انتظار بررسی ⏳</span>
+            ) : socialShareStatus === 'rejected' ? (
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs font-medium" style={{ color: '#f87171' }}>رد شد ❌</span>
+                {socialShareNote && (
+                  <span className="text-[10px] leading-4" style={{ color: 'var(--text-dim)' }}>{socialShareNote}</span>
+                )}
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full mt-0.5 self-start"
+                  style={{ background: "rgba(0,255,179,0.12)", color: "var(--accent)" }}>
+                  {langProp === 'fa' ? 'ارسال مجدد ←' : 'Resubmit →'}
+                </span>
+              </div>
+            ) : (
+              <span className="text-xs font-bold px-3 py-0.5 rounded-full"
+                style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
+                {langProp === 'fa' ? 'اشتراک‌گذاری کن ←' : 'Share →'}
               </span>
             )}
           </div>
@@ -441,26 +488,36 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
   );
 }
 
-function BadgeCard({ badge, onQuizClick, onFeaturedClick, lang }) {
+function BadgeCard({ badge, onQuizClick, onFeaturedClick, onSurveyClick, onSocialShareClick, lang }) {
   const isQuiz = badge.badge_type === 'quiz';
   const isFeaturedBooth = badge.badge_type === 'featured_booth';
+  const isSurvey = badge.badge_type === 'survey';
+  const isSocialShare = badge.badge_type === 'social_share';
+  const socialShareStatus = isSocialShare ? (badge.social_share_status || null) : null;
+  const socialShareNote = isSocialShare ? (badge.social_share_note || null) : null;
   const quizClickable = isQuiz && !badge.earned && !badge.quiz_attempted && typeof onQuizClick === 'function';
+  const surveyClickable = isSurvey && !badge.earned && !badge.survey_submitted && typeof onSurveyClick === 'function';
   const featuredClickable = isFeaturedBooth && typeof onFeaturedClick === 'function';
+  const socialShareClickable = isSocialShare && !badge.earned && socialShareStatus !== 'pending' && typeof onSocialShareClick === 'function';
 
   const now = useLiveNow(isFeaturedBooth && !badge.earned);
   const countdownText = isFeaturedBooth
     ? featuredBoothCountdownText(badge.featured_booth_next_rotation, lang, now)
     : null;
 
-  const handleBadgeClick = quizClickable ? () => onQuizClick(badge) : featuredClickable ? () => onFeaturedClick(badge) : undefined;
+  const handleBadgeClick = quizClickable ? () => onQuizClick(badge)
+    : surveyClickable ? () => onSurveyClick(badge)
+    : socialShareClickable ? () => onSocialShareClick(badge)
+    : featuredClickable ? () => onFeaturedClick(badge)
+    : undefined;
 
   return (
     <div
       onClick={handleBadgeClick}
       className={`rounded-2xl p-4 border text-center transition-colors ${
         badge.earned ? "border-[#00ffb3]/30 bg-[#00ffb3]/5" : "border-[var(--border)]"
-      } ${(quizClickable || featuredClickable) ? "cursor-pointer active:scale-[0.97]" : ""}`}
-      style={badge.earned ? undefined : { background: "var(--surface-2)", opacity: quizClickable || isFeaturedBooth ? 1 : 0.5 }}
+      } ${(quizClickable || surveyClickable || socialShareClickable || featuredClickable) ? "cursor-pointer active:scale-[0.97]" : ""}`}
+      style={badge.earned ? undefined : { background: "var(--surface-2)", opacity: quizClickable || surveyClickable || socialShareClickable || isFeaturedBooth ? 1 : 0.5 }}
     >
       <div
         className="w-14 h-14 rounded-2xl mx-auto mb-3 flex items-center justify-center"
@@ -504,12 +561,34 @@ function BadgeCard({ badge, onQuizClick, onFeaturedClick, lang }) {
         <div className="mt-2 text-[10px]" style={{ color: "#f87171" }}>پاسخ داده شده</div>
       ) : isQuiz ? (
         <div className="mt-2 text-[10px] font-bold" style={{ color: "var(--accent)" }}>شرکت کن ←</div>
+      ) : isSurvey && badge.survey_submitted ? (
+        <div className="mt-2 text-[10px]" style={{ color: "#f87171" }}>پاسخ داده شده</div>
+      ) : isSurvey ? (
+        <div className="mt-2 text-[10px] font-bold" style={{ color: "var(--accent)" }}>
+          {lang === 'fa' ? 'شرکت در نظرسنجی ←' : 'Take Survey →'}
+        </div>
+      ) : isSocialShare ? (
+        badge.earned || socialShareStatus === 'approved' ? (
+          <div className="mt-2 text-[10px] font-bold" style={{ color: "var(--accent)" }}>تایید شد ✅</div>
+        ) : socialShareStatus === 'pending' ? (
+          <div className="mt-2 text-[10px] font-medium" style={{ color: '#f59e0b' }}>در انتظار بررسی ⏳</div>
+        ) : socialShareStatus === 'rejected' ? (
+          <div className="mt-2 flex flex-col items-center gap-0.5">
+            <span className="text-[10px] font-medium" style={{ color: '#f87171' }}>رد شد ❌</span>
+            {socialShareNote && <span className="text-[9px] leading-4" style={{ color: 'var(--text-dim)' }}>{socialShareNote}</span>}
+            <span className="text-[10px] font-bold" style={{ color: "var(--accent)" }}>ارسال مجدد ←</span>
+          </div>
+        ) : (
+          <div className="mt-2 text-[10px] font-bold" style={{ color: "var(--accent)" }}>
+            {lang === 'fa' ? 'اشتراک‌گذاری کن ←' : 'Share →'}
+          </div>
+        )
       ) : null}
     </div>
   );
 }
 
-function BadgesTab({ badges, onQuizClick, onFeaturedClick, lang }) {
+function BadgesTab({ badges, onQuizClick, onFeaturedClick, onSurveyClick, onSocialShareClick, lang }) {
   return (
     <div className="grid grid-cols-2 gap-3">
       {badges.map((badge, idx) => (
@@ -518,6 +597,8 @@ function BadgesTab({ badges, onQuizClick, onFeaturedClick, lang }) {
           badge={badge}
           onQuizClick={onQuizClick}
           onFeaturedClick={onFeaturedClick}
+          onSurveyClick={onSurveyClick}
+          onSocialShareClick={onSocialShareClick}
           lang={lang}
         />
       ))}
@@ -1083,6 +1164,440 @@ function QuizModal({ quiz, onClose, onComplete, lang }) {
   );
 }
 
+// ── Survey Modal ───────────────────────────────────────────────────────────
+
+function SurveyModal({ survey, onClose, onComplete, lang }) {
+  const [answers, setAnswers] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState(null); // null | 'ok' | 'already' | 'error'
+  const [validationErr, setValidationErr] = useState('');
+
+  const isRTL = lang === 'fa';
+  const fields = Array.isArray(survey?.survey_fields) ? survey.survey_fields : [];
+
+  function setAnswer(fieldId, value) {
+    setAnswers(prev => ({ ...prev, [fieldId]: value }));
+  }
+
+  function toggleCheckbox(fieldId, option) {
+    setAnswers(prev => {
+      const cur = Array.isArray(prev[fieldId]) ? prev[fieldId] : [];
+      return { ...prev, [fieldId]: cur.includes(option) ? cur.filter(o => o !== option) : [...cur, option] };
+    });
+  }
+
+  function validate() {
+    for (const field of fields) {
+      if (field.type === 'description') continue;
+      if (field.required) {
+        const val = answers[field.id];
+        if (field.type === 'checkbox') {
+          if (!Array.isArray(val) || val.length === 0) {
+            return lang === 'fa' ? 'لطفاً تمام فیلدهای اجباری را پر کنید' : 'Please fill all required fields';
+          }
+        } else {
+          if (!val || (typeof val === 'string' && !val.trim())) {
+            return lang === 'fa' ? 'لطفاً تمام فیلدهای اجباری را پر کنید' : 'Please fill all required fields';
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  async function handleSubmit() {
+    if (submitting || result) return;
+    const err = validate();
+    if (err) { setValidationErr(err); return; }
+    setValidationErr('');
+    setSubmitting(true);
+    try {
+      const body = survey.isBadge
+        ? { badgeId: survey.id, answers }
+        : { missionId: survey.id, answers };
+      const res = await fetch('/api/quest/survey', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.error === 'already_submitted') {
+        setResult('already');
+      } else if (!res.ok) {
+        setResult('error');
+      } else {
+        setResult('ok');
+        if (onComplete) onComplete();
+      }
+    } catch {
+      setResult('error');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const title = lang === 'en'
+    ? (survey?.title_en || survey?.title || 'Survey')
+    : (survey?.title || 'نظرسنجی');
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-end justify-center" dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={result ? onClose : undefined} />
+      <div
+        className="relative w-full max-w-md rounded-t-3xl border-t border-x border-[#00ffb3]/20 pb-10 overflow-hidden"
+        style={{ background: "#021f20", maxHeight: '90vh', overflowY: 'auto' }}
+      >
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-white/5">
+          <h2 className="font-bold text-base" style={{ color: "var(--text)" }}>
+            📋 {title}
+          </h2>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full flex items-center justify-center"
+            style={{ background: "rgba(255,255,255,0.08)", color: "var(--text-dim)" }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2.5" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        {result ? (
+          <div className="px-5 py-8 text-center">
+            {result === 'ok' ? (
+              <>
+                <div className="text-5xl mb-3">✅</div>
+                <p className="font-black text-xl mb-1" style={{ color: 'var(--accent)' }}>
+                  {lang === 'fa' ? 'ممنون از پاسخ شما!' : 'Thank you!'}
+                </p>
+                <p className="text-sm" style={{ color: 'var(--text-dim)' }}>
+                  {lang === 'fa' ? 'پاسخ‌های شما ثبت شد و مأموریت تکمیل گردید' : 'Your answers were recorded and the mission completed'}
+                </p>
+              </>
+            ) : result === 'already' ? (
+              <>
+                <div className="text-5xl mb-3">🔒</div>
+                <p className="font-bold text-lg mb-1" style={{ color: '#fbbf24' }}>
+                  {lang === 'fa' ? 'قبلاً پاسخ داده‌اید' : 'Already submitted'}
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="text-5xl mb-3">⚠️</div>
+                <p className="font-bold text-lg mb-1" style={{ color: '#f87171' }}>
+                  {lang === 'fa' ? 'خطا در ثبت پاسخ' : 'Submission error'}
+                </p>
+                <p className="text-sm" style={{ color: 'var(--text-dim)' }}>
+                  {lang === 'fa' ? 'لطفاً دوباره امتحان کنید' : 'Please try again'}
+                </p>
+              </>
+            )}
+            <button
+              onClick={onClose}
+              className="mt-6 w-full py-3 rounded-xl font-bold text-sm"
+              style={{ background: 'var(--accent)', color: 'var(--bg)' }}
+            >
+              {lang === 'fa' ? 'بستن' : 'Close'}
+            </button>
+          </div>
+        ) : (
+          <div className="px-5 py-4 space-y-5">
+            {fields.map((field) => {
+              const labelText = lang === 'en'
+                ? (field.label_en || field.label_fa)
+                : field.label_fa;
+              const options = lang === 'en'
+                ? (Array.isArray(field.options_en) && field.options_en.length > 0 ? field.options_en : field.options_fa)
+                : field.options_fa;
+              const descText = lang === 'en'
+                ? (field.description_text_en || field.description_text_fa)
+                : field.description_text_fa;
+
+              if (field.type === 'description') {
+                return (
+                  <div key={field.id} className="rounded-xl px-4 py-3 text-sm leading-7"
+                    style={{ background: 'rgba(0,255,179,0.05)', borderLeft: isRTL ? 'none' : '3px solid rgba(0,255,179,0.3)', borderRight: isRTL ? '3px solid rgba(0,255,179,0.3)' : 'none', paddingLeft: isRTL ? 14 : 10, paddingRight: isRTL ? 10 : 14, color: 'var(--text-dim)' }}>
+                    {descText}
+                  </div>
+                );
+              }
+
+              return (
+                <div key={field.id}>
+                  <label className="block text-sm font-semibold mb-2 leading-6" style={{ color: 'var(--text)' }}>
+                    {labelText}
+                    {field.required && <span className="mr-1" style={{ color: '#f87171' }}>*</span>}
+                  </label>
+
+                  {field.type === 'text' && (
+                    <input
+                      type="text"
+                      value={answers[field.id] || ''}
+                      onChange={e => setAnswer(field.id, e.target.value)}
+                      className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-colors"
+                      style={{
+                        background: 'rgba(255,255,255,0.05)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        color: 'var(--text)',
+                      }}
+                      onFocus={e => { e.target.style.borderColor = 'rgba(0,255,179,0.4)'; }}
+                      onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)'; }}
+                    />
+                  )}
+
+                  {field.type === 'radio' && Array.isArray(options) && (
+                    <div className="space-y-2">
+                      {options.map((opt, i) => {
+                        const selected = answers[field.id] === opt;
+                        return (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => setAnswer(field.id, opt)}
+                            className="w-full text-right px-4 py-3 rounded-xl border text-sm font-medium transition-all"
+                            style={{
+                              borderColor: selected ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
+                              background: selected ? 'rgba(0,255,179,0.12)' : 'rgba(255,255,255,0.04)',
+                              color: selected ? 'var(--accent)' : 'var(--text)',
+                              textAlign: isRTL ? 'right' : 'left',
+                            }}
+                          >
+                            <span className="inline-block w-3.5 h-3.5 rounded-full border-2 ml-2 flex-shrink-0 align-middle transition-all"
+                              style={{
+                                borderColor: selected ? 'var(--accent)' : 'rgba(255,255,255,0.3)',
+                                background: selected ? 'var(--accent)' : 'transparent',
+                                marginLeft: isRTL ? 0 : 8,
+                                marginRight: isRTL ? 8 : 0,
+                              }} />
+                            {opt}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {field.type === 'checkbox' && Array.isArray(options) && (
+                    <div className="space-y-2">
+                      {options.map((opt, i) => {
+                        const checked = Array.isArray(answers[field.id]) && answers[field.id].includes(opt);
+                        return (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => toggleCheckbox(field.id, opt)}
+                            className="w-full text-right px-4 py-3 rounded-xl border text-sm font-medium transition-all"
+                            style={{
+                              borderColor: checked ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
+                              background: checked ? 'rgba(0,255,179,0.12)' : 'rgba(255,255,255,0.04)',
+                              color: checked ? 'var(--accent)' : 'var(--text)',
+                              textAlign: isRTL ? 'right' : 'left',
+                            }}
+                          >
+                            <span className="inline-block w-3.5 h-3.5 rounded border-2 flex-shrink-0 align-middle transition-all"
+                              style={{
+                                borderColor: checked ? 'var(--accent)' : 'rgba(255,255,255,0.3)',
+                                background: checked ? 'var(--accent)' : 'transparent',
+                                marginLeft: isRTL ? 0 : 8,
+                                marginRight: isRTL ? 8 : 0,
+                              }} />
+                            {opt}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {validationErr && (
+              <div className="text-sm px-4 py-2.5 rounded-xl" style={{ background: 'rgba(248,113,113,0.1)', color: '#f87171', border: '1px solid rgba(248,113,113,0.2)' }}>
+                {validationErr}
+              </div>
+            )}
+
+            <button
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="w-full py-3 rounded-xl font-bold text-sm transition-all"
+              style={{
+                background: submitting ? 'rgba(0,255,179,0.3)' : 'var(--accent)',
+                color: submitting ? 'rgba(2,31,32,0.5)' : 'var(--bg)',
+              }}
+            >
+              {submitting ? '…' : (lang === 'fa' ? 'ثبت پاسخ' : 'Submit')}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Social Share Modal ─────────────────────────────────────────────────────
+
+const PLATFORMS = ['Instagram', 'Telegram', 'WhatsApp', 'Other'];
+const PLATFORM_FA = { Instagram: 'اینستاگرام', Telegram: 'تلگرام', WhatsApp: 'واتساپ', Other: 'سایر' };
+
+function isValidUrl(s) {
+  return typeof s === 'string' && /^https?:\/\/.{2,}\..{2,}/.test(s.trim());
+}
+
+function SocialShareModal({ share, onClose, onComplete, lang }) {
+  const [url, setUrl] = useState('');
+  const [platform, setPlatform] = useState('');
+  const [state, setState] = useState('idle'); // 'idle'|'submitting'|'submitted'|'error'
+  const [errorMsg, setErrorMsg] = useState('');
+  const isRTL = lang === 'fa';
+
+  async function handleSubmit() {
+    if (!isValidUrl(url)) {
+      setErrorMsg(isRTL ? 'لینک معتبر نیست. باید با https:// شروع شود.' : 'Invalid URL. Must start with https://');
+      return;
+    }
+    setErrorMsg('');
+    setState('submitting');
+    try {
+      const body = share.isBadge
+        ? { badgeId: share.id, link_url: url.trim(), platform: platform || null }
+        : { missionId: share.id, link_url: url.trim(), platform: platform || null };
+      const res = await fetch('/api/quest/social-share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.error === 'already_pending') {
+          setState('error');
+          setErrorMsg(isRTL ? 'لینک قبلی شما هنوز در انتظار بررسی است.' : 'Your previous link is still pending review.');
+        } else if (data.error === 'already_approved') {
+          setState('error');
+          setErrorMsg(isRTL ? 'این ماموریت قبلاً تایید شده.' : 'Already approved.');
+        } else {
+          setState('error');
+          setErrorMsg(data.error || (isRTL ? 'خطا' : 'Error'));
+        }
+      } else {
+        setState('submitted');
+        onComplete?.();
+      }
+    } catch {
+      setState('error');
+      setErrorMsg(isRTL ? 'خطای شبکه. دوباره امتحان کنید.' : 'Network error. Try again.');
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center"
+      style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+      onClick={e => { if (e.target === e.currentTarget) { onClose(); } }}
+    >
+      <div
+        className="w-full max-w-lg rounded-t-3xl p-6 pb-10"
+        style={{ background: 'var(--bg)', border: '1px solid rgba(0,255,179,0.15)', borderBottom: 'none' }}
+      >
+        <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: 'rgba(255,255,255,0.15)' }} />
+
+        {state === 'submitted' ? (
+          <div className="text-center py-6">
+            <div className="text-4xl mb-4">⏳</div>
+            <div className="text-base font-bold mb-2" style={{ color: 'var(--accent)' }}>
+              {isRTL ? 'لینک شما دریافت شد!' : 'Link received!'}
+            </div>
+            <div className="text-sm leading-7" style={{ color: 'var(--text-muted)' }}>
+              {isRTL
+                ? 'لینک شما ثبت شد و در انتظار بررسی ادمین است. در صورت تایید، امتیاز به حساب شما اضافه می‌شود.'
+                : 'Your link was submitted and is pending admin review. XP will be awarded upon approval.'}
+            </div>
+            <button
+              onClick={onClose}
+              className="mt-5 px-6 py-2.5 rounded-xl font-bold text-sm"
+              style={{ background: 'var(--accent)', color: 'var(--bg)' }}
+            >
+              {isRTL ? 'باشه' : 'OK'}
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="text-base font-bold mb-1" style={{ color: 'var(--text)' }}>
+              {isRTL ? '📤 اشتراک‌گذاری شبکه اجتماعی' : '📤 Social Share'}
+            </div>
+            <div className="text-xs mb-5 leading-6" style={{ color: 'var(--text-muted)' }}>
+              {isRTL
+                ? 'لینک پست/استوری خود را که مرتبط با IranPharma است وارد کنید.'
+                : 'Enter the link to your IranPharma-related post or story.'}
+            </div>
+
+            <div className="mb-4">
+              <label className="text-xs font-medium mb-1.5 block" style={{ color: 'var(--text-muted)' }}>
+                {isRTL ? 'لینک پست *' : 'Post link *'}
+              </label>
+              <input
+                type="url"
+                value={url}
+                onChange={e => { setUrl(e.target.value); setErrorMsg(''); }}
+                placeholder="https://www.instagram.com/p/..."
+                dir="ltr"
+                className="w-full rounded-xl px-4 py-3 text-sm outline-none"
+                style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: 'var(--text)',
+                  textAlign: 'left',
+                }}
+              />
+            </div>
+
+            <div className="mb-5">
+              <label className="text-xs font-medium mb-1.5 block" style={{ color: 'var(--text-muted)' }}>
+                {isRTL ? 'پلتفرم (اختیاری)' : 'Platform (optional)'}
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                {PLATFORMS.map(p => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setPlatform(platform === p ? '' : p)}
+                    className="px-3 py-1.5 rounded-full text-xs font-medium transition-all"
+                    style={{
+                      background: platform === p ? 'var(--accent)' : 'rgba(255,255,255,0.07)',
+                      color: platform === p ? 'var(--bg)' : 'var(--text-muted)',
+                      border: `1px solid ${platform === p ? 'var(--accent)' : 'rgba(255,255,255,0.1)'}`,
+                    }}
+                  >
+                    {isRTL ? PLATFORM_FA[p] : p}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {errorMsg && (
+              <div className="mb-4 text-xs px-3 py-2 rounded-lg" style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171' }}>
+                {errorMsg}
+              </div>
+            )}
+
+            <button
+              onClick={handleSubmit}
+              disabled={state === 'submitting'}
+              className="w-full py-3 rounded-xl font-bold text-sm transition-all"
+              style={{
+                background: state === 'submitting' ? 'rgba(0,255,179,0.3)' : 'var(--accent)',
+                color: state === 'submitting' ? 'rgba(2,31,32,0.5)' : 'var(--bg)',
+              }}
+            >
+              {state === 'submitting' ? '…' : (isRTL ? 'ارسال لینک' : 'Submit link')}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main client component ───────────────────────────────────────────────────
 
 export default function QuestClient({ content, title, subtitle, title_en, subtitle_en, isHomeContext = false }) {
@@ -1092,6 +1607,8 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
   const [isDark, setIsDark] = useState(true);
   const { lang, isRTL } = useLang();
   const [openQuiz, setOpenQuiz] = useState(null);
+  const [openSurvey, setOpenSurvey] = useState(null);
+  const [openSocialShare, setOpenSocialShare] = useState(null);
 
   const [booths, setBooths] = useState([]);
   const [scannedIds, setScannedIds] = useState(new Set());
@@ -1267,6 +1784,8 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         xpUnit={labels.xpUnit}
         lang={lang}
         onQuizClick={m.mission_type === 'quiz' ? () => setOpenQuiz({ ...m, isBadge: false }) : undefined}
+        onSurveyClick={m.mission_type === 'survey' ? () => setOpenSurvey({ ...m, isBadge: false }) : undefined}
+        onSocialShareClick={m.mission_type === 'social_share' ? () => setOpenSocialShare({ ...m, isBadge: false }) : undefined}
         onFeaturedClick={m.mission_type === 'featured_booth' ? () => setOpenFeaturedPool(m) : undefined}
       />
     )),
@@ -1389,6 +1908,8 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
           <BadgesTab
             badges={badges}
             onQuizClick={(badge) => setOpenQuiz({ ...badge, isBadge: true })}
+            onSurveyClick={(badge) => setOpenSurvey({ ...badge, isBadge: true })}
+            onSocialShareClick={(badge) => setOpenSocialShare({ ...badge, isBadge: true })}
             onFeaturedClick={(badge) => setOpenFeaturedPool({ ...badge, isFeaturedBadge: true })}
             lang={lang}
           />
@@ -1422,6 +1943,24 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
           quiz={openQuiz}
           lang={lang}
           onClose={() => { setOpenQuiz(null); refreshQuest(); }}
+          onComplete={() => refreshQuest()}
+        />
+      )}
+
+      {openSurvey && (
+        <SurveyModal
+          survey={openSurvey}
+          lang={lang}
+          onClose={() => { setOpenSurvey(null); refreshQuest(); }}
+          onComplete={() => refreshQuest()}
+        />
+      )}
+
+      {openSocialShare && (
+        <SocialShareModal
+          share={openSocialShare}
+          lang={lang}
+          onClose={() => { setOpenSocialShare(null); refreshQuest(); }}
           onComplete={() => refreshQuest()}
         />
       )}

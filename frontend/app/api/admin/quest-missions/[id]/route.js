@@ -44,6 +44,7 @@ export async function PUT(request, { params }) {
     featured_booth_pool,
     featured_booth_bonus_xp,
     featured_booth_rotation_hours,
+    survey_fields,
   } = body;
 
   if (!title_fa) return NextResponse.json({ error: 'title_fa الزامی است' }, { status: 400 });
@@ -66,8 +67,9 @@ export async function PUT(request, { params }) {
          featured_booth_pool = $17,
          featured_booth_bonus_xp = $18,
          featured_booth_rotation_hours = $19,
+         survey_fields = $20,
          updated_at = NOW()
-       WHERE id = $20
+       WHERE id = $21
        RETURNING *`,
       [
         title_fa, title_en ?? null, description_fa ?? null, description_en ?? null,
@@ -78,6 +80,7 @@ export async function PUT(request, { params }) {
         mission_type === 'featured_booth' ? JSON.stringify(featured_booth_pool) : null,
         featured_booth_bonus_xp ?? 500,
         featured_booth_rotation_hours ?? 1,
+        mission_type === 'survey' && Array.isArray(survey_fields) ? JSON.stringify(survey_fields) : null,
         id,
       ]
     );

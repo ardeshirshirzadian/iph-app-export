@@ -48,26 +48,28 @@ export async function POST(request) {
       return NextResponse.json({ error: 'already_attempted' }, { status: 409 });
     }
 
-    // Fetch correct answer from DB — never expose quiz_correct_index in response
-    let correctIndex;
+    // Fetch correct answer + xp_reward from DB — never expose quiz_correct_index in response
+    let correctIndex, xpReward;
     if (missionId) {
       const r = await query(
-        `SELECT quiz_correct_index FROM quest_content WHERE id = $1 AND mission_type = 'quiz'`,
+        `SELECT quiz_correct_index, xp_reward FROM quest_content WHERE id = $1 AND mission_type = 'quiz'`,
         [missionId]
       );
       if (r.rows.length === 0) {
         return NextResponse.json({ error: 'mission_not_found' }, { status: 404 });
       }
       correctIndex = r.rows[0].quiz_correct_index;
+      xpReward     = r.rows[0].xp_reward ?? 0;
     } else {
       const r = await query(
-        `SELECT quiz_correct_index FROM quest_badges WHERE id = $1 AND badge_type = 'quiz'`,
+        `SELECT quiz_correct_index, xp_reward FROM quest_badges WHERE id = $1 AND badge_type = 'quiz'`,
         [badgeId]
       );
       if (r.rows.length === 0) {
         return NextResponse.json({ error: 'badge_not_found' }, { status: 404 });
       }
       correctIndex = r.rows[0].quiz_correct_index;
+      xpReward     = r.rows[0].xp_reward ?? 0;
     }
 
     const isCorrect = selectedIndex === correctIndex;
@@ -92,6 +94,18 @@ export async function POST(request) {
            VALUES ($1, $2, true, NOW())
            ON CONFLICT (badge_id, user_uuid) DO UPDATE SET earned = true, earned_at = NOW()`,
           [badgeId, userUuid]
+        ).catch(() => {});
+      }
+
+      // Award XP via quest_xp_grants so it counts in stats + leaderboard
+      if (xpReward > 0) {
+        const sourceType = missionId ? 'mission_quiz' : 'badge_quiz';
+        const sourceId   = missionId || badgeId;
+        await query(
+          `INSERT INTO quest_xp_grants (user_uuid, source_type, source_id, xp_amount)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (user_uuid, source_type, source_id) DO NOTHING`,
+          [userUuid, sourceType, sourceId, xpReward]
         ).catch(() => {});
       }
     }

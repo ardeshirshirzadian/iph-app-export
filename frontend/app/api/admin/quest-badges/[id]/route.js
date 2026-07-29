@@ -44,6 +44,7 @@ export async function PUT(request, { params }) {
     featured_booth_pool,
     featured_booth_bonus_xp,
     featured_booth_rotation_hours,
+    survey_fields,
   } = body;
 
   if (!name_fa) return NextResponse.json({ error: 'name_fa الزامی است' }, { status: 400 });
@@ -66,8 +67,9 @@ export async function PUT(request, { params }) {
          featured_booth_pool = $16,
          featured_booth_bonus_xp = $17,
          featured_booth_rotation_hours = $18,
+         survey_fields = $19,
          updated_at = NOW()
-       WHERE id = $19
+       WHERE id = $20
        RETURNING *`,
       [
         name_fa, name_en ?? null, description_fa ?? null, description_en ?? null,
@@ -78,6 +80,7 @@ export async function PUT(request, { params }) {
         badge_type === 'featured_booth' ? JSON.stringify(featured_booth_pool) : null,
         featured_booth_bonus_xp ?? 500,
         featured_booth_rotation_hours ?? 1,
+        badge_type === 'survey' && Array.isArray(survey_fields) ? JSON.stringify(survey_fields) : null,
         id,
       ]
     );

@@ -55,6 +55,7 @@ export async function POST(request) {
     featured_booth_pool = null,
     featured_booth_bonus_xp = 500,
     featured_booth_rotation_hours = 1,
+    survey_fields = null,
   } = body;
 
   if (!title_fa) return NextResponse.json({ error: 'title_fa الزامی است' }, { status: 400 });
@@ -74,8 +75,9 @@ export async function POST(request) {
           xp_reward, mission_type, total, target_company_id,
           is_active, sort_order,
           target_hall_name, hall_match_mode, hall_scan_count,
-          featured_booth_pool, featured_booth_bonus_xp, featured_booth_rotation_hours)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+          featured_booth_pool, featured_booth_bonus_xp, featured_booth_rotation_hours,
+          survey_fields)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
        RETURNING *`,
       [
         title_fa, title_en || null, description_fa || null, description_en || null,
@@ -86,6 +88,7 @@ export async function POST(request) {
         mission_type === 'featured_booth' ? JSON.stringify(featured_booth_pool) : null,
         featured_booth_bonus_xp,
         featured_booth_rotation_hours,
+        mission_type === 'survey' && Array.isArray(survey_fields) ? JSON.stringify(survey_fields) : null,
       ]
     );
     return NextResponse.json({ mission: rows[0] }, { status: 201 });

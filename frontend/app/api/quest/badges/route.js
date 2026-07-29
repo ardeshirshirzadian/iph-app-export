@@ -101,11 +101,27 @@ async function calcEarned(badge, userUuid) {
         ).catch(() => ({ rows: [] }));
         return r.rows.length > 0 && r.rows[0].is_correct;
       }
+      case 'survey': {
+        const r = await query(
+          `SELECT id FROM quest_survey_responses WHERE badge_id = $1 AND user_uuid = $2`,
+          [badge.id, userUuid]
+        ).catch(() => ({ rows: [] }));
+        return r.rows.length > 0;
+      }
       case 'featured_booth': {
         const r = await query(
           'SELECT 1 FROM quest_badge_progress WHERE badge_id = $1 AND user_uuid = $2 AND earned = true',
           [badge.id, userUuid]
         );
+        return r.rows.length > 0;
+      }
+      case 'social_share': {
+        const r = await query(
+          `SELECT id FROM quest_social_share_submissions
+           WHERE badge_id = $1 AND user_uuid = $2 AND status = 'approved'
+           LIMIT 1`,
+          [badge.id, userUuid]
+        ).catch(() => ({ rows: [] }));
         return r.rows.length > 0;
       }
       default:
@@ -139,6 +155,30 @@ export async function GET() {
           ).catch(() => ({ rows: [] }));
           quiz_attempted = aR.rows.length > 0;
         }
+        let survey_submitted = false;
+        if (b.badge_type === 'survey' && userUuid) {
+          const sR = await query(
+            `SELECT id FROM quest_survey_responses WHERE badge_id = $1 AND user_uuid = $2`,
+            [b.id, userUuid]
+          ).catch(() => ({ rows: [] }));
+          survey_submitted = sR.rows.length > 0;
+        }
+
+        let social_share_status = undefined;
+        let social_share_note = undefined;
+        if (b.badge_type === 'social_share' && userUuid) {
+          const ssR = await query(
+            `SELECT status, admin_note FROM quest_social_share_submissions
+             WHERE badge_id = $1 AND user_uuid = $2
+             ORDER BY submitted_at DESC LIMIT 1`,
+            [b.id, userUuid]
+          ).catch(() => ({ rows: [] }));
+          if (ssR.rows.length > 0) {
+            social_share_status = ssR.rows[0].status;
+            social_share_note = ssR.rows[0].admin_note || null;
+          }
+        }
+
         // Countdown for featured_booth badges
         let featured_booth_next_rotation = undefined;
         // Pool companies: all candidates visible to user, golden selection hidden.
@@ -203,6 +243,10 @@ export async function GET() {
           quiz_hint_type: b.badge_type === 'quiz' ? (b.quiz_hint_type ?? null) : undefined,
           quiz_hint_url: b.badge_type === 'quiz' ? (b.quiz_hint_url ?? null) : undefined,
           quiz_attempted: b.badge_type === 'quiz' ? quiz_attempted : undefined,
+          survey_fields: b.badge_type === 'survey' ? (b.survey_fields ?? null) : undefined,
+          survey_submitted: b.badge_type === 'survey' ? survey_submitted : undefined,
+          social_share_status: b.badge_type === 'social_share' ? (social_share_status ?? null) : undefined,
+          social_share_note: b.badge_type === 'social_share' ? (social_share_note ?? null) : undefined,
           featured_booth_next_rotation,
           featured_booth_pool_companies,
         };

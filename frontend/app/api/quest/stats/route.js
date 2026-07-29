@@ -35,7 +35,10 @@ export async function GET() {
         [userUuid]
       ),
       query(
-        `SELECT COALESCE(SUM(xp_earned), 0) AS xp FROM quest_scans WHERE user_uuid = $1`,
+        `SELECT
+           COALESCE((SELECT SUM(xp_earned) FROM quest_scans      WHERE user_uuid = $1), 0) +
+           COALESCE((SELECT SUM(xp_amount) FROM quest_xp_grants  WHERE user_uuid = $1), 0)
+         AS xp`,
         [userUuid]
       ),
     ]);

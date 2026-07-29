@@ -86,6 +86,8 @@ const API_SECTION_PREFIXES = [
   ['/api/admin/quest-missions', 'quest'],
   ['/api/admin/quest-badges', 'quest'],
   ['/api/admin/quest-featured-booth-status', 'quest'],
+  ['/api/admin/quest-survey-responses', 'quest'],
+  ['/api/admin/quest-social-shares', 'quest'],
   ['/api/admin/login-page', 'login-page'],
   ['/api/admin/users', 'users'],
   ['/api/admin/notifications', 'notifications'],

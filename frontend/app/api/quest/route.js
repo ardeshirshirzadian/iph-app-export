@@ -74,12 +74,28 @@ async function calcProgress(mission, userUuid) {
         ).catch(() => ({ rows: [] }));
         return r.rows.length > 0 && r.rows[0].is_correct ? 1 : 0;
       }
+      case 'survey': {
+        const r = await query(
+          `SELECT id FROM quest_survey_responses WHERE mission_id = $1 AND user_uuid = $2`,
+          [mission.id, userUuid]
+        ).catch(() => ({ rows: [] }));
+        return r.rows.length > 0 ? 1 : 0;
+      }
       case 'featured_booth': {
         const r = await query(
           `SELECT completed FROM quest_user_progress WHERE mission_id = $1 AND user_uuid = $2`,
           [mission.id, userUuid]
         );
         return r.rows.length > 0 && r.rows[0].completed ? 1 : 0;
+      }
+      case 'social_share': {
+        const r = await query(
+          `SELECT status FROM quest_social_share_submissions
+           WHERE mission_id = $1 AND user_uuid = $2 AND status = 'approved'
+           LIMIT 1`,
+          [mission.id, userUuid]
+        ).catch(() => ({ rows: [] }));
+        return r.rows.length > 0 ? 1 : 0;
       }
       default:
         return 0;
@@ -107,6 +123,29 @@ export async function GET() {
             [m.id, userUuid]
           ).catch(() => ({ rows: [] }));
           quiz_attempted = aR.rows.length > 0;
+        }
+        let survey_submitted = false;
+        if (m.mission_type === 'survey' && userUuid) {
+          const sR = await query(
+            `SELECT id FROM quest_survey_responses WHERE mission_id = $1 AND user_uuid = $2`,
+            [m.id, userUuid]
+          ).catch(() => ({ rows: [] }));
+          survey_submitted = sR.rows.length > 0;
+        }
+
+        let social_share_status = undefined;
+        let social_share_note = undefined;
+        if (m.mission_type === 'social_share' && userUuid) {
+          const ssR = await query(
+            `SELECT status, admin_note FROM quest_social_share_submissions
+             WHERE mission_id = $1 AND user_uuid = $2
+             ORDER BY submitted_at DESC LIMIT 1`,
+            [m.id, userUuid]
+          ).catch(() => ({ rows: [] }));
+          if (ssR.rows.length > 0) {
+            social_share_status = ssR.rows[0].status;
+            social_share_note = ssR.rows[0].admin_note || null;
+          }
         }
 
         // Countdown for featured_booth: return next rotation timestamp (no golden
@@ -182,6 +221,10 @@ export async function GET() {
           quiz_hint_type: m.mission_type === 'quiz' ? (m.quiz_hint_type ?? null) : undefined,
           quiz_hint_url: m.mission_type === 'quiz' ? (m.quiz_hint_url ?? null) : undefined,
           quiz_attempted: m.mission_type === 'quiz' ? quiz_attempted : undefined,
+          survey_fields: m.mission_type === 'survey' ? (m.survey_fields ?? null) : undefined,
+          survey_submitted: m.mission_type === 'survey' ? survey_submitted : undefined,
+          social_share_status: m.mission_type === 'social_share' ? (social_share_status ?? null) : undefined,
+          social_share_note: m.mission_type === 'social_share' ? (social_share_note ?? null) : undefined,
           featured_booth_next_rotation,
           featured_booth_pool_companies,
         };

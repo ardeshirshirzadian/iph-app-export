@@ -56,13 +56,33 @@ export async function GET() {
     await ensureQuestUserNamesTable();
     const limit = await getLeaderboardLimit();
 
-    // Top-N leaderboard with name + photo resolution:
-    //   1st priority: quest_user_names (populated at scan time, always fresh)
-    //   2nd priority: app_users (populated at login, covers old scan data)
-    //   3rd priority: generic "شرکت‌کننده" label
+    // Top-N leaderboard with name + photo resolution.
+    // XP = quest_scans.xp_earned (scan-based) + quest_xp_grants.xp_amount (quiz/survey).
+    // Users who only earned XP via grants (no scans) still appear via FULL OUTER JOIN.
     const { rows: leaderboardRows } = await query(`
+      WITH scan_agg AS (
+        SELECT user_uuid,
+               SUM(xp_earned)::int AS xp,
+               COUNT(*)::int       AS scan_count
+        FROM quest_scans
+        GROUP BY user_uuid
+      ),
+      grant_agg AS (
+        SELECT user_uuid,
+               SUM(xp_amount)::int AS xp
+        FROM quest_xp_grants
+        GROUP BY user_uuid
+      ),
+      combined AS (
+        SELECT
+          COALESCE(s.user_uuid, g.user_uuid)      AS user_uuid,
+          COALESCE(s.xp, 0) + COALESCE(g.xp, 0)  AS total_xp,
+          COALESCE(s.scan_count, 0)                AS scan_count
+        FROM scan_agg s
+        FULL OUTER JOIN grant_agg g ON s.user_uuid = g.user_uuid
+      )
       SELECT
-        qs.user_uuid,
+        c.user_uuid,
         COALESCE(
           qn.display_name_fa,
           NULLIF(TRIM(COALESCE(au.firstname_fa, '') || ' ' || COALESCE(au.lastname_fa, '')), ''),
@@ -74,16 +94,12 @@ export async function GET() {
         ) AS display_name_en,
         qn.profile_photo_url,
         au.profile_image,
-        SUM(qs.xp_earned)::int AS total_xp,
-        COUNT(*)::int          AS scan_count
-      FROM quest_scans qs
-      LEFT JOIN quest_user_names qn ON qs.user_uuid = qn.user_uuid
-      LEFT JOIN app_users        au ON qs.user_uuid = au.uuid
-      GROUP BY
-        qs.user_uuid,
-        qn.display_name_fa, qn.display_name_en, qn.profile_photo_url,
-        au.firstname_fa, au.lastname_fa, au.firstname_en, au.lastname_en, au.profile_image
-      ORDER BY total_xp DESC
+        c.total_xp,
+        c.scan_count
+      FROM combined c
+      LEFT JOIN quest_user_names qn ON c.user_uuid = qn.user_uuid
+      LEFT JOIN app_users        au ON c.user_uuid = au.uuid
+      ORDER BY c.total_xp DESC
       LIMIT $1
     `, [limit]);
 
@@ -101,12 +117,17 @@ export async function GET() {
     let currentUser = null;
     if (currentUuid) {
       const { rows: rankRows } = await query(`
-        WITH ranked AS (
+        WITH combined AS (
+          SELECT user_uuid, xp_earned AS xp FROM quest_scans
+          UNION ALL
+          SELECT user_uuid, xp_amount AS xp FROM quest_xp_grants
+        ),
+        ranked AS (
           SELECT
             user_uuid,
-            SUM(xp_earned)::int                               AS total_xp,
-            RANK() OVER (ORDER BY SUM(xp_earned) DESC)::int  AS rank
-          FROM quest_scans
+            SUM(xp)::int                               AS total_xp,
+            RANK() OVER (ORDER BY SUM(xp) DESC)::int   AS rank
+          FROM combined
           GROUP BY user_uuid
         )
         SELECT r.rank, r.total_xp, qn.profile_photo_url, au.profile_image
