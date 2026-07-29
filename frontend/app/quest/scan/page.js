@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
+import { toPersianDigits } from "@/lib/utils";
 
 export default function QRScanPage() {
   const router = useRouter();
@@ -343,13 +344,15 @@ export default function QRScanPage() {
                 </p>
                 <p className="text-sm mb-2" style={{ color: "rgba(255,255,255,0.55)" }}>
                   {lang === "fa"
-                    ? `این غرفه فقط بین ساعت ${scanResult.startHour} تا ${scanResult.endHour} امتیاز تکراری می‌دهد`
+                    ? `این غرفه فقط بین ساعت ${toPersianDigits(scanResult.startHour)} تا ${toPersianDigits(scanResult.endHour)} امتیاز تکراری می‌دهد`
                     : `Repeat scoring active ${scanResult.startHour}:00–${scanResult.endHour}:00`}
                 </p>
               </>
             ) : scanResult?.cooldown ? (
               <p className="font-bold text-lg mb-2" style={{ color: "#fbbf24" }}>
-                {scanResult.minutesRemaining} {lang === "fa" ? "دقیقه دیگر مجدداً تلاش کنید" : `min remaining`}
+                {lang === "fa"
+                  ? `${toPersianDigits(scanResult.minutesRemaining)} دقیقه دیگر مجدداً تلاش کنید`
+                  : `${scanResult.minutesRemaining} min remaining`}
               </p>
             ) : scanResult?.alreadyScanned ? (
               <p className="font-bold text-lg mb-2" style={{ color: "#fbbf24" }}>
@@ -361,11 +364,11 @@ export default function QRScanPage() {
                   className="font-black text-3xl mb-1"
                   style={{ color: "#ffd700", textShadow: "0 0 24px rgba(255,215,0,0.7)" }}
                 >
-                  +{scanResult.points} XP!
+                  +{lang === "fa" ? toPersianDigits(scanResult.points) : scanResult.points} XP!
                 </p>
                 <p className="font-bold text-base mb-1" style={{ color: "#ffd700" }}>
                   {lang === "fa"
-                    ? `🎉 تبریک! +${scanResult.bonus_xp} امتیاز غرفه برتر گرفتید`
+                    ? `🎉 تبریک! +${toPersianDigits(scanResult.bonus_xp)} امتیاز غرفه برتر گرفتید`
                     : `🎉 Golden Booth! +${scanResult.bonus_xp} bonus XP`}
                 </p>
               </>
@@ -374,7 +377,7 @@ export default function QRScanPage() {
                 className="text-[#00ffb3] font-black text-3xl mb-2"
                 style={{ textShadow: "0 0 20px rgba(0,255,179,0.5)" }}
               >
-                +{scanResult?.points ?? 10} XP!
+                +{lang === "fa" ? toPersianDigits(scanResult?.points ?? 10) : (scanResult?.points ?? 10)} XP!
               </p>
             )}
 
@@ -385,9 +388,9 @@ export default function QRScanPage() {
             {scanResult?.company?.hall_name && (
               <p className="text-white/60 text-sm mt-1">
                 {lang === "fa" ? "سالن" : "Hall"}{" "}
-                {scanResult.company.hall_name}
+                {lang === "fa" ? toPersianDigits(scanResult.company.hall_name) : scanResult.company.hall_name}
                 {scanResult.company.booth_no && (
-                  <> &nbsp;—&nbsp; {lang === "fa" ? "غرفه" : "Booth"} {scanResult.company.booth_no}</>
+                  <> &nbsp;—&nbsp; {lang === "fa" ? "غرفه" : "Booth"} {lang === "fa" ? toPersianDigits(scanResult.company.booth_no) : scanResult.company.booth_no}</>
                 )}
               </p>
             )}

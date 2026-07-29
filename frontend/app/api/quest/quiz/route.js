@@ -81,21 +81,10 @@ export async function POST(request) {
     );
 
     if (isCorrect) {
-      if (missionId) {
-        await query(
-          `INSERT INTO quest_user_progress (mission_id, user_uuid, completed, completed_at)
-           VALUES ($1, $2, true, NOW())
-           ON CONFLICT (mission_id, user_uuid) DO UPDATE SET completed = true, completed_at = NOW()`,
-          [missionId, userUuid]
-        ).catch(() => {});
-      } else {
-        await query(
-          `INSERT INTO quest_badge_progress (badge_id, user_uuid, earned, earned_at)
-           VALUES ($1, $2, true, NOW())
-           ON CONFLICT (badge_id, user_uuid) DO UPDATE SET earned = true, earned_at = NOW()`,
-          [badgeId, userUuid]
-        ).catch(() => {});
-      }
+      // Completion is tracked in quest_quiz_attempts (already inserted above).
+      // quest_user_progress / quest_badge_progress are NOT read for quiz types in
+      // calcProgress — writing there would create dead data that could later be
+      // mistaken for a second XP source and cause double-counting.
 
       // Award XP via quest_xp_grants so it counts in stats + leaderboard
       if (xpReward > 0) {

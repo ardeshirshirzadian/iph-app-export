@@ -184,7 +184,7 @@ export async function POST(request) {
       }
 
       const { rows: fbBadges } = await query(
-        `SELECT id, featured_booth_pool, featured_booth_bonus_xp, featured_booth_rotation_hours
+        `SELECT id, featured_booth_pool, featured_booth_rotation_hours
          FROM quest_badges
          WHERE is_active = true AND badge_type = 'featured_booth'
            AND featured_booth_pool IS NOT NULL`
@@ -194,8 +194,8 @@ export async function POST(request) {
         if (!pool.includes(company.id)) continue;
         const goldenId = await ensureFeaturedBoothState(b, 'badge');
         if (goldenId === company.id) {
-          bonusXp    = Math.max(bonusXp, b.featured_booth_bonus_xp ?? 500);
           bonusBadge = b;
+          // Badges don't award XP; bonusXp is not updated here
         }
       }
     } catch (fbErr) {
