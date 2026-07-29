@@ -317,66 +317,65 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
         </p>
         {isFeaturedBooth ? (
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              {done ? (
-                <span className="text-xs font-bold" style={{ color: "var(--accent)" }}>✓ کشف شد!</span>
-              ) : countdownText ? (
-                <span className="text-xs" style={{ color: "var(--text-dim)" }}>{countdownText}</span>
-              ) : null}
-            </div>
+            {done ? (
+              <span className="text-[11px] font-bold" style={{ color: "var(--accent)" }}>✓ کشف شد!</span>
+            ) : countdownText ? (
+              <span className="text-[11px]" style={{ color: "var(--text-dim)" }}>{countdownText}</span>
+            ) : <span />}
             {featuredClickable && (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
-                style={{ background: "rgba(0,255,179,0.12)", color: "var(--accent)" }}>
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0"
+                style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
                 {langProp === 'fa' ? 'مشاهده غرفه‌ها ←' : 'See booths →'}
               </span>
             )}
           </div>
         ) : isQuiz ? (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-2">
             {done ? (
-              <span className="text-xs font-bold" style={{ color: "var(--accent)" }}>پاسخ صحیح ✓</span>
+              <span className="text-[11px] font-bold" style={{ color: "var(--accent)" }}>پاسخ صحیح ✓</span>
             ) : quizAttempted ? (
-              <span className="text-xs font-medium" style={{ color: "#f87171" }}>پاسخ داده شده</span>
-            ) : (
-              <span className="text-xs font-bold px-3 py-0.5 rounded-full"
+              <span className="text-[11px] font-medium" style={{ color: "#f87171" }}>پاسخ داده شده</span>
+            ) : <span />}
+            {quizClickable && (
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0"
                 style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
-                شرکت کن ←
+                {langProp === 'fa' ? 'شرکت کن ←' : 'Join →'}
               </span>
             )}
           </div>
         ) : isSurvey ? (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-2">
             {done || surveySubmitted ? (
-              <span className="text-xs font-bold" style={{ color: "var(--accent)" }}>پاسخ داده شده ✓</span>
-            ) : (
-              <span className="text-xs font-bold px-3 py-0.5 rounded-full"
+              <span className="text-[11px] font-bold" style={{ color: "var(--accent)" }}>پاسخ داده شده ✓</span>
+            ) : <span />}
+            {surveyClickable && (
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0"
                 style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
                 {langProp === 'fa' ? 'شرکت در نظرسنجی ←' : 'Take Survey →'}
               </span>
             )}
           </div>
         ) : isSocialShare ? (
-          <div className="flex flex-col gap-1">
-            {done || socialShareStatus === 'approved' ? (
-              <span className="text-xs font-bold" style={{ color: "var(--accent)" }}>تایید شد ✅</span>
-            ) : socialShareStatus === 'pending' ? (
-              <span className="text-xs font-medium" style={{ color: '#f59e0b' }}>در انتظار بررسی ⏳</span>
-            ) : socialShareStatus === 'rejected' ? (
-              <div className="flex flex-col gap-0.5">
-                <span className="text-xs font-medium" style={{ color: '#f87171' }}>رد شد ❌</span>
-                {socialShareNote && (
-                  <span className="text-[10px] leading-4" style={{ color: 'var(--text-dim)' }}>{socialShareNote}</span>
-                )}
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full mt-0.5 self-start"
-                  style={{ background: "rgba(0,255,179,0.12)", color: "var(--accent)" }}>
-                  {langProp === 'fa' ? 'ارسال مجدد ←' : 'Resubmit →'}
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center justify-between gap-2">
+              {done || socialShareStatus === 'approved' ? (
+                <span className="text-[11px] font-bold" style={{ color: "var(--accent)" }}>تایید شد ✅</span>
+              ) : socialShareStatus === 'pending' ? (
+                <span className="text-[11px] font-medium" style={{ color: '#f59e0b' }}>در انتظار بررسی ⏳</span>
+              ) : socialShareStatus === 'rejected' ? (
+                <span className="text-[11px] font-medium" style={{ color: '#f87171' }}>رد شد ❌</span>
+              ) : <span />}
+              {socialShareClickable && (
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0"
+                  style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
+                  {socialShareStatus === 'rejected'
+                    ? (langProp === 'fa' ? 'ارسال مجدد ←' : 'Resubmit →')
+                    : (langProp === 'fa' ? 'اشتراک‌گذاری کن ←' : 'Share →')}
                 </span>
-              </div>
-            ) : (
-              <span className="text-xs font-bold px-3 py-0.5 rounded-full"
-                style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
-                {langProp === 'fa' ? 'اشتراک‌گذاری کن ←' : 'Share →'}
-              </span>
+              )}
+            </div>
+            {socialShareStatus === 'rejected' && socialShareNote && (
+              <p className="text-[10px] leading-4" style={{ color: 'var(--text-dim)' }}>{socialShareNote}</p>
             )}
           </div>
         ) : (
@@ -419,71 +418,217 @@ function AvatarPlaceholder({ size = 32 }) {
   );
 }
 
-function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUnit, lang }) {
+function LeaderboardRow({ user, isMe, badgeColor, badgeLabel, xpUnit, lang }) {
+  return (
+    <div
+      className={`flex items-center gap-3 rounded-2xl px-4 py-3 border transition-colors ${
+        isMe ? "border-[#00ffb3]/40 bg-[#00ffb3]/5" : "border-[var(--border)]"
+      }`}
+      style={isMe ? undefined : { background: "var(--surface-2)" }}
+    >
+      <div className="w-8 text-center flex-shrink-0">
+        {RANK_ICONS[user.rank] ? (
+          <span className="text-lg">{RANK_ICONS[user.rank]}</span>
+        ) : (
+          <span className="text-sm font-bold" style={{ color: isMe ? "var(--accent)" : "var(--text-dim)" }}>
+            {dNum(user.rank, lang)}
+          </span>
+        )}
+      </div>
+      {user.profile_photo_url ? (
+        <img
+          src={user.profile_photo_url}
+          alt=""
+          width={32} height={32}
+          className="flex-shrink-0 object-cover"
+          style={{ borderRadius: '50%', width: 32, height: 32 }}
+        />
+      ) : (
+        <AvatarPlaceholder size={32} />
+      )}
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold leading-6 truncate"
+          style={{ color: isMe ? "var(--accent)" : "var(--text)" }}>
+          {user.name}
+          {isMe && <span className="text-[10px] font-normal mr-1.5 opacity-60">(شما)</span>}
+        </p>
+        {user.company ? (
+          <p className="text-[11px] leading-5 truncate" style={{ color: "var(--text-dim)" }}>
+            {user.company}
+          </p>
+        ) : null}
+      </div>
+      <div className="text-left flex-shrink-0">
+        <p className="text-sm font-black leading-5" style={{ color: isMe ? "var(--accent)" : "var(--text)" }}>
+          {dNum(user.xp, lang)}
+        </p>
+        <p className="text-[10px] leading-4" style={{ color: "var(--text-dim)" }}>{xpUnit || "XP"}</p>
+      </div>
+      {badgeLabel && (
+        <div
+          className="px-2 py-0.5 rounded-full text-[10px] font-bold flex-shrink-0"
+          style={{ color: badgeColor, background: badgeColor + "20" }}
+        >
+          {badgeLabel}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUnit, lang, levels }) {
+  const [subTab, setSubTab] = useState('overall');
+  const [levelCache, setLevelCache] = useState({});
+
   const levelNameToColor = useMemo(() => {
     const map = {};
     thresholds.forEach((t, i) => { map[t.name] = levelColors[i] || levelColors[levelColors.length - 1]; });
     return map;
   }, [thresholds, levelColors]);
 
-  return (
-    <div className="space-y-2">
-      {users.map((user) => {
-        const isMe = !!currentUserUuid && user.user_uuid === currentUserUuid;
-        const color = levelNameToColor[user.level] || levelColors[0];
+  const activeLevels = useMemo(
+    () => (levels || []).filter(l => l.is_active !== false),
+    [levels]
+  );
+
+  useEffect(() => {
+    if (subTab === 'overall') return;
+    const key = subTab;
+    if (levelCache[key] !== undefined) return;
+    setLevelCache(c => ({ ...c, [key]: null }));
+    fetch(`/api/quest/leaderboard?level=${key}`)
+      .then(r => r.json())
+      .then(d => setLevelCache(c => ({ ...c, [key]: { leaderboard: d.leaderboard || [], currentUser: d.currentUser || null } })))
+      .catch(() => setLevelCache(c => ({ ...c, [key]: { leaderboard: [], currentUser: null } })));
+  }, [subTab]);
+
+  const subTabBar = activeLevels.length > 0 ? (
+    <div className="flex gap-1.5 mb-4 overflow-x-auto pb-1 scrollbar-hide">
+      <button
+        onClick={() => setSubTab('overall')}
+        className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-all"
+        style={{
+          background: subTab === 'overall' ? "var(--accent)" : "var(--surface-2)",
+          color: subTab === 'overall' ? "var(--bg)" : "var(--text-dim)",
+          border: subTab === 'overall' ? '1px solid transparent' : '1px solid var(--border)',
+        }}
+      >
+        {lang === 'en' ? 'Overall' : 'کلی'}
+      </button>
+      {activeLevels.map(level => {
+        const key = String(level.id);
+        const isActive = subTab === key;
+        const color = level.color || '#64748b';
+        const name = lang === 'en' ? (level.name_en || level.name_fa) : level.name_fa;
+        const iconIsImg = level.icon_type === 'image' && level.icon_value?.startsWith('/');
         return (
-          <div
-            key={user.rank}
-            className={`flex items-center gap-3 rounded-2xl px-4 py-3 border transition-colors ${
-              isMe ? "border-[#00ffb3]/40 bg-[#00ffb3]/5" : "border-[var(--border)]"
-            }`}
-            style={isMe ? undefined : { background: "var(--surface-2)" }}
+          <button
+            key={level.id}
+            onClick={() => setSubTab(key)}
+            className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold transition-all"
+            style={{
+              background: isActive ? color + '22' : "var(--surface-2)",
+              color: isActive ? color : "var(--text-dim)",
+              border: `1px solid ${isActive ? color + '66' : 'var(--border)'}`,
+            }}
           >
-            <div className="w-8 text-center flex-shrink-0">
-              {RANK_ICONS[user.rank] ? (
-                <span className="text-lg">{RANK_ICONS[user.rank]}</span>
-              ) : (
-                <span className="text-sm font-bold" style={{ color: isMe ? "var(--accent)" : "var(--text-dim)" }}>
-                  {dNum(user.rank, lang)}
-                </span>
-              )}
-            </div>
-            {user.profile_photo_url ? (
-              <img
-                src={user.profile_photo_url}
-                alt=""
-                width={32} height={32}
-                className="flex-shrink-0 object-cover"
-                style={{ borderRadius: '50%', width: 32, height: 32 }}
-              />
-            ) : (
-              <AvatarPlaceholder size={32} />
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold leading-6 truncate"
-                style={{ color: isMe ? "var(--accent)" : "var(--text)" }}>
-                {user.name}
-                {isMe && <span className="text-[10px] font-normal mr-1.5 opacity-60">(شما)</span>}
-              </p>
-              <p className="text-[11px] leading-5 truncate" style={{ color: "var(--text-dim)" }}>
-                {user.company}
-              </p>
-            </div>
-            <div className="text-left flex-shrink-0">
-              <p className="text-sm font-black leading-5" style={{ color: isMe ? "var(--accent)" : "var(--text)" }}>
-                {dNum(user.xp, lang)}
-              </p>
-              <p className="text-[10px] leading-4" style={{ color: "var(--text-dim)" }}>{xpUnit || "XP"}</p>
-            </div>
-            <div
-              className="px-2 py-0.5 rounded-full text-[10px] font-bold flex-shrink-0"
-              style={{ color, background: color + "20" }}
-            >
-              {user.level}
-            </div>
-          </div>
+            {iconIsImg
+              ? <img src={level.icon_value} alt="" style={{ width: level.icon_size ?? 14, height: level.icon_size ?? 14, objectFit: 'contain', flexShrink: 0 }} />
+              : <span style={{ fontSize: level.icon_size ?? 14, lineHeight: 1 }}>{level.icon_value || '⭐'}</span>
+            }
+            {name}
+          </button>
         );
       })}
+    </div>
+  ) : null;
+
+  if (subTab === 'overall') {
+    return (
+      <div className="space-y-2">
+        {subTabBar}
+        {users.map((user) => {
+          const isMe = !!currentUserUuid && user.user_uuid === currentUserUuid;
+          const color = levelNameToColor[user.level] || levelColors[0];
+          return (
+            <LeaderboardRow key={user.rank} user={user} isMe={isMe} badgeColor={color} badgeLabel={user.level} xpUnit={xpUnit} lang={lang} />
+          );
+        })}
+      </div>
+    );
+  }
+
+  const levelId = parseInt(subTab, 10);
+  const level = activeLevels.find(l => l.id === levelId);
+  const levelName = level ? (lang === 'en' ? (level.name_en || level.name_fa) : level.name_fa) : '';
+  const levelColor = level?.color || '#64748b';
+  const cache = levelCache[subTab];
+
+  if (cache === null || cache === undefined) {
+    return (
+      <div className="space-y-2">
+        {subTabBar}
+        <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
+          {lang === 'en' ? 'Loading...' : 'در حال بارگذاری...'}
+        </div>
+      </div>
+    );
+  }
+
+  const levelRows = cache.leaderboard.map(item => ({
+    rank:              item.rank,
+    user_uuid:         item.user_uuid,
+    name:              lang === 'en' ? (item.display_name_en || item.display_name_fa || 'شرکت‌کننده') : (item.display_name_fa || 'شرکت‌کننده'),
+    company:           '',
+    xp:                item.total_xp,
+    profile_photo_url: item.profile_photo_url || null,
+  }));
+
+  const currentInList = levelRows.find(r => r.user_uuid === currentUserUuid);
+  const cu = cache.currentUser;
+  const showExtraMe = cu && !currentInList;
+
+  return (
+    <div className="space-y-2">
+      {subTabBar}
+      {levelRows.length === 0 ? (
+        <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
+          {lang === 'en' ? 'No users at this level yet' : 'هنوز کاربری در این سطح نیست'}
+        </div>
+      ) : (
+        levelRows.map(user => (
+          <LeaderboardRow
+            key={user.rank}
+            user={user}
+            isMe={!!currentUserUuid && user.user_uuid === currentUserUuid}
+            badgeColor={levelColor}
+            badgeLabel={levelName}
+            xpUnit={xpUnit}
+            lang={lang}
+          />
+        ))
+      )}
+      {showExtraMe && (
+        <>
+          <div className="text-center text-xs py-1" style={{ color: "var(--text-dim)" }}>• • •</div>
+          <LeaderboardRow
+            key="current-user-extra"
+            user={{
+              rank:              cu.rank,
+              user_uuid:         cu.user_uuid || currentUserUuid,
+              name:              lang === 'en' ? (cu.display_name_en || cu.display_name_fa || 'شما') : (cu.display_name_fa || 'شما'),
+              company:           '',
+              xp:                cu.total_xp,
+              profile_photo_url: cu.profile_photo_url || null,
+            }}
+            isMe={true}
+            badgeColor={levelColor}
+            badgeLabel={levelName}
+            xpUnit={xpUnit}
+            lang={lang}
+          />
+        </>
+      )}
     </div>
   );
 }
@@ -549,40 +694,56 @@ function BadgeCard({ badge, onQuizClick, onFeaturedClick, onSurveyClick, onSocia
         </div>
       ) : isFeaturedBooth ? (
         <div className="mt-2 flex flex-col items-center gap-1">
-          {countdownText && <div className="text-[10px]" style={{ color: "var(--text-dim)" }}>{countdownText}</div>}
+          {countdownText && <p className="text-[11px]" style={{ color: "var(--text-dim)" }}>{countdownText}</p>}
           {featuredClickable && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-              style={{ background: "rgba(0,255,179,0.12)", color: "var(--accent)" }}>
+            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
+              style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
               {lang === 'fa' ? 'مشاهده غرفه‌ها ←' : 'See booths →'}
             </span>
           )}
         </div>
       ) : isQuiz && badge.quiz_attempted ? (
-        <div className="mt-2 text-[10px]" style={{ color: "#f87171" }}>پاسخ داده شده</div>
+        <p className="mt-2 text-[11px]" style={{ color: "#f87171" }}>پاسخ داده شده</p>
       ) : isQuiz ? (
-        <div className="mt-2 text-[10px] font-bold" style={{ color: "var(--accent)" }}>شرکت کن ←</div>
+        <div className="mt-2">
+          <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
+            style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
+            {lang === 'fa' ? 'شرکت کن ←' : 'Join →'}
+          </span>
+        </div>
       ) : isSurvey && badge.survey_submitted ? (
-        <div className="mt-2 text-[10px]" style={{ color: "#f87171" }}>پاسخ داده شده</div>
+        <p className="mt-2 text-[11px] font-bold" style={{ color: "var(--accent)" }}>پاسخ داده شده ✓</p>
       ) : isSurvey ? (
-        <div className="mt-2 text-[10px] font-bold" style={{ color: "var(--accent)" }}>
-          {lang === 'fa' ? 'شرکت در نظرسنجی ←' : 'Take Survey →'}
+        <div className="mt-2">
+          <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
+            style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
+            {lang === 'fa' ? 'شرکت در نظرسنجی ←' : 'Take Survey →'}
+          </span>
         </div>
       ) : isSocialShare ? (
-        badge.earned || socialShareStatus === 'approved' ? (
-          <div className="mt-2 text-[10px] font-bold" style={{ color: "var(--accent)" }}>تایید شد ✅</div>
-        ) : socialShareStatus === 'pending' ? (
-          <div className="mt-2 text-[10px] font-medium" style={{ color: '#f59e0b' }}>در انتظار بررسی ⏳</div>
-        ) : socialShareStatus === 'rejected' ? (
-          <div className="mt-2 flex flex-col items-center gap-0.5">
-            <span className="text-[10px] font-medium" style={{ color: '#f87171' }}>رد شد ❌</span>
-            {socialShareNote && <span className="text-[9px] leading-4" style={{ color: 'var(--text-dim)' }}>{socialShareNote}</span>}
-            <span className="text-[10px] font-bold" style={{ color: "var(--accent)" }}>ارسال مجدد ←</span>
-          </div>
-        ) : (
-          <div className="mt-2 text-[10px] font-bold" style={{ color: "var(--accent)" }}>
-            {lang === 'fa' ? 'اشتراک‌گذاری کن ←' : 'Share →'}
-          </div>
-        )
+        <div className="mt-2 flex flex-col items-center gap-0.5">
+          {badge.earned || socialShareStatus === 'approved' ? (
+            <p className="text-[11px] font-bold" style={{ color: "var(--accent)" }}>تایید شد ✅</p>
+          ) : socialShareStatus === 'pending' ? (
+            <p className="text-[11px] font-medium" style={{ color: '#f59e0b' }}>در انتظار بررسی ⏳</p>
+          ) : socialShareStatus === 'rejected' ? (
+            <>
+              <p className="text-[11px] font-medium" style={{ color: '#f87171' }}>رد شد ❌</p>
+              {socialShareNote && <p className="text-[10px] leading-4" style={{ color: 'var(--text-dim)' }}>{socialShareNote}</p>}
+              {socialShareClickable && (
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
+                  style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
+                  {lang === 'fa' ? 'ارسال مجدد ←' : 'Resubmit →'}
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
+              style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
+              {lang === 'fa' ? 'اشتراک‌گذاری کن ←' : 'Share →'}
+            </span>
+          )}
+        </div>
       ) : null}
     </div>
   );
@@ -696,7 +857,7 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
   if (!open && !visible) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
+    <div className="fixed inset-0 z-[200] flex items-end justify-center">
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300"
         style={{ opacity: visible ? 1 : 0 }}
@@ -858,7 +1019,7 @@ function FeaturedBoothPoolSheet({ open, onClose, item, isRTL, lang, logoBaseUrl 
   const itemTitle = item?.title || item?.name || (lang === 'fa' ? 'غرفه‌های این ماموریت' : 'Mission Booths');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
+    <div className="fixed inset-0 z-[200] flex items-end justify-center">
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300"
         style={{ opacity: visible ? 1 : 0 }}
@@ -1491,7 +1652,7 @@ function SocialShareModal({ share, onClose, onComplete, lang }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
+      className="fixed inset-0 z-[200] flex items-end justify-center"
       style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
       onClick={e => { if (e.target === e.currentTarget) { onClose(); } }}
     >
@@ -1901,6 +2062,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
             currentUserUuid={currentUserUuid}
             xpUnit={labels.xpUnit}
             lang={lang}
+            levels={liveLevels || []}
           />
         )}
 

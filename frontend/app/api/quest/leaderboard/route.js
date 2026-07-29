@@ -42,7 +42,32 @@ async function getLeaderboardLimit() {
   }
 }
 
-export async function GET() {
+// Shared CTE that computes total XP per user
+const XP_CTE = `
+  WITH scan_agg AS (
+    SELECT user_uuid,
+           SUM(xp_earned)::int AS xp,
+           COUNT(*)::int       AS scan_count
+    FROM quest_scans
+    GROUP BY user_uuid
+  ),
+  grant_agg AS (
+    SELECT user_uuid,
+           SUM(xp_amount)::int AS xp
+    FROM quest_xp_grants
+    GROUP BY user_uuid
+  ),
+  combined AS (
+    SELECT
+      COALESCE(s.user_uuid, g.user_uuid)      AS user_uuid,
+      COALESCE(s.xp, 0) + COALESCE(g.xp, 0)  AS total_xp,
+      COALESCE(s.scan_count, 0)                AS scan_count
+    FROM scan_agg s
+    FULL OUTER JOIN grant_agg g ON s.user_uuid = g.user_uuid
+  )
+`;
+
+export async function GET(request) {
   const cookieStore = await cookies();
   const userRaw = cookieStore.get('iph_user')?.value;
 
@@ -52,35 +77,123 @@ export async function GET() {
     currentUuid = user?.uuid || null;
   } catch {}
 
+  const { searchParams } = new URL(request.url);
+  const levelParam = searchParams.get('level');
+  const levelId = levelParam ? parseInt(levelParam, 10) : null;
+
   try {
     await ensureQuestUserNamesTable();
+
+    // ── LEVEL SUB-LEADERBOARD ──────────────────────────────────────────────
+    if (levelId && Number.isFinite(levelId)) {
+      const { rows: levelRows } = await query(
+        `SELECT min_xp, max_xp, leaderboard_limit FROM quest_levels WHERE id = $1 AND is_active = true`,
+        [levelId]
+      );
+      if (levelRows.length === 0) {
+        return NextResponse.json({ leaderboard: [], currentUser: null });
+      }
+
+      const { min_xp, max_xp, leaderboard_limit } = levelRows[0];
+      const limit = (Number.isFinite(leaderboard_limit) && leaderboard_limit >= 1) ? leaderboard_limit : 20;
+      const maxXpFilter = max_xp !== null && max_xp !== undefined;
+
+      const { rows: topRows } = await query(`
+        ${XP_CTE},
+        in_level AS (
+          SELECT user_uuid, total_xp, scan_count
+          FROM combined
+          WHERE total_xp >= $1
+            ${maxXpFilter ? 'AND total_xp < $2' : ''}
+        ),
+        ranked AS (
+          SELECT user_uuid, total_xp, scan_count,
+                 RANK() OVER (ORDER BY total_xp DESC)::int AS rank
+          FROM in_level
+        )
+        SELECT
+          r.user_uuid, r.total_xp, r.scan_count, r.rank,
+          COALESCE(
+            qn.display_name_fa,
+            NULLIF(TRIM(COALESCE(au.firstname_fa, '') || ' ' || COALESCE(au.lastname_fa, '')), ''),
+            'شرکت‌کننده'
+          ) AS display_name_fa,
+          COALESCE(
+            qn.display_name_en,
+            NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), '')
+          ) AS display_name_en,
+          qn.profile_photo_url,
+          au.profile_image
+        FROM ranked r
+        LEFT JOIN quest_user_names qn ON r.user_uuid = qn.user_uuid
+        LEFT JOIN app_users        au ON r.user_uuid = au.uuid
+        ORDER BY r.rank
+        LIMIT $${maxXpFilter ? '3' : '2'}
+      `, maxXpFilter ? [min_xp, max_xp, limit] : [min_xp, limit]);
+
+      const leaderboard = topRows.map(row => ({
+        rank:              row.rank,
+        user_uuid:         row.user_uuid,
+        display_name_fa:   row.display_name_fa,
+        display_name_en:   row.display_name_en || null,
+        total_xp:          row.total_xp,
+        scan_count:        row.scan_count,
+        profile_photo_url: resolvePhotoUrl(row.profile_photo_url, row.profile_image),
+      }));
+
+      // Current user's rank within this level
+      let currentUser = null;
+      if (currentUuid) {
+        const { rows: rankRows } = await query(`
+          ${XP_CTE},
+          in_level AS (
+            SELECT user_uuid, total_xp
+            FROM combined
+            WHERE total_xp >= $1
+              ${maxXpFilter ? 'AND total_xp < $2' : ''}
+          ),
+          ranked AS (
+            SELECT user_uuid, total_xp,
+                   RANK() OVER (ORDER BY total_xp DESC)::int AS rank
+            FROM in_level
+          )
+          SELECT r.rank, r.total_xp,
+                 COALESCE(
+                   qn.display_name_fa,
+                   NULLIF(TRIM(COALESCE(au.firstname_fa, '') || ' ' || COALESCE(au.lastname_fa, '')), ''),
+                   'شرکت‌کننده'
+                 ) AS display_name_fa,
+                 COALESCE(
+                   qn.display_name_en,
+                   NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), '')
+                 ) AS display_name_en,
+                 qn.profile_photo_url, au.profile_image
+          FROM ranked r
+          LEFT JOIN quest_user_names qn ON r.user_uuid = qn.user_uuid
+          LEFT JOIN app_users        au ON r.user_uuid = au.uuid
+          WHERE r.user_uuid = $${maxXpFilter ? '3' : '2'}
+        `, maxXpFilter ? [min_xp, max_xp, currentUuid] : [min_xp, currentUuid]);
+
+        if (rankRows.length > 0) {
+          currentUser = {
+            user_uuid:         currentUuid,
+            rank:              rankRows[0].rank,
+            total_xp:          rankRows[0].total_xp,
+            display_name_fa:   rankRows[0].display_name_fa,
+            display_name_en:   rankRows[0].display_name_en || null,
+            profile_photo_url: resolvePhotoUrl(rankRows[0].profile_photo_url, rankRows[0].profile_image),
+          };
+        }
+      }
+
+      return NextResponse.json({ leaderboard, currentUser });
+    }
+
+    // ── OVERALL LEADERBOARD (original behavior) ────────────────────────────
     const limit = await getLeaderboardLimit();
 
-    // Top-N leaderboard with name + photo resolution.
-    // XP = quest_scans.xp_earned (scan-based) + quest_xp_grants.xp_amount (quiz/survey).
-    // Users who only earned XP via grants (no scans) still appear via FULL OUTER JOIN.
     const { rows: leaderboardRows } = await query(`
-      WITH scan_agg AS (
-        SELECT user_uuid,
-               SUM(xp_earned)::int AS xp,
-               COUNT(*)::int       AS scan_count
-        FROM quest_scans
-        GROUP BY user_uuid
-      ),
-      grant_agg AS (
-        SELECT user_uuid,
-               SUM(xp_amount)::int AS xp
-        FROM quest_xp_grants
-        GROUP BY user_uuid
-      ),
-      combined AS (
-        SELECT
-          COALESCE(s.user_uuid, g.user_uuid)      AS user_uuid,
-          COALESCE(s.xp, 0) + COALESCE(g.xp, 0)  AS total_xp,
-          COALESCE(s.scan_count, 0)                AS scan_count
-        FROM scan_agg s
-        FULL OUTER JOIN grant_agg g ON s.user_uuid = g.user_uuid
-      )
+      ${XP_CTE}
       SELECT
         c.user_uuid,
         COALESCE(
@@ -113,7 +226,7 @@ export async function GET() {
       profile_photo_url: resolvePhotoUrl(row.profile_photo_url, row.profile_image),
     }));
 
-    // Current user's rank, XP, and photo (may be outside top-N)
+    // Current user's overall rank (may be outside top-N)
     let currentUser = null;
     if (currentUuid) {
       const { rows: rankRows } = await query(`
