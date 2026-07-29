@@ -31,18 +31,6 @@ const FALLBACK_MISSIONS = [
   { id: 4, icon: "🎤", title: "شرکت در مراسم افتتاحیه",    description: "در مراسم افتتاحیه شرکت کن",             xpReward: 300, progress: 0, total: 1 },
 ];
 
-const FALLBACK_LEADERBOARD = [
-  { rank: 1,  name: "اردشیر شیرزادیان", company: "بازدیدکننده",          xp: 850, level: "کاربلد"     },
-  { rank: 2,  name: "علی محمدی",         company: "داروسازی البرز",        xp: 580, level: "کاربلد"     },
-  { rank: 3,  name: "سارا احمدی",        company: "شرکت دارو پخش",         xp: 430, level: "کاوشگر"     },
-  { rank: 4,  name: "محمد حسینی",        company: "داروسازی تهران شیمی",   xp: 390, level: "کاوشگر"     },
-  { rank: 5,  name: "فاطمه رضایی",       company: "داروسازی اکسیر",        xp: 310, level: "کاوشگر"     },
-  { rank: 6,  name: "رضا کریمی",         company: "داروسازی روز دارو",     xp: 270, level: "کاوشگر"     },
-  { rank: 7,  name: "مریم نجفی",         company: "شرکت پخش رازی",         xp: 210, level: "کاوشگر"     },
-  { rank: 8,  name: "حسین موسوی",        company: "داروسازی زهراوی",       xp: 180, level: "تازه‌وارد"  },
-  { rank: 9,  name: "زهرا صادقی",        company: "تجهیزات پزشکی پارس",   xp: 95,  level: "تازه‌وارد"  },
-  { rank: 10, name: "امیر قاسمی",        company: "شرکت فن‌آوران طب",     xp: 60,  level: "تازه‌وارد"  },
-];
 
 const FALLBACK_BADGES = [
   { id: 1, icon: "🏛️", name: "کاوشگر غرفه‌ها",     description: "از ۳ غرفه بازدید کردی",                    earned: true  },
@@ -547,13 +535,23 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
     return (
       <div className="space-y-2">
         {subTabBar}
-        {users.map((user) => {
-          const isMe = !!currentUserUuid && user.user_uuid === currentUserUuid;
-          const color = levelNameToColor[user.level] || levelColors[0];
-          return (
-            <LeaderboardRow key={user.rank} user={user} isMe={isMe} badgeColor={color} badgeLabel={user.level} xpUnit={xpUnit} lang={lang} />
-          );
-        })}
+        {users === null ? (
+          <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
+            {lang === 'en' ? 'Loading...' : 'در حال بارگذاری...'}
+          </div>
+        ) : users.length === 0 ? (
+          <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
+            {lang === 'en' ? 'No users on the leaderboard yet' : 'هنوز کسی در لیدربورد امتیازی کسب نکرده'}
+          </div>
+        ) : (
+          users.map((user) => {
+            const isMe = !!currentUserUuid && user.user_uuid === currentUserUuid;
+            const color = levelNameToColor[user.level] || levelColors[0];
+            return (
+              <LeaderboardRow key={user.rank} user={user} isMe={isMe} badgeColor={color} badgeLabel={user.level} xpUnit={xpUnit} lang={lang} />
+            );
+          })
+        )}
       </div>
     );
   }
@@ -1888,9 +1886,9 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         };
       });
     }
-    if (content?.leaderboard?.length > 0) return content.leaderboard;
-    return FALLBACK_LEADERBOARD;
-  }, [liveLeaderboard, content?.leaderboard, lang, levelThresholds]);
+    // null = fetch not yet complete; [] = fetched, no users yet
+    return liveLeaderboard === null ? null : [];
+  }, [liveLeaderboard, lang, levelThresholds]);
   const badges = useMemo(() => {
     if (liveBadges && liveBadges.length > 0) {
       return liveBadges.map(b => ({

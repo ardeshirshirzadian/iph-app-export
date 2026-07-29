@@ -62,7 +62,7 @@ export async function POST(request) {
       xpReward     = r.rows[0].xp_reward ?? 0;
     } else {
       const r = await query(
-        `SELECT quiz_correct_index, xp_reward FROM quest_badges WHERE id = $1 AND badge_type = 'quiz'`,
+        `SELECT quiz_correct_index, 0 AS xp_reward FROM quest_badges WHERE id = $1 AND badge_type = 'quiz'`,
         [badgeId]
       );
       if (r.rows.length === 0) {

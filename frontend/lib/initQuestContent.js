@@ -63,28 +63,6 @@ const SEED_ROWS = [
       description: 'در مراسم افتتاحیه شرکت کن',
       xpReward: 300, progress: 0, total: 1 }), 40],
 
-  // ── Leaderboard (JSON content per user) ───────────────────────────────────
-  ['leaderboard', 'text', 'user_1',
-    JSON.stringify({ rank: 1, name: 'اردشیر شیرزادیان', company: 'بازدیدکننده',   xp: 850, level: 'کاربلد' }), 10],
-  ['leaderboard', 'text', 'user_2',
-    JSON.stringify({ rank: 2, name: 'علی محمدی',         company: 'داروسازی البرز', xp: 580, level: 'کاربلد' }), 20],
-  ['leaderboard', 'text', 'user_3',
-    JSON.stringify({ rank: 3, name: 'سارا احمدی',        company: 'شرکت دارو پخش', xp: 430, level: 'کاوشگر' }), 30],
-  ['leaderboard', 'text', 'user_4',
-    JSON.stringify({ rank: 4, name: 'محمد حسینی',        company: 'داروسازی تهران شیمی', xp: 390, level: 'کاوشگر' }), 40],
-  ['leaderboard', 'text', 'user_5',
-    JSON.stringify({ rank: 5, name: 'فاطمه رضایی',       company: 'داروسازی اکسیر', xp: 310, level: 'کاوشگر' }), 50],
-  ['leaderboard', 'text', 'user_6',
-    JSON.stringify({ rank: 6, name: 'رضا کریمی',         company: 'داروسازی روز دارو', xp: 270, level: 'کاوشگر' }), 60],
-  ['leaderboard', 'text', 'user_7',
-    JSON.stringify({ rank: 7, name: 'مریم نجفی',         company: 'شرکت پخش رازی', xp: 210, level: 'کاوشگر' }), 70],
-  ['leaderboard', 'text', 'user_8',
-    JSON.stringify({ rank: 8, name: 'حسین موسوی',        company: 'داروسازی زهراوی', xp: 180, level: 'تازه‌وارد' }), 80],
-  ['leaderboard', 'text', 'user_9',
-    JSON.stringify({ rank: 9, name: 'زهرا صادقی',        company: 'تجهیزات پزشکی پارس', xp: 95, level: 'تازه‌وارد' }), 90],
-  ['leaderboard', 'text', 'user_10',
-    JSON.stringify({ rank: 10, name: 'امیر قاسمی',       company: 'شرکت فن‌آوران طب', xp: 60, level: 'تازه‌وارد' }), 100],
-
   // ── Badges (JSON content per badge) ──────────────────────────────────────
   ['badges', 'text', 'badge_1',
     JSON.stringify({ icon: '🏛️', name: 'کاوشگر غرفه‌ها',
