@@ -239,6 +239,7 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
   // run unconditionally below.
 
   const forbiddenEdges = new Map(); // Map<fromCellIdx, Set<toCellIdx>>
+  let innerBboxes = []; // populated below when door/sign data is present
 
   function addForbiddenEdge(from, to) {
     let s = forbiddenEdges.get(from);
@@ -330,7 +331,7 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
     //
     // Gap cells override wall-ring blocking and stay walkable regardless.
 
-    const innerBboxes = buildings.map((b) => ({
+    innerBboxes = buildings.map((b) => ({
       x0: b.x0 + WALL_PAD,
       y0: b.y0 + WALL_PAD,
       x1: b.x1 - WALL_PAD,
@@ -504,23 +505,36 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
 
   // `walls` is kept on the grid so findGridRoute can repair RDP-simplified segments
   // that visually cross a wall even though the raw A* path correctly avoids it.
-  return { blocked, cols, rows, cellSize, forbiddenEdges, walls: mapWalls ?? [] };
+  // `innerBboxes` is used by nearestWalkable to prefer interior snap targets over exterior.
+  return { blocked, cols, rows, cellSize, forbiddenEdges, walls: mapWalls ?? [], innerBboxes };
 }
 
 // ── Nearest walkable cell (Chebyshev spiral) ──────────────────────────────────
 
-function nearestWalkable(blocked, cols, rows, c, r) {
+function nearestWalkable(blocked, cols, rows, c, r, innerBboxes, cellSize) {
   if (!blocked[r * cols + c]) return { c, r };
+  const hasInner = innerBboxes && innerBboxes.length > 0 && cellSize;
   for (let d = 1; d < Math.max(cols, rows); d++) {
+    let bestInterior = null, bestExterior = null;
     for (let dr = -d; dr <= d; dr++) {
       for (let dc = -d; dc <= d; dc++) {
         if (Math.abs(dr) !== d && Math.abs(dc) !== d) continue;
         const nc = c + dc, nr = r + dr;
-        if (nc >= 0 && nc < cols && nr >= 0 && nr < rows && !blocked[nr * cols + nc]) {
-          return { c: nc, r: nr };
-        }
+        if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+        if (blocked[nr * cols + nc]) continue;
+        if (!hasInner) return { c: nc, r: nr };
+        // Classify as interior (inside a hall) vs exterior
+        const cx = (nc + 0.5) * cellSize, cy = (nr + 0.5) * cellSize;
+        const isInterior = innerBboxes.some(
+          (ib) => cx >= ib.x0 && cx <= ib.x1 && cy >= ib.y0 && cy <= ib.y1
+        );
+        if (isInterior) { if (!bestInterior) bestInterior = { c: nc, r: nr }; }
+        else            { if (!bestExterior) bestExterior = { c: nc, r: nr }; }
       }
     }
+    // Prefer an interior cell — only fall back to exterior if nothing interior found at this d
+    if (bestInterior) return bestInterior;
+    if (bestExterior) return bestExterior;
   }
   return { c, r };
 }
@@ -770,8 +784,8 @@ export function findGridRoute(grid, startX, startY, destX, destY) {
 
   const sc = toCell(startX, startY);
   const dc = toCell(destX, destY);
-  const start = nearestWalkable(blocked, cols, rows, sc.c, sc.r);
-  const end = nearestWalkable(blocked, cols, rows, dc.c, dc.r);
+  const start = nearestWalkable(blocked, cols, rows, sc.c, sc.r, grid.innerBboxes, cellSize);
+  const end = nearestWalkable(blocked, cols, rows, dc.c, dc.r, grid.innerBboxes, cellSize);
 
   const gridPath = aStarGrid(blocked, cols, rows, start.c, start.r, end.c, end.r, forbiddenEdges);
   if (!gridPath) return null;

@@ -6,7 +6,7 @@ import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 import { isPushSupported, requestNotificationPermission, subscribeToPush } from "@/lib/pushClient";
 
-export default function SettingsClient({ title, subtitle, title_en, subtitle_en }) {
+export default function SettingsClient({ title, subtitle, title_en, subtitle_en, themeMode = "system" }) {
   const [isDark, setIsDark] = useState(true);
   const { lang, switchLang, isRTL } = useLang();
   const [pushPermission, setPushPermission] = useState('loading');
@@ -68,38 +68,40 @@ export default function SettingsClient({ title, subtitle, title_en, subtitle_en 
         <PageHeader title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} />
 
         <div className="flex flex-col gap-3">
-          {/* Appearance section */}
-          <div
-            className="backdrop-blur-xl border border-[var(--border)] rounded-3xl p-5"
-            style={{ background: "var(--surface)" }}
-          >
-            <p className="text-xs font-medium mb-4" style={{ color: "var(--text-dim)" }}>
-              {t(lang, "settings_appearance")}
-            </p>
+          {/* Appearance section — hidden when admin forces a theme */}
+          {themeMode === "system" && (
+            <div
+              className="backdrop-blur-xl border border-[var(--border)] rounded-3xl p-5"
+              style={{ background: "var(--surface)" }}
+            >
+              <p className="text-xs font-medium mb-4" style={{ color: "var(--text-dim)" }}>
+                {t(lang, "settings_appearance")}
+              </p>
 
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-sm leading-7" style={{ color: "var(--text)" }}>
-                  {t(lang, "theme_label")}
-                </p>
-                <p className="text-xs" style={{ color: "var(--text-dim)" }}>
-                  {isDark ? t(lang, "theme_dark") : t(lang, "theme_light")}
-                </p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-sm leading-7" style={{ color: "var(--text)" }}>
+                    {t(lang, "theme_label")}
+                  </p>
+                  <p className="text-xs" style={{ color: "var(--text-dim)" }}>
+                    {isDark ? t(lang, "theme_dark") : t(lang, "theme_light")}
+                  </p>
+                </div>
+
+                <button
+                  onClick={toggleTheme}
+                  aria-label={t(lang, "theme_label")}
+                  className="relative w-12 h-6 rounded-full transition-colors duration-300"
+                  style={{ background: isDark ? "var(--surface-hover)" : "var(--accent)" }}
+                >
+                  <span
+                    className="absolute top-0.5 w-5 h-5 rounded-full shadow bg-white transition-all duration-300"
+                    style={{ right: isDark ? "2px" : "26px" }}
+                  />
+                </button>
               </div>
-
-              <button
-                onClick={toggleTheme}
-                aria-label={t(lang, "theme_label")}
-                className="relative w-12 h-6 rounded-full transition-colors duration-300"
-                style={{ background: isDark ? "var(--surface-hover)" : "var(--accent)" }}
-              >
-                <span
-                  className="absolute top-0.5 w-5 h-5 rounded-full shadow bg-white transition-all duration-300"
-                  style={{ right: isDark ? "2px" : "26px" }}
-                />
-              </button>
             </div>
-          </div>
+          )}
 
           {/* Language section */}
           <div

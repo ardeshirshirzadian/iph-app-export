@@ -18,8 +18,18 @@ function applyTheme(theme) {
   if (meta) meta.setAttribute("content", isLight ? THEME_COLORS.light : THEME_COLORS.dark);
 }
 
-export default function ThemeSync() {
+export default function ThemeSync({ themeMode = "system" }) {
   useEffect(() => {
+    if (themeMode === "dark") {
+      applyTheme("dark");
+      return;
+    }
+    if (themeMode === "light") {
+      applyTheme("light");
+      return;
+    }
+
+    // "system" — follow OS, allow localStorage override
     applyTheme(localStorage.getItem("iph-theme") || getSystemTheme());
 
     function onStorage(e) {
@@ -39,7 +49,7 @@ export default function ThemeSync() {
       window.removeEventListener("storage", onStorage);
       mq.removeEventListener("change", onSystemChange);
     };
-  }, []);
+  }, [themeMode]);
 
   return null;
 }

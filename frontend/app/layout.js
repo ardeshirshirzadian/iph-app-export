@@ -8,6 +8,7 @@ import PageWrapper from "./components/PageWrapper";
 import ProfilePhotoGuard from "./components/ProfilePhotoGuard";
 import { getActiveFont, getActiveFontEn } from "@/lib/getActiveFont";
 import { getThemeColors } from "@/lib/getThemeColors";
+import { getThemeMode } from "@/lib/getThemeMode";
 import { getAppIdentity } from "@/lib/getAppIdentity";
 import { existsSync } from "fs";
 import { join } from "path";
@@ -44,8 +45,16 @@ export const viewport = {
 
 const LANG_INIT_SCRIPT = `(function(){try{var l=localStorage.getItem("iph-lang")||"fa";if(l==="en"){document.documentElement.dir="ltr";document.documentElement.lang="en";document.documentElement.classList.add("lang-en");}else{document.documentElement.dir="rtl";document.documentElement.lang="fa";}}catch(e){}})();`;
 
-function buildThemeInitScript(darkBg, lightBg) {
-  return `(function(){try{var t=localStorage.getItem("iph-theme");if(!t){t=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";}var light=t==="light";if(light)document.documentElement.classList.add("light");var c=light?"${lightBg}":"${darkBg}";var s=document.createElement("style");s.textContent="body{background-color:"+c+"}";document.head.appendChild(s);var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",c);var ab=document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');if(ab)ab.setAttribute("content",light?"default":"black-translucent");}catch(e){}})();`;
+function buildThemeInitScript(darkBg, lightBg, themeMode) {
+  let modeSnippet;
+  if (themeMode === 'dark') {
+    modeSnippet = `var light=false;`;
+  } else if (themeMode === 'light') {
+    modeSnippet = `var light=true;`;
+  } else {
+    modeSnippet = `var t=localStorage.getItem("iph-theme");if(!t){t=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";}var light=t==="light";`;
+  }
+  return `(function(){try{${modeSnippet}if(light)document.documentElement.classList.add("light");var c=light?"${lightBg}":"${darkBg}";var s=document.createElement("style");s.textContent="body{background-color:"+c+"}";document.head.appendChild(s);var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",c);var ab=document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');if(ab)ab.setAttribute("content",light?"default":"black-translucent");}catch(e){}})();`;
 }
 
 function buildFontStyle(activeFont) {
@@ -86,16 +95,17 @@ function buildFontEnStyle(activeFontEn) {
 }
 
 export default async function RootLayout({ children }) {
-  const [activeFont, activeFontEn, themeColors] = await Promise.all([
+  const [activeFont, activeFontEn, themeColors, themeMode] = await Promise.all([
     getActiveFont(),
     getActiveFontEn(),
     getThemeColors(),
+    getThemeMode(),
   ]);
   const fontStyle = buildFontStyle(activeFont);
   const fontEnStyle = buildFontEnStyle(activeFontEn);
   const isGoogleFont = activeFont.source === 'google';
   const isGoogleFontEn = activeFontEn.source === 'google';
-  const themeInitScript = buildThemeInitScript(themeColors.dark.bg, themeColors.light.bg);
+  const themeInitScript = buildThemeInitScript(themeColors.dark.bg, themeColors.light.bg, themeMode);
 
   return (
     <html lang="fa" dir="rtl">
@@ -130,7 +140,7 @@ export default async function RootLayout({ children }) {
         <link rel="stylesheet" href="/api/theme.css" />
       </head>
       <body>
-        <ThemeSync />
+        <ThemeSync themeMode={themeMode} />
         <LangSync />
         <ServiceWorkerRegistrar />
         <SessionExpiredToast />

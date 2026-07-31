@@ -10,6 +10,35 @@ import PageHeader from "@/components/PageHeader";
 import { useLang } from "@/lib/useLang";
 import { toPersianDigits } from "@/lib/utils";
 
+// ── Appearance config defaults (matched to current hardcoded values) ───────
+
+const APPEARANCE_DEFAULTS = {
+  dark: {
+    mission_title_size: 14,    mission_title_color: '#ffffff',
+    mission_subtitle_size: 12, mission_subtitle_color: '#94a3b8',
+    leaderboard_size: 14,      leaderboard_color: '#ffffff',
+    badge_title_size: 14,      badge_title_color: '#94a3b8',
+    active_border_color: '#00ffb3',
+    rotation_text_size: 11,    rotation_text_color: '#94a3b8',
+  },
+  light: {
+    mission_title_size: 14,    mission_title_color: '#0f172a',
+    mission_subtitle_size: 12, mission_subtitle_color: '#475569',
+    leaderboard_size: 14,      leaderboard_color: '#0f172a',
+    badge_title_size: 14,      badge_title_color: '#475569',
+    active_border_color: '#047857',
+    rotation_text_size: 11,    rotation_text_color: '#475569',
+  },
+};
+
+function hexToRgba(hex, alpha) {
+  if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) return null;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 // ── Hardcoded non-CMS constants ────────────────────────────────────────────
 // These represent live gameplay state, not static content — they stay here
 // until real quest logic replaces them.
@@ -271,15 +300,16 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
     <div
       onClick={handleClick}
       className={`backdrop-blur-xl border rounded-2xl p-4 flex items-center gap-4 transition-colors ${
-        done ? "border-[#00ffb3]/30 bg-[#00ffb3]/5" : "border-[var(--border)]"
-      } ${(quizClickable || surveyClickable || socialShareClickable || featuredClickable) ? "cursor-pointer active:scale-[0.98]" : ""}`}
-      style={done ? undefined : { background: "var(--surface-2)" }}
+        (quizClickable || surveyClickable || socialShareClickable || featuredClickable) ? "cursor-pointer active:scale-[0.98]" : ""
+      }`}
+      style={done
+        ? { borderColor: "var(--quest-active-border)", background: "var(--quest-active-bg)" }
+        : { background: "var(--surface-2)", borderColor: "var(--border)" }
+      }
     >
       <div
-        className={`w-11 h-11 rounded-xl flex-shrink-0 flex items-center justify-center ${
-          done ? "bg-[#00ffb3]/20" : ""
-        }`}
-        style={done ? undefined : { background: "var(--surface-2)" }}
+        className="w-11 h-11 rounded-xl flex-shrink-0 flex items-center justify-center"
+        style={{ background: done ? "var(--quest-active-icon-bg)" : "var(--surface-2)" }}
       >
         {mission.icon && mission.icon.startsWith('/') ? (
           <img src={mission.icon} alt="" style={{ width: mission.icon_size ?? 36, height: mission.icon_size ?? 36, objectFit: 'contain' }} />
@@ -291,8 +321,8 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-1">
           <span
-            className="font-medium text-sm leading-7"
-            style={{ color: done ? "var(--accent)" : "var(--text)" }}
+            className="font-medium leading-7"
+            style={{ fontSize: "var(--quest-title-size)", color: "var(--quest-title-color)" }}
           >
             {mission.title}
           </span>
@@ -300,7 +330,7 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
             +{dNum(mission.xpReward, langProp)} {xpUnit || "XP"}
           </span>
         </div>
-        <p className="text-xs leading-6 mb-1.5 truncate" style={{ color: "var(--text-dim)" }}>
+        <p className="leading-6 mb-1.5 truncate" style={{ fontSize: "var(--quest-subtitle-size)", color: "var(--quest-subtitle-color)" }}>
           {mission.description}
         </p>
         {isFeaturedBooth ? (
@@ -308,7 +338,7 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
             {done ? (
               <span className="text-[11px] font-bold" style={{ color: "var(--accent)" }}>✓ کشف شد!</span>
             ) : countdownText ? (
-              <span className="text-[11px]" style={{ color: "var(--text-dim)" }}>{countdownText}</span>
+              <span style={{ fontSize: "var(--quest-rotation-size)", color: "var(--quest-rotation-color)" }}>{countdownText}</span>
             ) : <span />}
             {featuredClickable && (
               <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0"
@@ -409,10 +439,11 @@ function AvatarPlaceholder({ size = 32 }) {
 function LeaderboardRow({ user, isMe, badgeColor, badgeLabel, xpUnit, lang }) {
   return (
     <div
-      className={`flex items-center gap-3 rounded-2xl px-4 py-3 border transition-colors ${
-        isMe ? "border-[#00ffb3]/40 bg-[#00ffb3]/5" : "border-[var(--border)]"
-      }`}
-      style={isMe ? undefined : { background: "var(--surface-2)" }}
+      className="flex items-center gap-3 rounded-2xl px-4 py-3 border transition-colors"
+      style={isMe
+        ? { borderColor: "var(--quest-active-border)", background: "var(--quest-active-bg)" }
+        : { borderColor: "var(--border)", background: "var(--surface-2)" }
+      }
     >
       <div className="w-8 text-center flex-shrink-0">
         {RANK_ICONS[user.rank] ? (
@@ -435,8 +466,8 @@ function LeaderboardRow({ user, isMe, badgeColor, badgeLabel, xpUnit, lang }) {
         <AvatarPlaceholder size={32} />
       )}
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold leading-6 truncate"
-          style={{ color: isMe ? "var(--accent)" : "var(--text)" }}>
+        <p className="font-bold leading-6 truncate"
+          style={{ fontSize: "var(--quest-lb-size)", color: isMe ? "var(--accent)" : "var(--quest-lb-color)" }}>
           {user.name}
           {isMe && <span className="text-[10px] font-normal mr-1.5 opacity-60">(شما)</span>}
         </p>
@@ -447,7 +478,7 @@ function LeaderboardRow({ user, isMe, badgeColor, badgeLabel, xpUnit, lang }) {
         ) : null}
       </div>
       <div className="text-left flex-shrink-0">
-        <p className="text-sm font-black leading-5" style={{ color: isMe ? "var(--accent)" : "var(--text)" }}>
+        <p className="font-black leading-5" style={{ fontSize: "var(--quest-lb-size)", color: isMe ? "var(--accent)" : "var(--quest-lb-color)" }}>
           {dNum(user.xp, lang)}
         </p>
         <p className="text-[10px] leading-4" style={{ color: "var(--text-dim)" }}>{xpUnit || "XP"}</p>
@@ -658,13 +689,16 @@ function BadgeCard({ badge, onQuizClick, onFeaturedClick, onSurveyClick, onSocia
     <div
       onClick={handleBadgeClick}
       className={`rounded-2xl p-4 border text-center transition-colors ${
-        badge.earned ? "border-[#00ffb3]/30 bg-[#00ffb3]/5" : "border-[var(--border)]"
-      } ${(quizClickable || surveyClickable || socialShareClickable || featuredClickable) ? "cursor-pointer active:scale-[0.97]" : ""}`}
-      style={badge.earned ? undefined : { background: "var(--surface-2)", opacity: quizClickable || surveyClickable || socialShareClickable || isFeaturedBooth ? 1 : 0.5 }}
+        (quizClickable || surveyClickable || socialShareClickable || featuredClickable) ? "cursor-pointer active:scale-[0.97]" : ""
+      }`}
+      style={badge.earned
+        ? { borderColor: "var(--quest-active-border)", background: "var(--quest-active-bg)" }
+        : { background: "var(--surface-2)", borderColor: "var(--border)", opacity: quizClickable || surveyClickable || socialShareClickable || isFeaturedBooth ? 1 : 0.5 }
+      }
     >
       <div
         className="w-14 h-14 rounded-2xl mx-auto mb-3 flex items-center justify-center"
-        style={{ background: badge.earned ? "rgba(0,255,179,0.15)" : "var(--surface-hover)" }}
+        style={{ background: badge.earned ? "var(--quest-active-icon-bg)" : "var(--surface-hover)" }}
       >
         {badge.icon && badge.icon.startsWith('/') ? (
           <img src={badge.icon} alt="" style={{ width: badge.icon_size ?? 36, height: badge.icon_size ?? 36, objectFit: 'contain' }} />
@@ -672,8 +706,8 @@ function BadgeCard({ badge, onQuizClick, onFeaturedClick, onSurveyClick, onSocia
           <span style={{ fontSize: badge.icon_size ?? 36, lineHeight: 1 }}>{badge.icon}</span>
         )}
       </div>
-      <p className="text-sm font-bold leading-6"
-        style={{ color: badge.earned ? "var(--accent)" : "var(--text-muted)" }}>
+      <p className="font-bold leading-6"
+        style={{ fontSize: "var(--quest-badge-size)", color: badge.earned ? "var(--accent)" : "var(--quest-badge-color)" }}>
         {badge.name}
       </p>
       <p className="text-[11px] leading-5 mt-0.5" style={{ color: "var(--text-dim)" }}>
@@ -692,7 +726,7 @@ function BadgeCard({ badge, onQuizClick, onFeaturedClick, onSurveyClick, onSocia
         </div>
       ) : isFeaturedBooth ? (
         <div className="mt-2 flex flex-col items-center gap-1">
-          {countdownText && <p className="text-[11px]" style={{ color: "var(--text-dim)" }}>{countdownText}</p>}
+          {countdownText && <p style={{ fontSize: "var(--quest-rotation-size)", color: "var(--quest-rotation-color)" }}>{countdownText}</p>}
           {featuredClickable && (
             <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
               style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
@@ -1759,7 +1793,7 @@ function SocialShareModal({ share, onClose, onComplete, lang }) {
 
 // ── Main client component ───────────────────────────────────────────────────
 
-export default function QuestClient({ content, title, subtitle, title_en, subtitle_en, isHomeContext = false }) {
+export default function QuestClient({ content, title, subtitle, title_en, subtitle_en, isHomeContext = false, appearanceConfig = {} }) {
   const [boothsOpen, setBoothsOpen] = useState(false);
   const [openFeaturedPool, setOpenFeaturedPool] = useState(null);
   const [activeTab, setActiveTab] = useState("missions");
@@ -1930,6 +1964,14 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     return () => observer.disconnect();
   }, []);
 
+  // Merge saved appearance config on top of per-theme defaults
+  const effectiveAppearance = useMemo(() => {
+    const themeKey = isDark ? 'dark' : 'light';
+    const defaults = APPEARANCE_DEFAULTS[themeKey];
+    const saved = appearanceConfig?.[themeKey] ?? {};
+    return { ...defaults, ...saved };
+  }, [isDark, appearanceConfig]);
+
   function refreshQuest() {
     fetch('/api/quest').then(r => r.json()).then(d => { if (Array.isArray(d.missions)) setLiveMissions(d.missions); }).catch(() => {});
     fetch('/api/quest/badges').then(r => r.json()).then(d => { if (Array.isArray(d.badges)) setLiveBadges(d.badges); }).catch(() => {});
@@ -1951,8 +1993,32 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     [missions, labels.xpUnit, lang]
   );
 
+  const ea = effectiveAppearance;
+  const activeBorderColor = ea.active_border_color || 'var(--accent)';
+
   return (
-    <main dir={isRTL ? "rtl" : "ltr"} lang={lang} className="min-h-screen" style={{ background: "var(--bg)", color: "var(--text)" }}>
+    <main
+      dir={isRTL ? "rtl" : "ltr"}
+      lang={lang}
+      className="min-h-screen"
+      style={{
+        background: "var(--bg)",
+        color: "var(--text)",
+        '--quest-title-size':    (ea.mission_title_size    || 14) + 'px',
+        '--quest-title-color':    ea.mission_title_color   || 'var(--text)',
+        '--quest-subtitle-size': (ea.mission_subtitle_size || 12) + 'px',
+        '--quest-subtitle-color': ea.mission_subtitle_color || 'var(--text-dim)',
+        '--quest-lb-size':       (ea.leaderboard_size  || 14) + 'px',
+        '--quest-lb-color':       ea.leaderboard_color || 'var(--text)',
+        '--quest-badge-size':    (ea.badge_title_size   || 14) + 'px',
+        '--quest-badge-color':    ea.badge_title_color  || 'var(--text-muted)',
+        '--quest-active-border':  activeBorderColor,
+        '--quest-active-bg':      hexToRgba(ea.active_border_color, 0.05)  || 'rgba(0,255,179,0.05)',
+        '--quest-active-icon-bg': hexToRgba(ea.active_border_color, 0.15) || 'rgba(0,255,179,0.15)',
+        '--quest-rotation-size': (ea.rotation_text_size  || 11) + 'px',
+        '--quest-rotation-color': ea.rotation_text_color || 'var(--text-dim)',
+      }}
+    >
       <div className="dark-only fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[#00ffb3]/5 rounded-full blur-3xl" />
         <div className="absolute bottom-0 left-0 w-[350px] h-[350px] bg-[#054041]/60 rounded-full blur-3xl" />
