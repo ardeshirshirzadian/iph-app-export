@@ -487,7 +487,7 @@ function StartPanel({ lang, isRTL, onTapMode, onScanMode, startQuery, setStartQu
 
 // ── Route Info Card ────────────────────────────────────────────────────────────
 
-function RouteInfoCard({ route, lang, isRTL, onClear, is3D = false, walkActive = false, walkPaused = false, onStartNav, onStopNav, onPauseNav, onResumeNav, onStepForward, onStepBack }) {
+function RouteInfoCard({ route, lang, isRTL, onClear, is3D = false, walkActive = false, walkPaused = false, onStartNav, onStopNav, onPauseNav, onResumeNav, onStepForward, onStepBack, onNavigate }) {
   if (!route) return null;
   const isEN = lang === "en";
 
@@ -559,9 +559,15 @@ function RouteInfoCard({ route, lang, isRTL, onClear, is3D = false, walkActive =
   const meters = Math.max(1, Math.round(totalDist / 15));
   const minutes = Math.max(1, Math.round(meters / 72)); // 1.2 m/s walking
 
-  // Navigation controls — only visible in 3D mode.
-  // Before start: single "▶ شروع ناوبری" button.
-  // During walkthrough: ⏮ step-back | ⏸/▶ pause-resume | ⏭ step-forward | ⏹ stop.
+  // Navigation controls — visible in both 2D and 3D modes.
+  // 2D mode: single "▶ شروع ناوبری" button that switches to 3D then starts walkthrough.
+  // 3D mode, before start: single "▶ شروع ناوبری" button (onStartNav).
+  // 3D mode, during walkthrough: ⏮ step-back | ⏸/▶ pause-resume | ⏭ step-forward | ⏹ stop.
+  const navBtnStyle = {
+    background: "rgba(0,255,179,0.10)", border: "1px solid rgba(0,255,179,0.5)",
+    borderRadius: 8, padding: "6px 14px", color: "var(--accent)",
+    fontFamily: "inherit", fontSize: 12, cursor: "pointer", fontWeight: 700, flexShrink: 0,
+  };
   const navBtn = is3D ? (
     walkActive ? (
       <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -585,18 +591,16 @@ function RouteInfoCard({ route, lang, isRTL, onClear, is3D = false, walkActive =
         >{isEN ? "⏹ Stop" : "⏹ پایان"}</button>
       </div>
     ) : (
-      <button
-        onClick={onStartNav}
-        style={{
-          background: "rgba(0,255,179,0.10)", border: "1px solid rgba(0,255,179,0.5)",
-          borderRadius: 8, padding: "6px 14px", color: "var(--accent)",
-          fontFamily: "inherit", fontSize: 12, cursor: "pointer", fontWeight: 700, flexShrink: 0,
-        }}
-      >
+      <button onClick={onStartNav} style={navBtnStyle}>
         {isEN ? "▶ Navigate" : "▶ شروع ناوبری"}
       </button>
     )
-  ) : null;
+  ) : (
+    // 2D mode: Navigate button switches to 3D and starts walkthrough
+    <button onClick={onNavigate} style={navBtnStyle}>
+      {isEN ? "▶ Navigate" : "▶ شروع ناوبری"}
+    </button>
+  );
 
   return (
     <div className="absolute z-[20]" style={{ ...cardStyle, border: "1px solid rgba(0,255,179,0.3)" }}>
@@ -634,7 +638,7 @@ function RouteInfoCard({ route, lang, isRTL, onClear, is3D = false, walkActive =
 
 // ── Booth Bottom Sheet ─────────────────────────────────────────────────────────
 
-function BoothSheet({ booth, hall, mergedLabel, lang, isRTL, onClose }) {
+function BoothSheet({ booth, hall, mergedLabel, lang, isRTL, onClose, onNavigate }) {
   const isEN = lang === "en";
   const co = booth.company;
   const [imgErr, setImgErr] = useState(false);
@@ -731,30 +735,45 @@ function BoothSheet({ booth, hall, mergedLabel, lang, isRTL, onClose }) {
         )}
 
         {/* actions */}
-        <div className="flex gap-2">
-          {canProfile && (
-            <Link
-              href={`/companies/${co.slug}`}
-              className="flex-1 py-3 rounded-xl font-bold text-sm text-center transition-all active:scale-95"
-              style={{ background: "var(--accent)", color: "#021f20" }}
-              onClick={onClose}
+        <div className="flex flex-col gap-2">
+          {onNavigate && (
+            <button
+              onClick={() => { onNavigate(); onClose(); }}
+              className="w-full py-3 rounded-xl font-bold text-sm transition-all active:scale-95"
+              style={{ background: "var(--accent)", color: "#021f20", fontFamily: "inherit", cursor: "pointer", border: "none" }}
             >
-              {isEN ? "View Profile" : "مشاهده پروفایل"}
-            </Link>
+              {isEN ? "Set as destination" : "تنظیم به‌عنوان مقصد"}
+            </button>
           )}
-          <button
-            onClick={onClose}
-            className="px-5 py-3 rounded-xl text-sm font-medium transition-all active:scale-95"
-            style={{
-              background: "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.1)",
-              color: "var(--text-muted)",
-              fontFamily: "inherit",
-              cursor: "pointer",
-            }}
-          >
-            {isEN ? "Close" : "بستن"}
-          </button>
+          <div className="flex gap-2">
+            {canProfile && (
+              <Link
+                href={`/companies/${co.slug}`}
+                className="flex-1 py-2.5 rounded-xl font-bold text-sm text-center transition-all active:scale-95"
+                style={{
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  color: "var(--text)",
+                }}
+                onClick={onClose}
+              >
+                {isEN ? "View Profile" : "مشاهده پروفایل"}
+              </Link>
+            )}
+            <button
+              onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all active:scale-95"
+              style={{
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                color: "var(--text-muted)",
+                fontFamily: "inherit",
+                cursor: "pointer",
+              }}
+            >
+              {isEN ? "Close" : "بستن"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -962,6 +981,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const [tapStartMode, setTapStartMode] = useState(false);
   const [walkActive, setWalkActive] = useState(false); // 3D first-person walkthrough in progress
   const [walkPaused, setWalkPaused] = useState(false); // walkthrough paused mid-route
+  const pendingWalkthroughRef = useRef(false); // set by Navigate btn in 2D mode; consumed by view3D effect
 
   // Search
   const [searchQuery, setSearchQuery] = useState("");
@@ -1225,6 +1245,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
 
   // Keep view3DRef in sync so closures/timeouts always read the current mode.
   useEffect(() => { view3DRef.current = view3D; }, [view3D]);
+
 
   // CHANGE 1: Consolidated non-passive event listeners (pointer + touchmove + wheel)
   // [] dependency — all handlers read only refs, no stale closures
@@ -1996,6 +2017,21 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
               controlRef={map3DViewRef}
               selectedBoothId={selectedBooth?.booth?.company?.id ?? null}
               selectedZoneId={selectedZone?.id ?? null}
+              onReady={() => {
+                if (!pendingWalkthroughRef.current) return;
+                pendingWalkthroughRef.current = false;
+                // rAF fires after all effects in this commit (including route effect that
+                // builds walkthroughPath) have run, making the trigger deterministic.
+                requestAnimationFrame(() => {
+                  if (map3DViewRef.current?.startWalkthrough(() => {
+                    setWalkActive(false);
+                    setWalkPaused(false);
+                  })) {
+                    setWalkActive(true);
+                    setWalkPaused(false);
+                  }
+                });
+              }}
             />
           )}
 
@@ -2404,6 +2440,23 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
               is3D={view3D}
               walkActive={walkActive}
               walkPaused={walkPaused}
+              onNavigate={() => {
+                if (view3DRef.current) {
+                  // Already in 3D — start walkthrough directly
+                  if (map3DViewRef.current?.startWalkthrough(() => {
+                    setWalkActive(false);
+                    setWalkPaused(false);
+                  })) {
+                    setWalkActive(true);
+                    setWalkPaused(false);
+                  }
+                  return;
+                }
+                // Switch to 3D and queue walkthrough start once Map3DView mounts
+                pendingWalkthroughRef.current = true;
+                view3DRef.current = true;
+                setView3D(true);
+              }}
               onStartNav={() => {
                 if (map3DViewRef.current?.startWalkthrough(() => {
                   setWalkActive(false);
@@ -2459,6 +2512,18 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
             lang={lang}
             isRTL={isRTL}
             onClose={() => setSelectedBooth(null)}
+            onNavigate={selectedBooth.booth.bounds?.length ? () => {
+              const pts = selectedBooth.booth.bounds;
+              const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+              const co = selectedBooth.booth.company;
+              selectDestination({
+                x: (Math.min(...xs) + Math.max(...xs)) / 2,
+                y: (Math.min(...ys) + Math.max(...ys)) / 2,
+                name: co?.brand_name_fa || co?.brand_name_en || `غرفه ${selectedBooth.booth.no}`,
+                nameEn: co?.brand_name_en || co?.brand_name_fa || `Booth ${selectedBooth.booth.no}`,
+                floor: hallFloors[selectedBooth.hall.name] ?? 0,
+              });
+            } : undefined}
           />
         </>
       )}

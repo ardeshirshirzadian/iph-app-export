@@ -110,6 +110,7 @@ export default function Map3DView({
   controlRef,     // ref whose .current receives { focusOnPoint, resetView, zoom }
   selectedBoothId, // company id of currently selected booth (or null)
   selectedZoneId,  // zone.id of currently selected zone (or null)
+  onReady,        // () => void — fires synchronously at end of scene-setup effect
 }) {
   const mountRef = useRef(null);
   const tRef     = useRef(null); // holds all Three.js state (scene, camera, …)
@@ -534,6 +535,9 @@ export default function Map3DView({
       t.renderer.setSize(w, h);
     });
     t.resizeObs.observe(el);
+
+    // Signal to parent that controlRef is populated and the render loop is running.
+    onReady?.();
 
     // ── Cleanup ───────────────────────────────────────────────────────────────
     return () => {
