@@ -443,28 +443,6 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
   // Scan radius is extended to cover the buffer zone (bufCells extra on
   // each side beyond the segment bounding box).
   const bufCells = Math.ceil(WALL_BUF / cellSize) + 1;
-  if (typeof window !== "undefined" && (mapWalls ?? []).length > 0) {
-    for (const wall of (mapWalls ?? [])) {
-      const pts = Array.isArray(wall.points) ? wall.points : [];
-      const isClosed = pts.length >= 2 &&
-        pts[0].x === pts[pts.length - 1].x && pts[0].y === pts[pts.length - 1].y;
-      const segCount = Math.max(0, pts.length - 1);
-      const degenSegs = [];
-      for (let si = 0; si < segCount; si++) {
-        const len = Math.hypot(pts[si + 1].x - pts[si].x, pts[si + 1].y - pts[si].y);
-        if (len < 1) degenSegs.push({ si, len: len.toFixed(4) });
-      }
-      const closingLen = isClosed && pts.length >= 2
-        ? Math.hypot(pts[pts.length - 1].x - pts[pts.length - 2].x, pts[pts.length - 1].y - pts[pts.length - 2].y).toFixed(1)
-        : null;
-      console.log(
-        `[wall-seg-debug] wall id=${wall.id ?? '?'} pts=${pts.length} segs=${segCount}` +
-        ` closed=${isClosed}` +
-        (isClosed ? ` closingSegLen=${closingLen} (${pts[pts.length - 2]?.x},${pts[pts.length - 2]?.y})→(${pts[pts.length - 1]?.x},${pts[pts.length - 1]?.y})` : '') +
-        (degenSegs.length > 0 ? ` DEGEN_SEGS:${JSON.stringify(degenSegs)}` : ' no-degen')
-      );
-    }
-  }
   for (const wall of (mapWalls ?? [])) {
     const pts = Array.isArray(wall.points) ? wall.points : [];
     if (pts.length < 2) continue;
@@ -474,7 +452,7 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
       // Skip zero-length segments — they can never block anything and would
       // cause _ptSegDist to return point-distance (handled) but _segmentsIntersect
       // returns false for all paths (denom=0 check), so the forbidden-edge layer
-      // is moot; log them above via [wall-seg-debug] DEGEN_SEGS instead.
+      // is moot.
       if (wx1 === wx2 && wy1 === wy2) continue;
       const scMin = Math.max(0, Math.floor(Math.min(wx1, wx2) / cellSize) - bufCells);
       const scMax = Math.min(cols - 1, Math.ceil(Math.max(wx1, wx2) / cellSize) + bufCells);
@@ -850,55 +828,6 @@ export function findGridRoute(grid, startX, startY, destX, destY) {
       if (repaired) simplified = out;
     }
 
-    if (typeof window !== "undefined") {
-      // Helper: min distance from point to any registered wall segment.
-      const minDistToWall = (px, py) => {
-        let min = Infinity;
-        for (let wi = 0; wi < wallFlat.length; wi += 4)
-          min = Math.min(min, _ptSegDist(px, py, wallFlat[wi], wallFlat[wi+1], wallFlat[wi+2], wallFlat[wi+3]));
-        return min;
-      };
-
-      // Helper: identify WHICH wall segment(s) a route segment crosses.
-      const whichWallsCrossed = (ax, ay, bx, by) => {
-        const hits = [];
-        for (let wi = 0; wi < wallFlat.length; wi += 4) {
-          if (_segmentsIntersect(ax, ay, bx, by, wallFlat[wi], wallFlat[wi+1], wallFlat[wi+2], wallFlat[wi+3]))
-            hits.push(`seg${wi/4}(${wallFlat[wi]},${wallFlat[wi+1]})→(${wallFlat[wi+2]},${wallFlat[wi+3]})`);
-        }
-        return hits;
-      };
-
-      // ── Raw A* path: find any cell within WALL_BUF (should be blocked) ──
-      const rawViolations = full
-        .map((p, i) => ({ i, x: p.x, y: p.y, d: minDistToWall(p.x, p.y) }))
-        .filter(e => e.d < WALL_BUF);
-      console.log("[wall-buf-debug] raw path length:", full.length,
-        "| raw points within WALL_BUF of wall:", rawViolations.length,
-        rawViolations.map(e => `#${e.i}(${e.x.toFixed(0)},${e.y.toFixed(0)})d=${e.d.toFixed(1)}`).join(" "));
-
-      // ── Final simplified path: same check + crossing check w/ segment ID ─
-      const finalPts = simplified.map((p, i) => ({ i, x: p.x, y: p.y, d: minDistToWall(p.x, p.y) }));
-      const finalBufViolations = finalPts.filter(e => e.d < WALL_BUF);
-      const finalCrossings = simplified.slice(0, -1)
-        .map((a, i) => { const b = simplified[i + 1]; return { i, a, b, hits: whichWallsCrossed(a.x, a.y, b.x, b.y) }; })
-        .filter(e => e.hits.length > 0);
-      console.log("[wall-buf-debug] final path length:", simplified.length,
-        "| final pts within WALL_BUF:", finalBufViolations.length,
-        "| final crossing segments:", finalCrossings.length);
-      console.log("[wall-buf-debug] final waypoints+dist:",
-        finalPts.map(e => `(${e.x.toFixed(0)},${e.y.toFixed(0)})d=${e.d.toFixed(0)}`).join(" → "));
-      if (finalBufViolations.length > 0)
-        console.log("[wall-buf-debug] BUFFER VIOLATIONS (cells not blocked as expected):",
-          finalBufViolations.map(e => `#${e.i}(${e.x.toFixed(0)},${e.y.toFixed(0)})d=${e.d.toFixed(1)}`).join(" "));
-      if (finalCrossings.length > 0)
-        console.log("[wall-buf-debug] CROSSING SEGMENTS (repair incomplete):",
-          finalCrossings.map(({ i, a, b, hits }) =>
-            `route-seg${i}(${a.x.toFixed(0)},${a.y.toFixed(0)})→(${b.x.toFixed(0)},${b.y.toFixed(0)}) crosses wall ${hits.join(', ')}`
-          ).join(' | '));
-      if (finalBufViolations.length === 0 && finalCrossings.length === 0)
-        console.log("[wall-buf-debug] path respects buffer and has no crossings — visual issue is topological (path inside loop without crossing registered wall segments)");
-    }
   }
 
   // Strip the internal index tags before returning.
