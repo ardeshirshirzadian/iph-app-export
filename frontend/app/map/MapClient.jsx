@@ -3,8 +3,9 @@
 // ╔══════════════════════════════════════════════════════════════════════════════╗
 // ║  ⚠️  CRITICAL PERFORMANCE RULES — READ BEFORE ADDING ANY NEW MAP FEATURE  ║
 // ║                                                                              ║
-// ║  This file has caused THREE separate iOS Safari GPU-memory crash regressions ║
-// ║  (map elements, route arrows, walls). Every new feature must obey:           ║
+// ║  This file has caused FOUR separate iOS Safari GPU-memory crash regressions  ║
+// ║  (map elements, route arrows, walls, origin-selection backdrop-filter).       ║
+// ║  Every new feature must obey ALL rules below.                                ║
 // ║                                                                              ║
 // ║  RULE 1 — NO React setState during active gesture frames.                    ║
 // ║    • All transform updates go through applyT() → wrapperRef direct DOM.      ║
@@ -29,9 +30,24 @@
 // ║    • ❌ wrong:  calling buildFloorGrids() or _segmentsIntersect() inside     ║
 // ║                  applyT(), onTouchMove(), or any RAF step callback           ║
 // ║                                                                              ║
+// ║  RULE 4 — backdrop-filter elements multiply GPU work on EVERY gesture frame. ║
+// ║    • When willChange="transform" is active, any backdrop-filter overlay in   ║
+// ║      the DOM forces the browser to re-rasterize the full SVG compositor      ║
+// ║      layer on every frame — one re-rasterize per backdrop-filter element.    ║
+// ║    • onGestureStart() adds class "map-gesture-active" to pageRootRef;        ║
+// ║      globals.css rule { backdrop-filter: none !important } suppresses ALL    ║
+// ║      backdrop-filter elements in the DOM for the gesture duration.           ║
+// ║    • No extra code needed per overlay — the CSS class covers everything.     ║
+// ║    • ❌ wrong: adding a new overlay with backdrop-filter inside this          ║
+// ║               component and bypassing pageRootRef (e.g. portaling to body).  ║
+// ║                                                                              ║
 // ║  ADDING A NEW FEATURE CHECKLIST:                                             ║
-// ║    [ ] Does it add SVG/DOM nodes inside wrapperRef? → hide them during       ║
-// ║        gesture via onGestureStart / onGestureSettle (see routeLayerRef).     ║
+// ║    [ ] Does it add SVG/DOM nodes inside wrapperRef? → wrap them in a <g>     ║
+// ║        with a ref and hide in onGestureStart/onGestureSettle (see            ║
+// ║        zonesLayerRef, signsLayerRef, elementsLayerRef, routeLayerRef).       ║
+// ║    [ ] Does it render a backdrop-filter overlay? → no extra code needed;     ║
+// ║        auto-suppressed by .map-gesture-active class. Keep overlay INSIDE     ║
+// ║        pageRootRef (don't portal to document.body).                          ║
 // ║    [ ] Does it compute something on data? → useMemo with stable deps.        ║
 // ║    [ ] Does it need pathfinding? → add to buildFloorGrids once, cache it.    ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
@@ -285,8 +301,8 @@ function MapSearchBar({ query, setQuery, open, setOpen, results, onSelect, destN
       <div
         className="flex items-center gap-2"
         style={{
-          background: "rgba(2,20,21,0.96)", backdropFilter: "blur(20px)",
-          border: "1px solid rgba(0,255,179,0.28)", borderRadius: 14,
+          background: "var(--sheet-bg)", backdropFilter: "blur(20px)",
+          border: "1px solid var(--border-accent)", borderRadius: 14,
           padding: "10px 14px",
           boxShadow: "0 4px 24px rgba(0,0,0,0.45)",
         }}
@@ -318,8 +334,8 @@ function MapSearchBar({ query, setQuery, open, setOpen, results, onSelect, destN
       {open && results.length > 0 && (
         <div
           style={{
-            marginTop: 4, background: "rgba(2,20,21,0.98)", backdropFilter: "blur(20px)",
-            border: "1px solid rgba(0,255,179,0.18)", borderRadius: 12,
+            marginTop: 4, background: "var(--sheet-bg)", backdropFilter: "blur(20px)",
+            border: "1px solid var(--border-accent)", borderRadius: 12,
             maxHeight: 260, overflowY: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.55)",
           }}
         >
@@ -330,7 +346,7 @@ function MapSearchBar({ query, setQuery, open, setOpen, results, onSelect, destN
               style={{
                 width: "100%", display: "flex", alignItems: "center", gap: 10,
                 padding: "10px 14px", background: "none", border: "none",
-                borderBottom: "1px solid rgba(255,255,255,0.05)",
+                borderBottom: "1px solid var(--border)",
                 cursor: "pointer", textAlign: isRTL ? "right" : "left", fontFamily: "inherit",
               }}
             >
@@ -370,14 +386,14 @@ function StartPanel({ lang, isRTL, onTapMode, onScanMode, startQuery, setStartQu
       <div
         className="relative"
         style={{
-          background: "rgba(2,20,21,0.98)", backdropFilter: "blur(28px)",
-          borderTop: "1px solid rgba(0,255,179,0.2)", borderRadius: "24px 24px 0 0",
+          background: "var(--sheet-bg)", backdropFilter: "blur(28px)",
+          borderTop: "1px solid var(--border-accent)", borderRadius: "24px 24px 0 0",
           padding: "16px 20px", paddingBottom: "calc(1.2rem + env(safe-area-inset-bottom))",
           maxHeight: "80vh", overflowY: "auto",
         }}
       >
         <div className="flex justify-center mb-4">
-          <div style={{ width: 40, height: 4, background: "rgba(255,255,255,0.18)", borderRadius: 2 }} />
+          <div style={{ width: 40, height: 4, background: "var(--border)", borderRadius: 2 }} />
         </div>
         <p style={{ fontWeight: 700, fontSize: 16, color: "var(--text)", marginBottom: 4 }}>
           {isEN ? "Where are you starting from?" : "نقطه شروع را انتخاب کنید"}
@@ -405,8 +421,8 @@ function StartPanel({ lang, isRTL, onTapMode, onScanMode, startQuery, setStartQu
             style={{
               flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
               padding: "14px 8px",
-              background: scanActive ? "rgba(59,130,246,0.12)" : "rgba(255,255,255,0.05)",
-              border: `1px solid ${scanActive ? "rgba(59,130,246,0.6)" : "rgba(255,255,255,0.12)"}`,
+              background: scanActive ? "rgba(59,130,246,0.12)" : "var(--surface-2)",
+              border: `1px solid ${scanActive ? "rgba(59,130,246,0.6)" : "var(--border)"}`,
               borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
               color: scanActive ? "#60a5fa" : "var(--text)",
             }}
@@ -440,7 +456,7 @@ function StartPanel({ lang, isRTL, onTapMode, onScanMode, startQuery, setStartQu
           placeholder={isEN ? "Search…" : "جستجو…"}
           style={{
             width: "100%", boxSizing: "border-box",
-            background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+            background: "var(--surface-2)", border: "1px solid var(--border)",
             borderRadius: 10, padding: "9px 12px", fontSize: 13,
             color: "var(--text)", fontFamily: "inherit", outline: "none",
             direction: isRTL ? "rtl" : "ltr", marginBottom: 4,
@@ -453,7 +469,7 @@ function StartPanel({ lang, isRTL, onTapMode, onScanMode, startQuery, setStartQu
             style={{
               width: "100%", display: "flex", alignItems: "center", gap: 10,
               padding: "9px 4px", background: "none", border: "none",
-              borderBottom: "1px solid rgba(255,255,255,0.06)",
+              borderBottom: "1px solid var(--border)",
               cursor: "pointer", textAlign: isRTL ? "right" : "left", fontFamily: "inherit",
             }}
           >
@@ -474,7 +490,7 @@ function StartPanel({ lang, isRTL, onTapMode, onScanMode, startQuery, setStartQu
           onClick={onCancel}
           style={{
             marginTop: 14, width: "100%", padding: "11px",
-            background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+            background: "var(--surface-2)", border: "1px solid var(--border)",
             borderRadius: 10, color: "var(--text-muted)", fontFamily: "inherit", fontSize: 13, cursor: "pointer",
           }}
         >
@@ -495,7 +511,7 @@ function RouteInfoCard({ route, lang, isRTL, onClear, is3D = false, walkActive =
   // the info content, never overlapping it regardless of text length or UI language.
   const cardStyle = {
     bottom: "calc(68px + env(safe-area-inset-bottom))", left: 8, right: 8,
-    background: "rgba(2,20,21,0.96)", backdropFilter: "blur(16px)",
+    background: "var(--sheet-bg)", backdropFilter: "blur(16px)",
     borderRadius: 16,
     padding: "12px 16px",
     boxShadow: "0 4px 24px rgba(0,0,0,0.45)",
@@ -510,7 +526,7 @@ function RouteInfoCard({ route, lang, isRTL, onClear, is3D = false, walkActive =
     <button
       onClick={onClear}
       style={{
-        background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.1)",
+        background: "var(--surface-2)", border: "1px solid var(--border)",
         borderRadius: 8, padding: "6px 14px", color: "var(--text-muted)",
         fontFamily: "inherit", fontSize: 12, cursor: "pointer", flexShrink: 0,
       }}
@@ -574,16 +590,16 @@ function RouteInfoCard({ route, lang, isRTL, onClear, is3D = false, walkActive =
         <button
           onClick={onStepBack}
           title={isEN ? "Previous waypoint" : "نقطه قبلی"}
-          style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "6px 11px", color: "var(--text)", fontFamily: "inherit", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
+          style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 11px", color: "var(--text)", fontFamily: "inherit", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
         >⏮</button>
         <button
           onClick={walkPaused ? onResumeNav : onPauseNav}
-          style={{ background: walkPaused ? "rgba(0,255,179,0.10)" : "rgba(255,255,255,0.07)", border: `1px solid ${walkPaused ? "rgba(0,255,179,0.5)" : "rgba(255,255,255,0.15)"}`, borderRadius: 8, padding: "6px 11px", color: walkPaused ? "var(--accent)" : "var(--text)", fontFamily: "inherit", fontSize: 12, cursor: "pointer", fontWeight: 700, flexShrink: 0 }}
+          style={{ background: walkPaused ? "rgba(0,255,179,0.10)" : "var(--surface-2)", border: `1px solid ${walkPaused ? "rgba(0,255,179,0.5)" : "var(--border)"}`, borderRadius: 8, padding: "6px 11px", color: walkPaused ? "var(--accent)" : "var(--text)", fontFamily: "inherit", fontSize: 12, cursor: "pointer", fontWeight: 700, flexShrink: 0 }}
         >{walkPaused ? (isEN ? "▶ Resume" : "▶ ادامه") : (isEN ? "⏸ Pause" : "⏸ توقف")}</button>
         <button
           onClick={onStepForward}
           title={isEN ? "Next waypoint" : "نقطه بعدی"}
-          style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "6px 11px", color: "var(--text)", fontFamily: "inherit", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
+          style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 11px", color: "var(--text)", fontFamily: "inherit", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
         >⏭</button>
         <button
           onClick={onStopNav}
@@ -658,9 +674,9 @@ function BoothSheet({ booth, hall, mergedLabel, lang, isRTL, onClose, onNavigate
     <div
       className="fixed inset-x-0 bottom-0 z-[55] rounded-t-3xl"
       style={{
-        background: "rgba(2,20,21,0.97)",
+        background: "var(--sheet-bg)",
         backdropFilter: "blur(28px)",
-        borderTop: "1px solid rgba(0,255,179,0.25)",
+        borderTop: "1px solid var(--border-accent)",
         paddingBottom: "calc(4.5rem + env(safe-area-inset-bottom))",
         maxHeight: "72vh",
         overflowY: "auto",
@@ -670,7 +686,7 @@ function BoothSheet({ booth, hall, mergedLabel, lang, isRTL, onClose, onNavigate
     >
       {/* drag handle */}
       <div className="flex justify-center pt-3 pb-2">
-        <div className="w-10 h-1 rounded-full" style={{ background: "rgba(255,255,255,0.2)" }} />
+        <div className="w-10 h-1 rounded-full" style={{ background: "var(--border)" }} />
       </div>
 
       <div className="px-5 pb-2">
@@ -740,7 +756,7 @@ function BoothSheet({ booth, hall, mergedLabel, lang, isRTL, onClose, onNavigate
             <button
               onClick={() => { onNavigate(); onClose(); }}
               className="w-full py-3 rounded-xl font-bold text-sm transition-all active:scale-95"
-              style={{ background: "var(--accent)", color: "#021f20", fontFamily: "inherit", cursor: "pointer", border: "none" }}
+              style={{ background: "var(--accent)", color: "var(--bg)", fontFamily: "inherit", cursor: "pointer", border: "none" }}
             >
               {isEN ? "Set as destination" : "تنظیم به‌عنوان مقصد"}
             </button>
@@ -751,8 +767,8 @@ function BoothSheet({ booth, hall, mergedLabel, lang, isRTL, onClose, onNavigate
                 href={`/companies/${co.slug}`}
                 className="flex-1 py-2.5 rounded-xl font-bold text-sm text-center transition-all active:scale-95"
                 style={{
-                  background: "rgba(255,255,255,0.06)",
-                  border: "1px solid rgba(255,255,255,0.1)",
+                  background: "var(--surface-2)",
+                  border: "1px solid var(--border)",
                   color: "var(--text)",
                 }}
                 onClick={onClose}
@@ -764,8 +780,8 @@ function BoothSheet({ booth, hall, mergedLabel, lang, isRTL, onClose, onNavigate
               onClick={onClose}
               className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all active:scale-95"
               style={{
-                background: "rgba(255,255,255,0.06)",
-                border: "1px solid rgba(255,255,255,0.1)",
+                background: "var(--surface-2)",
+                border: "1px solid var(--border)",
                 color: "var(--text-muted)",
                 fontFamily: "inherit",
                 cursor: "pointer",
@@ -789,15 +805,15 @@ function ZoneSheet({ zone, lang, isRTL, onClose, onNavigate }) {
     <div
       className="fixed inset-x-0 bottom-0 z-[55] rounded-t-3xl"
       style={{
-        background: "rgba(2,20,21,0.97)",
+        background: "var(--sheet-bg)",
         backdropFilter: "blur(28px)",
-        borderTop: "1px solid rgba(0,255,179,0.25)",
+        borderTop: "1px solid var(--border-accent)",
         paddingBottom: "calc(4.5rem + env(safe-area-inset-bottom))",
       }}
       dir={isRTL ? "rtl" : "ltr"}
     >
       <div className="flex justify-center pt-3 pb-2">
-        <div className="w-10 h-1 rounded-full" style={{ background: "rgba(255,255,255,0.2)" }} />
+        <div className="w-10 h-1 rounded-full" style={{ background: "var(--border)" }} />
       </div>
       <div className="px-5 pb-2">
         <div className="flex items-center gap-3 mb-4">
@@ -822,7 +838,7 @@ function ZoneSheet({ zone, lang, isRTL, onClose, onNavigate }) {
           <button
             onClick={() => { onNavigate(); onClose(); }}
             className="flex-1 py-3 rounded-xl font-bold text-sm transition-all active:scale-95"
-            style={{ background: "var(--accent)", color: "#021f20", fontFamily: "inherit", cursor: "pointer", border: "none" }}
+            style={{ background: "var(--accent)", color: "var(--bg)", fontFamily: "inherit", cursor: "pointer", border: "none" }}
           >
             {isEN ? "Set as destination" : "تنظیم به عنوان مقصد"}
           </button>
@@ -830,8 +846,8 @@ function ZoneSheet({ zone, lang, isRTL, onClose, onNavigate }) {
             onClick={onClose}
             className="px-5 py-3 rounded-xl text-sm font-medium transition-all active:scale-95"
             style={{
-              background: "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.1)",
+              background: "var(--surface-2)",
+              border: "1px solid var(--border)",
               color: "var(--text-muted)",
               fontFamily: "inherit",
               cursor: "pointer",
@@ -857,8 +873,8 @@ function SignTooltip({ sign, sx, sy, lang }) {
       className="fixed z-[57] px-3 py-2 rounded-xl text-sm font-medium pointer-events-none whitespace-nowrap"
       style={{
         left: safeX, top: safeY,
-        background: "rgba(2,31,32,0.96)",
-        border: "1px solid rgba(0,255,179,0.35)",
+        background: "var(--sheet-bg)",
+        border: "1px solid var(--border-accent)",
         color: "var(--text)",
         backdropFilter: "blur(16px)",
         boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
@@ -880,7 +896,7 @@ function MapElementTooltip({ el, sx, sy, lang }) {
       className="fixed z-[57] px-3 py-2 rounded-xl text-sm font-medium pointer-events-none whitespace-nowrap"
       style={{
         left: safeX, top: safeY,
-        background: "rgba(2,31,32,0.96)",
+        background: "var(--sheet-bg)",
         border: "1px solid rgba(59,130,246,0.45)",
         color: "var(--text)",
         backdropFilter: "blur(16px)",
@@ -901,8 +917,8 @@ function MapLegend({ elements, lang }) {
       className="absolute z-[30] rounded-xl overflow-hidden"
       style={{
         bottom: "calc(68px + env(safe-area-inset-bottom))", left: 12,
-        background: "rgba(2,20,21,0.92)",
-        border: "1px solid rgba(0,255,179,0.2)",
+        background: "var(--sheet-bg)",
+        border: "1px solid var(--border-accent)",
         backdropFilter: "blur(12px)",
         minWidth: 120,
         maxWidth: 200,
@@ -1016,11 +1032,18 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const fitScaleRef = useRef(1);
   const boothLabelsWrapRef = useRef(null);
 
-  // gesture-simplify: active flag (prevents applyT from overriding hidden state),
-  // debounce timer for restoration, and route layer ref
+  // gesture-simplify: active flag, debounce timer, and per-layer hide refs.
+  // RULE 4: pageRootRef receives class "map-gesture-active" on gesture start,
+  // which globals.css uses to disable ALL backdrop-filter in the subtree — no
+  // per-overlay code required. zonesLayerRef / signsLayerRef / elementsLayerRef
+  // hide the corresponding SVG detail layers (same pattern as routeLayerRef).
   const gestureActiveRef = useRef(false);
   const gestureSettleTimerRef = useRef(null);
+  const pageRootRef = useRef(null);
   const routeLayerRef = useRef(null);
+  const zonesLayerRef = useRef(null);
+  const signsLayerRef = useRef(null);
+  const elementsLayerRef = useRef(null);
   // mirrors view3D state so closures/timeouts always read the current mode
   const view3DRef    = useRef(false);
   // imperative handle to the Map3DView component (focusOnPoint, resetView, zoom)
@@ -1101,18 +1124,31 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
     }
   }
 
-  // Hide detail SVG layers during active gestures/animations to reduce the
-  // number of nodes the GPU composites. Both layers have lots of elements
-  // (booth labels + route arrows/markers) that are invisible during a fast
-  // pan or pinch anyway. Restored 120 ms after the gesture fully settles.
+  // Hide detail SVG layers and suppress backdrop-filter during gestures to
+  // reduce GPU compositing cost. Restored 120 ms after the gesture settles.
+  //
+  // TWO mechanisms work together (see RULE 4 in the header):
+  //   1. SVG layer refs → visibility:hidden on zones/signs/elements/route groups.
+  //   2. pageRootRef class "map-gesture-active" → globals.css disables ALL
+  //      backdrop-filter in the DOM subtree (StartPanel, hint pill, zoom buttons,
+  //      BoothSheet, etc.). This is the fix for the origin-selection crash: each
+  //      active backdrop-filter forces a full re-rasterize of the SVG compositor
+  //      layer on every gesture frame; suppressing them eliminates that overhead.
+  //      Any future overlay with backdrop-filter is auto-covered — no extra code.
   function onGestureStart() {
     if (gestureSettleTimerRef.current) {
       clearTimeout(gestureSettleTimerRef.current);
       gestureSettleTimerRef.current = null;
     }
     gestureActiveRef.current = true;
+    // Suppress backdrop-filter on all overlays (RULE 4)
+    if (pageRootRef.current) pageRootRef.current.classList.add('map-gesture-active');
+    // Hide SVG detail layers
     if (boothLabelsWrapRef.current) boothLabelsWrapRef.current.style.opacity = "0";
-    if (routeLayerRef.current) routeLayerRef.current.style.visibility = "hidden";
+    if (routeLayerRef.current)    routeLayerRef.current.style.visibility = "hidden";
+    if (zonesLayerRef.current)    zonesLayerRef.current.style.visibility = "hidden";
+    if (signsLayerRef.current)    signsLayerRef.current.style.visibility = "hidden";
+    if (elementsLayerRef.current) elementsLayerRef.current.style.visibility = "hidden";
   }
   function onGestureSettle() {
     if (gestureSettleTimerRef.current) clearTimeout(gestureSettleTimerRef.current);
@@ -1123,7 +1159,13 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
       // because rapid cancel→restart cycles (zoom button clicks, double-taps)
       // would cause GPU layer alloc/dealloc thrashing and iOS Safari crashes.
       if (wrapperRef.current) wrapperRef.current.style.willChange = "auto";
-      if (routeLayerRef.current) routeLayerRef.current.style.visibility = "";
+      // Restore backdrop-filter (RULE 4)
+      if (pageRootRef.current) pageRootRef.current.classList.remove('map-gesture-active');
+      // Restore SVG detail layers
+      if (routeLayerRef.current)    routeLayerRef.current.style.visibility = "";
+      if (zonesLayerRef.current)    zonesLayerRef.current.style.visibility = "";
+      if (signsLayerRef.current)    signsLayerRef.current.style.visibility = "";
+      if (elementsLayerRef.current) elementsLayerRef.current.style.visibility = "";
       if (boothLabelsWrapRef.current) {
         const { scale } = tRef.current;
         const show = fitScaleRef.current > 0 && scale > fitScaleRef.current * 3.0;
@@ -1559,11 +1601,11 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
       }
     }
     for (const zone of mapZones) {
-      if (!zone.title_fa) continue;
+      if (!zone.title_fa || zone.is_visible === false) continue;
       const t = ((zone.title_fa || "") + " " + (zone.title_en || "")).toLowerCase();
       if (!t.includes(q)) continue;
       const c = zoneCenter(zone);
-      results.push({ type: "zone", id: `z-${zone.id}`, name: zone.title_fa, nameEn: zone.title_en, floor: 0, x: c.x, y: c.y });
+      results.push({ type: "zone", id: `z-${zone.id}`, name: zone.title_fa, nameEn: zone.title_en, floor: hallFloors[zone.hall_name] ?? 0, x: c.x, y: c.y });
       if (results.length >= 18) break;
     }
     return results;
@@ -1600,11 +1642,11 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
       }
     }
     for (const zone of mapZones) {
-      if (!zone.title_fa) continue;
+      if (!zone.title_fa || zone.is_visible === false) continue;
       const t = ((zone.title_fa || "") + " " + (zone.title_en || "")).toLowerCase();
       if (!t.includes(q)) continue;
       const c = zoneCenter(zone);
-      results.push({ type: "zone", id: `z-${zone.id}`, name: zone.title_fa, nameEn: zone.title_en, floor: 0, x: c.x, y: c.y });
+      results.push({ type: "zone", id: `z-${zone.id}`, name: zone.title_fa, nameEn: zone.title_en, floor: hallFloors[zone.hall_name] ?? 0, x: c.x, y: c.y });
       if (results.length >= 12) break;
     }
     return results;
@@ -1788,6 +1830,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
 
   return (
     <div
+      ref={pageRootRef}
       className="flex flex-col"
       style={{ height: "100dvh", background: "var(--bg)", overflow: "hidden" }}
       dir={isRTL ? "rtl" : "ltr"}
@@ -1837,7 +1880,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                   style={{
                     background: view3D ? "var(--accent)" : "var(--surface)",
                     border: "1px solid var(--border)",
-                    color: view3D ? "#021f20" : "var(--text)",
+                    color: view3D ? "var(--bg)" : "var(--text)",
                     fontFamily: "inherit", cursor: "pointer",
                   }}
                 >{view3D ? "2D" : "3D"}</button>
@@ -1980,8 +2023,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
           >
             <div
               style={{
-                background: "rgba(2,20,21,0.93)", backdropFilter: "blur(12px)",
-                border: "1px solid rgba(0,255,179,0.4)", borderRadius: 14,
+                background: "var(--sheet-bg)", backdropFilter: "blur(12px)",
+                border: "1px solid var(--border-accent)", borderRadius: 14,
                 padding: "10px 20px", fontSize: 13, color: "var(--accent)",
                 boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
               }}
@@ -2005,7 +2048,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
             <Map3DView
               halls={hallGroups}
               hallColors={hallColors}
-              zones={mapZones.filter((z) => z.title_fa)}
+              hallFloors={hallFloors}
+              zones={mapZones.filter((z) => z.title_fa && z.is_visible !== false)}
               navRoute={navRoute}
               navStart={navStart}
               navDest={navDest}
@@ -2098,8 +2142,11 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                 );
               })}
 
-              {/* Named zones — rendered below booths so booths appear on top */}
-              {mapZones.filter((z) => z.title_fa).map((zone) => {
+              {/* Named zones — below booths (booths appear on top).
+                  Wrapped in zonesLayerRef so onGestureStart can hide them to
+                  reduce per-frame GPU paint work during active gestures. */}
+              <g ref={zonesLayerRef}>
+              {mapZones.filter((z) => z.title_fa && z.is_visible !== false).map((zone) => {
                 const color = hallColors[zone.hall_name] || "#00ffb3";
                 const isActive = selectedZone?.id === zone.id;
                 const fill   = isActive ? `${color}bb` : `${color}40`;
@@ -2152,6 +2199,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                   </g>
                 );
               })}
+              </g>{/* end zonesLayerRef */}
 
               {/* Booths */}
               {hallGroups.flatMap((hall) =>
@@ -2224,7 +2272,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                   invisible obstacles to users. They still block A* pathfinding
                   via buildWalkableGrid (Step 6). Admin editing is in iph-apn. */}
 
-              {/* Map signs (entrances, facilities, etc.) */}
+              {/* Map signs — wrapped in signsLayerRef so onGestureStart hides them */}
+              <g ref={signsLayerRef}>
               {(mapData.map_signs ?? []).map((sign) => {
                 if (!sign.coords) return null;
                 const isActive = signTooltip?.sign.id === sign.id;
@@ -2247,6 +2296,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                   </g>
                 );
               })}
+              </g>{/* end signsLayerRef */}
 
               {/* Wayfinding route overlay — wrapped so routeLayerRef can hide it
                   during active gestures (reduces GPU compositing complexity) */}
@@ -2326,7 +2376,9 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
               </g>
 
               {/* CHANGE 4-B: Local map elements (admin-managed) */}
-              {/* Shared clip path for upload-icon markers + drop-shadow for route markers */}
+              {/* Shared clip path for upload-icon markers + drop-shadow for route markers.
+                  defs stay outside elementsLayerRef so IDs remain resolvable even
+                  while the elements layer is hidden during gestures. */}
               <defs>
                 <clipPath id="mapElImgClip">
                   <circle r={signR * 0.95} />
@@ -2336,6 +2388,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                 </filter>
               </defs>
 
+              {/* Map elements — wrapped in elementsLayerRef so onGestureStart hides them */}
+              <g ref={elementsLayerRef}>
               {mapElements.map((el) => {
                 const isActive = elementTooltip?.el.id === el.id;
                 const isUpload = el.icon_type === "upload" && el.icon_value;
@@ -2374,6 +2428,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                   </g>
                 );
               })}
+              </g>{/* end elementsLayerRef */}
             </svg>
 
             {/* Booth number labels (inside wrapper — scales with map; font-size compensates via CSS var) */}
@@ -2543,7 +2598,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
             onClose={() => setSelectedZone(null)}
             onNavigate={() => {
               const c = zoneCenter(selectedZone);
-              selectDestination({ x: c.x, y: c.y, name: selectedZone.title_fa, nameEn: selectedZone.title_en, floor: 0 });
+              selectDestination({ x: c.x, y: c.y, name: selectedZone.title_fa, nameEn: selectedZone.title_en, floor: hallFloors[selectedZone.hall_name] ?? 0 });
             }}
           />
         </>

@@ -17,10 +17,14 @@ const ROUTE_Y   = 5;    // route tube sits this far above floor level
 const BOOTH_GAP = 4;
 
 // ── First-person walkthrough constants ────────────────────────────────────────
-const EYE_H      = 14;   // camera height above floor during walkthrough (≈1.9m at 15 units/m scale)
-const WALK_SPEED  = 75;  // map units per second (≈5 m/s — snappy but not disorienting)
-const LOOK_AHEAD  = 35;  // units ahead on path to pick the look-at target
-const LOOK_LAG    = 3.0; // look-direction lerp rate per second (higher = snappier turns)
+const EYE_H        = 14;   // camera height above floor during walkthrough (≈1.9m at 15 units/m scale)
+const WALK_SPEED   = 75;   // map units per second (≈5 m/s — snappy but not disorienting)
+const LOOK_AHEAD   = 35;   // units ahead on path for near look-at sample
+const LOOK_LAG     = 2.5;  // look-direction lerp rate per second (reduced from 3.0 for smoother turns)
+// Destination arrival retreat — camera backs up along reverse approach direction
+const RETREAT_DIST   = 220; // horizontal units to pull back from the final waypoint
+const RETREAT_H_GAIN = 90;  // additional height gain during retreat (frames booth from above-eye level)
+const RETREAT_DUR    = 1.8; // seconds for the retreat ease-out animation
 
 // ── Module-level helpers (no hooks) ───────────────────────────────────────────
 
@@ -98,6 +102,7 @@ function makeEmojiTexture(emoji) {
 export default function Map3DView({
   halls,          // hallGroups from MapClient (includes .floor, .groups)
   hallColors,     // { [hallName]: hexColor }
+  hallFloors,     // { [hallName]: floorNumber } — same lookup used by pathfinding
   zones,          // named map_zones (title_fa truthy) to render as 3D blocks
   navRoute,       // null | { type, path?, pathA?, pathB?, stairsFrom?, stairsTo? }
   navStart,       // null | { x, y, floor }
@@ -269,10 +274,11 @@ export default function Map3DView({
         cx = (x1 + x2) / 2; cz = (y1 + y2) / 2;
         bw = Math.max(Math.abs(x2 - x1), 1); bd = Math.max(Math.abs(y2 - y1), 1);
       }
+      const zoneFloorY = ((hallFloors ?? {})[zone.hall_name] ?? 0) * FLOOR_GAP;
       const geo = new THREE.BoxGeometry(bw, ZONE_H, bd);
       const mat = new THREE.MeshLambertMaterial({ color: parseColor(colorStr), transparent: true, opacity: 0.6 });
       const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.set(cx, ZONE_H / 2, cz);
+      mesh.position.set(cx, zoneFloorY + ZONE_H / 2, cz);
       t.scene.add(mesh);
       t.disposables.push({ geometry: geo, material: mat });
       t.zoneEntries.push({ mesh, zone, cx, cz, colorStr });
@@ -415,18 +421,34 @@ export default function Map3DView({
             paused:         false,
             wptArcLengths,
             onComplete:     onComplete ?? null,
+            // Reusable scratch vectors — avoids per-frame GC allocation in the RAF loop
+            _pos:   new THREE.Vector3(),
+            _p1:    new THREE.Vector3(),
+            _p2:    new THREE.Vector3(),
+            _p3:    new THREE.Vector3(),
+            _ahead: new THREE.Vector3(),
+            // Retreat phase (populated when tParam reaches 1.0)
+            retreating:      false,
+            retreatFrom:     null,
+            retreatTo:       null,
+            retreatLook:     null,
+            retreatProgress: 0,
           };
           return true;
         },
 
-        // Stop the walkthrough early. Leaves the camera at its current position
-        // and re-enables OrbitControls so the user can look around from there.
+        // Stop the walkthrough early (also works during the retreat phase).
+        // Leaves the camera at its current position and re-enables OrbitControls.
         stopWalkthrough() {
           if (!t.walk) return;
-          const finalLook = t.walk.smoothLook.clone();
+          const ws = t.walk;
+          // During retreat, prefer the retreat look target so orbit stays on the booth
+          const orbitTarget = (ws.retreating && ws.retreatLook)
+            ? ws.retreatLook.clone()
+            : ws.smoothLook.clone();
           t.walk = null;
           t.controls.enabled = true;
-          t.controls.target.copy(finalLook);
+          t.controls.target.copy(orbitTarget);
         },
 
         pauseWalkthrough()  { if (t.walk) t.walk.paused = true;  },
@@ -438,32 +460,36 @@ export default function Map3DView({
         stepForward() {
           if (!t.walk) return;
           const ws = t.walk;
+          // If user steps forward during the retreat, cancel retreat and resume from end
+          ws.retreating = false;
           const nextAL = ws.wptArcLengths.find(al => al > ws.progress + 0.5);
           ws.progress  = nextAL !== undefined ? Math.min(nextAL, ws.curveLen) : ws.curveLen;
           const tParam = ws.progress / ws.curveLen;
-          const pos    = ws.curve.getPointAt(tParam);
+          const pos    = ws.curve.getPointAt(tParam, ws._pos);
           t.camera.position.copy(pos);
           const lookT  = Math.min(1.0, (ws.progress + LOOK_AHEAD) / ws.curveLen);
-          const ahead  = ws.curve.getPointAt(lookT);
-          ahead.y = pos.y - 3;
-          ws.smoothLook.copy(ahead); // snap look immediately; RAF lerp continues from here
+          ws.curve.getPointAt(lookT, ws._ahead);
+          ws._ahead.y = pos.y - 3;
+          ws.smoothLook.copy(ws._ahead); // snap look immediately; RAF lerp continues from here
           t.camera.lookAt(ws.smoothLook);
         },
         stepBack() {
           if (!t.walk) return;
           const ws = t.walk;
+          // Stepping back always cancels the retreat phase
+          ws.retreating = false;
           let prevAL = 0;
           for (let i = ws.wptArcLengths.length - 1; i >= 0; i--) {
             if (ws.wptArcLengths[i] < ws.progress - 0.5) { prevAL = ws.wptArcLengths[i]; break; }
           }
           ws.progress  = prevAL;
           const tParam = ws.progress / ws.curveLen;
-          const pos    = ws.curve.getPointAt(tParam);
+          const pos    = ws.curve.getPointAt(tParam, ws._pos);
           t.camera.position.copy(pos);
           const lookT  = Math.min(1.0, (ws.progress + LOOK_AHEAD) / ws.curveLen);
-          const ahead  = ws.curve.getPointAt(lookT);
-          ahead.y = pos.y - 3;
-          ws.smoothLook.copy(ahead);
+          ws.curve.getPointAt(lookT, ws._ahead);
+          ws._ahead.y = pos.y - 3;
+          ws.smoothLook.copy(ws._ahead);
           t.camera.lookAt(ws.smoothLook);
         },
       };
@@ -493,30 +519,83 @@ export default function Map3DView({
       // using only refs + direct Three.js calls — no React state per frame.
       if (t.walk) {
         const ws = t.walk;
-        // Advance position only when not paused
-        if (!ws.paused) {
-          ws.progress = Math.min(ws.progress + delta * WALK_SPEED, ws.curveLen);
-        }
-        const tParam = ws.progress / ws.curveLen;
-        const pos    = ws.curve.getPointAt(tParam);
-        t.camera.position.copy(pos);
 
-        // Smooth look-ahead: target a point LOOK_AHEAD units further along the path,
-        // held at a slight downward angle (pos.y - 3) for a natural walking POV.
-        const lookT = Math.min(1.0, (ws.progress + LOOK_AHEAD) / ws.curveLen);
-        const ahead = ws.curve.getPointAt(lookT);
-        ahead.y = pos.y - 3;
-        ws.smoothLook.lerp(ahead, Math.min(1, delta * LOOK_LAG));
-        t.camera.lookAt(ws.smoothLook);
+        // ── Retreat phase: eased backward pull after reaching the destination ──
+        // Triggered when the camera would otherwise clip into the booth geometry.
+        if (ws.retreating) {
+          if (!ws.paused) {
+            ws.retreatProgress = Math.min(1, ws.retreatProgress + delta / RETREAT_DUR);
+          }
+          // Cubic ease-out — fast start, gentle deceleration into final framing
+          const e = 1 - (1 - ws.retreatProgress) ** 3;
+          t.camera.position.lerpVectors(ws.retreatFrom, ws.retreatTo, e);
+          // Smoothly rotate camera to face the booth during retreat
+          ws.smoothLook.lerp(ws.retreatLook, Math.min(1, delta * 2.5));
+          t.camera.lookAt(ws.smoothLook);
 
-        // Auto-complete only when playing (not paused) and fully traversed
-        if (!ws.paused && tParam >= 1.0) {
-          const finalLook = ws.smoothLook.clone();
-          const cb = ws.onComplete;
-          t.walk = null;
-          t.controls.enabled = true;
-          t.controls.target.copy(finalLook);
-          if (cb) cb();
+          if (ws.retreatProgress >= 1.0) {
+            const cb = ws.onComplete;
+            t.walk = null;
+            t.controls.enabled = true;
+            // Orbit target = destination booth so the user can pivot around it
+            t.controls.target.copy(ws.retreatLook);
+            if (cb) cb();
+          }
+
+        } else {
+          // ── Normal path-following ─────────────────────────────────────────
+          if (!ws.paused) {
+            ws.progress = Math.min(ws.progress + delta * WALK_SPEED, ws.curveLen);
+          }
+          const tParam = ws.progress / ws.curveLen;
+          const pos    = ws.curve.getPointAt(tParam, ws._pos);
+          t.camera.position.copy(pos);
+
+          // Multi-sample blended look-ahead for smoother turning.
+          // Three samples (near 35u / mid 70u / far 122u) are weighted 50/30/20.
+          // The weighted average anticipates upcoming turns early so the camera
+          // starts rotating before the corner rather than snapping at it — while
+          // still tracking close enough that it never appears to lag behind.
+          const L1 = Math.min(1.0, (ws.progress + LOOK_AHEAD)       / ws.curveLen);
+          const L2 = Math.min(1.0, (ws.progress + LOOK_AHEAD * 2.0) / ws.curveLen);
+          const L3 = Math.min(1.0, (ws.progress + LOOK_AHEAD * 3.5) / ws.curveLen);
+          ws.curve.getPointAt(L1, ws._p1);
+          ws.curve.getPointAt(L2, ws._p2);
+          ws.curve.getPointAt(L3, ws._p3);
+          ws._ahead.set(
+            ws._p1.x * 0.50 + ws._p2.x * 0.30 + ws._p3.x * 0.20,
+            pos.y - 3,
+            ws._p1.z * 0.50 + ws._p2.z * 0.30 + ws._p3.z * 0.20,
+          );
+          ws.smoothLook.lerp(ws._ahead, Math.min(1, delta * LOOK_LAG));
+          t.camera.lookAt(ws.smoothLook);
+
+          // At the end of the path, trigger a retreat instead of stopping in-booth.
+          // The retreat backs the camera out along the reverse of the final approach
+          // direction, lifting it slightly, for an "establishing shot" of the booth.
+          if (!ws.paused && tParam >= 1.0) {
+            const finalPos = pos.clone(); // inside or at the booth boundary
+            // Final approach vector: from the point LOOK_AHEAD before the end to the end
+            const approachT    = Math.max(0, 1.0 - LOOK_AHEAD / ws.curveLen);
+            const approachFrom = ws.curve.getPointAt(approachT);
+            const approachDir  = new THREE.Vector3()
+              .subVectors(finalPos, approachFrom)
+              .setY(0)
+              .normalize();
+            // If path is degenerate (all waypoints at same XZ), fall back to +Z retreat
+            if (approachDir.lengthSq() < 0.01) approachDir.set(0, 0, 1);
+            // Retreat destination: back up + lift
+            const retreatTo = finalPos.clone()
+              .addScaledVector(approachDir, -RETREAT_DIST)
+              .setY(finalPos.y + RETREAT_H_GAIN);
+            // Orbit / look target: booth center at comfortable mid-height
+            const retreatLook = new THREE.Vector3(finalPos.x, finalPos.y - 3, finalPos.z);
+            ws.retreating      = true;
+            ws.retreatFrom     = finalPos;
+            ws.retreatTo       = retreatTo;
+            ws.retreatLook     = retreatLook;
+            ws.retreatProgress = 0;
+          }
         }
       }
 

@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 
-export async function POST() {
-  const response = NextResponse.json({ success: true });
+function clearSession(response) {
   response.cookies.set('iph_admin_session', '', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -10,4 +9,13 @@ export async function POST() {
     maxAge: 0,
   });
   return response;
+}
+
+export async function GET(request) {
+  const origin = new URL(request.url).origin;
+  return clearSession(NextResponse.redirect(new URL('/apn/login', origin)));
+}
+
+export async function POST() {
+  return clearSession(NextResponse.json({ success: true }));
 }

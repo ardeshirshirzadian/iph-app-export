@@ -112,7 +112,7 @@ export async function GET() {
     let mapZones = [];
     try {
       const zonesResult = await query(
-        "SELECT id, title_fa, title_en, hall_name, shape_type, x1, y1, x2, y2, cx, cy, radius, points, is_blocking FROM map_zones WHERE is_active = true"
+        "SELECT id, title_fa, title_en, hall_name, shape_type, x1, y1, x2, y2, cx, cy, radius, points, is_blocking, is_visible FROM map_zones WHERE is_active = true"
       );
       mapZones = zonesResult.rows;
     } catch {

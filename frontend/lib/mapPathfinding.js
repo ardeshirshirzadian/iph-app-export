@@ -209,7 +209,7 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
   }
 
   // ── Step 2: outer wall construction (requires hall data) ──────────────────
-  const emptyGrid = { blocked, cols, rows, cellSize, forbiddenEdges: new Map() };
+  const emptyGrid = { blocked, cols, rows, cellSize, forbiddenEdges: new Map(), exitGapCells: new Set() };
   if (halls.length === 0) return emptyGrid;
 
   // Compute each hall's bbox from its booths' actual positions.
@@ -240,6 +240,11 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
 
   const forbiddenEdges = new Map(); // Map<fromCellIdx, Set<toCellIdx>>
   let innerBboxes = []; // populated below when door/sign data is present
+  // Exit gap cells are hoisted here so findGridRoute can use them when snapping
+  // the START point: snapping the origin onto an exit gap cell causes A* to be
+  // immediately forced outside (exitGap→interior is forbidden), producing a route
+  // that loops around the outside of the building instead of through the corridor.
+  let exitGapCells = new Set();
 
   function addForbiddenEdge(from, to) {
     let s = forbiddenEdges.get(from);
@@ -255,9 +260,10 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
 
     // gapCells          — all walkable gap cells (all door types)
     // exitGapCells      — exit-only doors (inside→outside): forbid gap → interior
+    //                     (declared at function scope so findGridRoute can access it)
     // entranceOnlyGapCells — entrance-only doors (outside→inside): forbid interior → gap
     const gapCells = new Set();
-    const exitGapCells = new Set();
+    // exitGapCells is the outer let (not re-declared here)
     const entranceOnlyGapCells = new Set();
 
     // Helper: snap (px,py) to nearest building boundary and carve grid cells.
@@ -484,13 +490,20 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
   // `walls` is kept on the grid so findGridRoute can repair RDP-simplified segments
   // that visually cross a wall even though the raw A* path correctly avoids it.
   // `innerBboxes` is used by nearestWalkable to prefer interior snap targets over exterior.
-  return { blocked, cols, rows, cellSize, forbiddenEdges, walls: mapWalls ?? [], innerBboxes };
+  // `exitGapCells` is used by findGridRoute to avoid snapping the START point onto a cell
+  // whose only outward edges to the interior are forbidden (exit-door one-way constraint),
+  // which would force A* outside the building and around to another entrance.
+  return { blocked, cols, rows, cellSize, forbiddenEdges, walls: mapWalls ?? [], innerBboxes, exitGapCells };
 }
 
 // ── Nearest walkable cell (Chebyshev spiral) ──────────────────────────────────
 
-function nearestWalkable(blocked, cols, rows, c, r, innerBboxes, cellSize) {
-  if (!blocked[r * cols + c]) return { c, r };
+// avoidSet: optional Set of cell indices to skip during snapping.  Used when
+// snapping the START point to exclude exit-gap cells — those cells have forbidden
+// edges (exitGap → interior) that force A* outside the building even when the
+// origin is inside, producing a route that loops around the exterior.
+function nearestWalkable(blocked, cols, rows, c, r, innerBboxes, cellSize, avoidSet = null) {
+  if (!blocked[r * cols + c] && !avoidSet?.has(r * cols + c)) return { c, r };
   const hasInner = innerBboxes && innerBboxes.length > 0 && cellSize;
   for (let d = 1; d < Math.max(cols, rows); d++) {
     let bestInterior = null, bestExterior = null;
@@ -500,6 +513,7 @@ function nearestWalkable(blocked, cols, rows, c, r, innerBboxes, cellSize) {
         const nc = c + dc, nr = r + dr;
         if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
         if (blocked[nr * cols + nc]) continue;
+        if (avoidSet?.has(nr * cols + nc)) continue; // skip exit-gap cells for start snap
         if (!hasInner) return { c: nc, r: nr };
         // Classify as interior (inside a hall) vs exterior
         const cx = (nc + 0.5) * cellSize, cy = (nr + 0.5) * cellSize;
@@ -762,7 +776,9 @@ export function findGridRoute(grid, startX, startY, destX, destY) {
 
   const sc = toCell(startX, startY);
   const dc = toCell(destX, destY);
-  const start = nearestWalkable(blocked, cols, rows, sc.c, sc.r, grid.innerBboxes, cellSize);
+  // Pass exitGapCells for start only: exit-gap cells have forbidden outbound edges
+  // (exitGap → interior) that force A* outside the building when the origin is near an exit.
+  const start = nearestWalkable(blocked, cols, rows, sc.c, sc.r, grid.innerBboxes, cellSize, grid.exitGapCells);
   const end = nearestWalkable(blocked, cols, rows, dc.c, dc.r, grid.innerBboxes, cellSize);
 
   const gridPath = aStarGrid(blocked, cols, rows, start.c, start.r, end.c, end.r, forbiddenEdges);

@@ -11,6 +11,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 import { fetchPublicGraphQL } from "@/lib/publicRasayeshClient";
+import Button from "@/components/Button";
 
 const BADGE_QUERY = gql`
   query GetBadge($uuid: String!, $eventSlug: String!) {
@@ -315,8 +316,12 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
             </p>
             <Link
               href="/login"
-              className="px-6 py-2.5 rounded-xl font-bold text-sm"
-              style={{ background: "var(--accent)", color: "#021f20" }}
+              className="px-6 py-2.5 rounded-xl font-bold text-sm inline-flex items-center"
+              style={{
+                background: "var(--btn-primary-bg)",
+                color: "var(--btn-primary-text)",
+                border: "1px solid var(--btn-primary-border)",
+              }}
             >
               {t(lang, "badge_login_button")}
             </Link>
@@ -334,13 +339,13 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
                   eventName={displayEventName}
                   onQRClick={() => setQrModalOpen(true)}
                 />
-                <button
+                <Button
                   onClick={downloadCard}
-                  className="w-full mt-3 py-2.5 rounded-xl font-bold text-sm"
-                  style={{ background: "var(--accent)", color: "#021f20" }}
+                  variant="primary"
+                  className="w-full mt-3"
                 >
                   {isRTL ? "دانلود کارت" : "Download Card"}
-                </button>
+                </Button>
               </div>
             ) : (
               /* Fallback glass card */

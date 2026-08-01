@@ -6,6 +6,7 @@ import PageHeader from "@/components/PageHeader";
 import BottomNav from "@/app/components/BottomNav";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
+import Button from "@/components/Button";
 
 const STORAGE_KEY = "iph_chat_history";
 
@@ -259,14 +260,14 @@ export default function ChatClient({ title, subtitle, title_en, subtitle_en, isH
                 className="flex-1 bg-transparent outline-none text-sm py-2 placeholder:text-[var(--text-faint)]"
                 style={{ color: "var(--text)" }}
               />
-              <button
+              <Button
                 onClick={sendMessage}
                 disabled={loading}
-                className="flex-shrink-0 font-bold text-sm px-5 py-2.5 rounded-xl transition-colors disabled:opacity-40"
-                style={{ background: "var(--accent)", color: "var(--bg)" }}
+                variant="primary"
+                size="sm"
               >
                 {t(lang, "chat_send")}
-              </button>
+              </Button>
             </div>
             <p className="text-[10px] text-center mt-2" style={{ color: "var(--text-faint)" }}>
               {t(lang, "chat_disclaimer")}

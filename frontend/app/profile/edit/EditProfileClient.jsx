@@ -625,7 +625,7 @@ export default function EditProfileClient() {
       {cropSrc && (
         <div
           className="fixed inset-0 z-[60] flex flex-col"
-          style={{ background: "rgba(2,31,32,0.97)" }}
+          style={{ background: "var(--sheet-bg)" }}
         >
           <div className="relative flex-1" style={{ minHeight: 0 }}>
             <Cropper
@@ -657,7 +657,7 @@ export default function EditProfileClient() {
             <button
               onClick={() => { setCropSrc(null); setPhotoError(""); }}
               className="flex-1 py-3 rounded-xl text-sm font-bold"
-              style={{ background: "rgba(255,255,255,0.08)", color: "var(--text)" }}
+              style={{ background: "var(--surface-2)", color: "var(--text)" }}
             >
               {isEN ? "Cancel" : "انصراف"}
             </button>
@@ -665,7 +665,7 @@ export default function EditProfileClient() {
               onClick={confirmCrop}
               disabled={uploadingPhoto}
               className="flex-1 py-3 rounded-xl text-sm font-bold disabled:opacity-50"
-              style={{ background: "var(--accent)", color: "#021f20" }}
+              style={{ background: "var(--accent)", color: "var(--bg)" }}
             >
               {uploadingPhoto ? "..." : isEN ? "Upload" : "آپلود"}
             </button>

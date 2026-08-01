@@ -41,6 +41,19 @@ html.light {
 }
 /* Hide dark-mode decorative blur glows in light theme */
 html.light .dark-only { display: none !important; }
+
+/* During map gestures (pinch-zoom, pan), all backdrop-filter elements in the
+   map page are suppressed. Each active backdrop-filter forces a full re-rasterize
+   of the SVG compositor layer on every gesture frame; disabling them eliminates
+   that per-frame cost and prevents iOS Safari GPU-memory crashes in modal/overlay
+   states (StartPanel, BoothSheet, ZoneSheet, hint pill, zoom buttons, etc.).
+   The class is applied to pageRootRef in onGestureStart() and removed in
+   onGestureSettle(). All overlays inside the map page are auto-covered — no
+   per-element code required. See RULE 4 in MapClient.jsx header. */
+.map-gesture-active * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
 /* News post body HTML */
 .prose-news p { margin-bottom: 1rem; }
 .prose-news h1, .prose-news h2, .prose-news h3 { color: var(--text); font-weight: 700; margin: 1.25rem 0 0.5rem; }

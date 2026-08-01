@@ -1215,8 +1215,8 @@ function QuizModal({ quiz, onClose, onComplete, lang }) {
     <div className="fixed inset-0 z-[200] flex items-end justify-center" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={result ? onClose : undefined} />
       <div
-        className="relative w-full max-w-md rounded-t-3xl border-t border-x border-[#00ffb3]/20 pb-10 overflow-hidden"
-        style={{ background: "#021f20", maxHeight: '90vh', overflowY: 'auto' }}
+        className="relative w-full max-w-md rounded-t-3xl border-t border-x border-[var(--border-accent)] pb-10 overflow-hidden"
+        style={{ background: "var(--sheet-bg)", maxHeight: '90vh', overflowY: 'auto' }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-3">
@@ -1226,7 +1226,7 @@ function QuizModal({ quiz, onClose, onComplete, lang }) {
           <button
             onClick={onClose}
             className="w-8 h-8 rounded-full flex items-center justify-center"
-            style={{ background: "rgba(255,255,255,0.08)", color: "var(--text-dim)" }}
+            style={{ background: "var(--surface-2)", color: "var(--text-dim)" }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               strokeWidth="2.5" strokeLinecap="round">
@@ -1289,8 +1289,8 @@ function QuizModal({ quiz, onClose, onComplete, lang }) {
                   onClick={() => setSelected(i)}
                   className="w-full text-right px-4 py-3 rounded-xl border text-sm font-medium transition-all"
                   style={{
-                    borderColor: selected === i ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
-                    background: selected === i ? 'rgba(0,255,179,0.12)' : 'rgba(255,255,255,0.04)',
+                    borderColor: selected === i ? 'var(--accent)' : 'var(--border)',
+                    background: selected === i ? 'rgba(0,255,179,0.12)' : 'var(--surface-2)',
                     color: selected === i ? 'var(--accent)' : 'var(--text)',
                   }}
                 >
@@ -1437,17 +1437,17 @@ function SurveyModal({ survey, onClose, onComplete, lang }) {
     <div className="fixed inset-0 z-[200] flex items-end justify-center" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={result ? onClose : undefined} />
       <div
-        className="relative w-full max-w-md rounded-t-3xl border-t border-x border-[#00ffb3]/20 pb-10 overflow-hidden"
-        style={{ background: "#021f20", maxHeight: '90vh', overflowY: 'auto' }}
+        className="relative w-full max-w-md rounded-t-3xl border-t border-x border-[var(--border-accent)] pb-10 overflow-hidden"
+        style={{ background: "var(--sheet-bg)", maxHeight: '90vh', overflowY: 'auto' }}
       >
-        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-white/5">
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-[var(--border)]">
           <h2 className="font-bold text-base" style={{ color: "var(--text)" }}>
             📋 {title}
           </h2>
           <button
             onClick={onClose}
             className="w-8 h-8 rounded-full flex items-center justify-center"
-            style={{ background: "rgba(255,255,255,0.08)", color: "var(--text-dim)" }}
+            style={{ background: "var(--surface-2)", color: "var(--text-dim)" }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               strokeWidth="2.5" strokeLinecap="round">
@@ -1530,12 +1530,12 @@ function SurveyModal({ survey, onClose, onComplete, lang }) {
                       onChange={e => setAnswer(field.id, e.target.value)}
                       className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-colors"
                       style={{
-                        background: 'rgba(255,255,255,0.05)',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         color: 'var(--text)',
                       }}
                       onFocus={e => { e.target.style.borderColor = 'rgba(0,255,179,0.4)'; }}
-                      onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)'; }}
+                      onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
                     />
                   )}
 
@@ -1550,15 +1550,15 @@ function SurveyModal({ survey, onClose, onComplete, lang }) {
                             onClick={() => setAnswer(field.id, opt)}
                             className="w-full text-right px-4 py-3 rounded-xl border text-sm font-medium transition-all"
                             style={{
-                              borderColor: selected ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
-                              background: selected ? 'rgba(0,255,179,0.12)' : 'rgba(255,255,255,0.04)',
+                              borderColor: selected ? 'var(--accent)' : 'var(--border)',
+                              background: selected ? 'rgba(0,255,179,0.12)' : 'var(--surface-2)',
                               color: selected ? 'var(--accent)' : 'var(--text)',
                               textAlign: isRTL ? 'right' : 'left',
                             }}
                           >
                             <span className="inline-block w-3.5 h-3.5 rounded-full border-2 ml-2 flex-shrink-0 align-middle transition-all"
                               style={{
-                                borderColor: selected ? 'var(--accent)' : 'rgba(255,255,255,0.3)',
+                                borderColor: selected ? 'var(--accent)' : 'var(--text-faint)',
                                 background: selected ? 'var(--accent)' : 'transparent',
                                 marginLeft: isRTL ? 0 : 8,
                                 marginRight: isRTL ? 8 : 0,
@@ -1581,15 +1581,15 @@ function SurveyModal({ survey, onClose, onComplete, lang }) {
                             onClick={() => toggleCheckbox(field.id, opt)}
                             className="w-full text-right px-4 py-3 rounded-xl border text-sm font-medium transition-all"
                             style={{
-                              borderColor: checked ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
-                              background: checked ? 'rgba(0,255,179,0.12)' : 'rgba(255,255,255,0.04)',
+                              borderColor: checked ? 'var(--accent)' : 'var(--border)',
+                              background: checked ? 'rgba(0,255,179,0.12)' : 'var(--surface-2)',
                               color: checked ? 'var(--accent)' : 'var(--text)',
                               textAlign: isRTL ? 'right' : 'left',
                             }}
                           >
                             <span className="inline-block w-3.5 h-3.5 rounded border-2 flex-shrink-0 align-middle transition-all"
                               style={{
-                                borderColor: checked ? 'var(--accent)' : 'rgba(255,255,255,0.3)',
+                                borderColor: checked ? 'var(--accent)' : 'var(--text-faint)',
                                 background: checked ? 'var(--accent)' : 'transparent',
                                 marginLeft: isRTL ? 0 : 8,
                                 marginRight: isRTL ? 8 : 0,
@@ -1692,7 +1692,7 @@ function SocialShareModal({ share, onClose, onComplete, lang }) {
         className="w-full max-w-lg rounded-t-3xl p-6 pb-10"
         style={{ background: 'var(--bg)', border: '1px solid rgba(0,255,179,0.15)', borderBottom: 'none' }}
       >
-        <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: 'rgba(255,255,255,0.15)' }} />
+        <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: 'var(--border)' }} />
 
         {state === 'submitted' ? (
           <div className="text-center py-6">
@@ -1736,8 +1736,8 @@ function SocialShareModal({ share, onClose, onComplete, lang }) {
                 dir="ltr"
                 className="w-full rounded-xl px-4 py-3 text-sm outline-none"
                 style={{
-                  background: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--border)',
                   color: 'var(--text)',
                   textAlign: 'left',
                 }}
@@ -1756,9 +1756,9 @@ function SocialShareModal({ share, onClose, onComplete, lang }) {
                     onClick={() => setPlatform(platform === p ? '' : p)}
                     className="px-3 py-1.5 rounded-full text-xs font-medium transition-all"
                     style={{
-                      background: platform === p ? 'var(--accent)' : 'rgba(255,255,255,0.07)',
+                      background: platform === p ? 'var(--accent)' : 'var(--surface-2)',
                       color: platform === p ? 'var(--bg)' : 'var(--text-muted)',
-                      border: `1px solid ${platform === p ? 'var(--accent)' : 'rgba(255,255,255,0.1)'}`,
+                      border: `1px solid ${platform === p ? 'var(--accent)' : 'var(--border)'}`,
                     }}
                   >
                     {isRTL ? PLATFORM_FA[p] : p}

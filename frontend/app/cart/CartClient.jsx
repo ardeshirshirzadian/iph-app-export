@@ -9,6 +9,7 @@ import PageHeader from "@/components/PageHeader";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 import { toPersianDigits } from "@/lib/utils";
+import Button from "@/components/Button";
 
 const CART_QUERY = gql`
   query {
@@ -261,13 +262,12 @@ export default function CartClient() {
             <p className="text-sm font-medium text-center" style={{ color: "var(--text)" }}>
               {lang === "en" ? (config.empty_cart_en || t(lang, "book_cart_empty")) : (config.empty_cart_fa || t(lang, "book_cart_empty"))}
             </p>
-            <button
+            <Button
               onClick={() => router.push("/")}
-              className="px-6 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95"
-              style={{ background: "var(--accent)", color: "#021f20" }}
+              variant="primary"
             >
               {lang === "fa" ? "بازگشت به صفحه اصلی" : "Back to Home"}
-            </button>
+            </Button>
           </div>
         )}
 
@@ -317,14 +317,16 @@ export default function CartClient() {
                           {formatPrice(item.price, lang)}
                         </p>
                       )}
-                      <button
+                      <Button
                         onClick={() => handleRemoveItem(item.id)}
                         disabled={isRemoving}
-                        className="text-xs px-2 py-0.5 rounded-lg mt-1 transition-all disabled:opacity-40"
-                        style={{ color: "#ef4444", border: "1px solid rgba(239,68,68,0.25)" }}
+                        variant="danger"
+                        size="sm"
+                        className="mt-1 text-xs"
+                        style={{ fontWeight: 500 }}
                       >
                         {isRemoving ? "..." : lang === "fa" ? "حذف" : "Remove"}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 );
@@ -419,22 +421,23 @@ export default function CartClient() {
 
             {/* Actions */}
             <div className="flex flex-col gap-3">
-              <button
+              <Button
                 onClick={handlePay}
                 disabled={payLoading}
-                className="w-full py-3.5 rounded-xl font-bold text-sm transition-all active:scale-95 disabled:opacity-50"
-                style={{ background: "var(--accent)", color: "#021f20" }}
+                variant="primary"
+                className="w-full"
+                size="lg"
               >
                 {payLoading ? "..." : t(lang, "book_pay")}
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={handleCancelOrder}
                 disabled={cancelLoading}
-                className="w-full py-2.5 rounded-xl text-sm font-medium transition-all active:scale-95"
-                style={{ border: "1px solid rgba(239,68,68,0.3)", color: "#ef4444" }}
+                variant="danger"
+                className="w-full"
               >
                 {cancelLoading ? "..." : t(lang, "book_cancel_order")}
-              </button>
+              </Button>
             </div>
           </div>
         )}

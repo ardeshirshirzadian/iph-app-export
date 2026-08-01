@@ -8,6 +8,7 @@ import { getApolloClient } from "@/lib/apolloClient";
 import BottomNav from "../components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import ProfileCompletionBar from "../components/ProfileCompletionBar";
+import Button from "@/components/Button";
 import { useAuth } from "../../hooks/useAuth";
 import { toPersianDigits } from "@/lib/utils";
 import { useLang } from "@/lib/useLang";
@@ -351,17 +352,14 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en, 
         ) : null}
 
         {/* Logout button */}
-        <button
+        <Button
           onClick={logout}
-          className="w-full mb-4 py-2.5 rounded-xl text-sm font-medium border transition-colors"
-          style={{
-            color: "#ff6b6b",
-            borderColor: "rgba(255,107,107,0.2)",
-            background: "rgba(255,107,107,0.05)",
-          }}
+          variant="danger"
+          className="w-full mb-4"
+          style={{ fontWeight: 500 }}
         >
           {t(lang, "logout_button")}
-        </button>
+        </Button>
       </div>
 
       <BottomNav />

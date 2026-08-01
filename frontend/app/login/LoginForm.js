@@ -10,6 +10,7 @@ import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 import LangToggle from "@/components/LangToggle";
 import { hapticError } from "@/lib/haptics";
+import Button from "@/components/Button";
 
 const SEND_OTP = gql`
   mutation SendOtp($mobile: String, $email: String) {
@@ -391,14 +392,15 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                 </p>
               )}
 
-              <button
+              <Button
                 type="submit"
                 disabled={loading || !isContactValid}
-                className="w-full mt-4 py-3 rounded-xl font-bold transition-opacity disabled:opacity-50"
-                style={{ background: "var(--accent)", color: "#021f20" }}
+                variant="primary"
+                className="w-full mt-4"
+                size="lg"
               >
                 {loading ? t(lang, "sending") : (isEmail ? (settings.submit_button_text_en || t(lang, "submit_button")) : settings.submit_button_text)}
-              </button>
+              </Button>
             </form>
           ) : (
             <form onSubmit={handleVerifyOtp}>
@@ -454,16 +456,17 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                 </p>
               )}
 
-              <button
+              <Button
                 type="submit"
                 disabled={loading || otpValue.length < 5}
-                className="w-full mt-4 py-3 rounded-xl font-bold transition-opacity disabled:opacity-50"
-                style={{ background: "var(--accent)", color: "#021f20" }}
+                variant="primary"
+                className="w-full mt-4"
+                size="lg"
               >
                 {loading
                   ? t(lang, "verifying")
                   : (isEmail ? (settings.verify_button_text_en || t(lang, "verify_button")) : settings.verify_button_text)}
-              </button>
+              </Button>
 
               <div className="mt-4 text-center">
                 <button
