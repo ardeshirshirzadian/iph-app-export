@@ -129,6 +129,19 @@ export async function GET() {
       // table may not exist yet — safe to ignore
     }
 
+    const navCamResult = await query("SELECT value FROM app_settings WHERE key = 'nav_camera_config'");
+    const navCameraConfig = { distance: 220, height: 90, ...(navCamResult.rows[0]?.value ?? {}) };
+
+    const navMarkersResult = await query("SELECT value FROM app_settings WHERE key = 'nav_marker_icons_config'");
+    const navMarkerIconsDefaults = {
+      route_start: { type: 'builtin', value: '🏁' },
+      route_end: { type: 'builtin', value: '📍' },
+      door_entrance: { type: 'builtin', value: '🚶' },
+      door_exit: { type: 'builtin', value: '🚪' },
+      door_bidirectional: { type: 'builtin', value: '↔️' },
+    };
+    const navMarkerIcons = { ...navMarkerIconsDefaults, ...(navMarkersResult.rows[0]?.value ?? {}) };
+
     return NextResponse.json({
       websiteEvent: json.data?.websiteEvent ?? null,
       hallColors,
@@ -137,6 +150,8 @@ export async function GET() {
       hallFloors,
       mapZones,
       mapWalls,
+      navCameraConfig,
+      navMarkerIcons,
     });
   } catch (err) {
     console.error('[api/map]', err.message);

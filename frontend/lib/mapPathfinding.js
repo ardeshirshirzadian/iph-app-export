@@ -502,7 +502,15 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
 // snapping the START point to exclude exit-gap cells — those cells have forbidden
 // edges (exitGap → interior) that force A* outside the building even when the
 // origin is inside, producing a route that loops around the exterior.
-function nearestWalkable(blocked, cols, rows, c, r, innerBboxes, cellSize, avoidSet = null) {
+//
+// avoidExterior: when true, exterior cells (outside all innerBboxes) are skipped
+// entirely during the spiral.  Used when snapping the DESTINATION: if the raw
+// destination falls inside a large blocking zone (e.g. a stage), the zone cells
+// occupy the building interior and exterior walkable cells appear closer in the
+// Chebyshev spiral than interior corridor cells.  Without this flag, the snap
+// lands outside the building and A* routes via the exterior.  If no interior
+// walkable cell exists at all, falls back to a second pass without the constraint.
+function nearestWalkable(blocked, cols, rows, c, r, innerBboxes, cellSize, avoidSet = null, avoidExterior = false) {
   if (!blocked[r * cols + c] && !avoidSet?.has(r * cols + c)) return { c, r };
   const hasInner = innerBboxes && innerBboxes.length > 0 && cellSize;
   for (let d = 1; d < Math.max(cols, rows); d++) {
@@ -521,13 +529,15 @@ function nearestWalkable(blocked, cols, rows, c, r, innerBboxes, cellSize, avoid
           (ib) => cx >= ib.x0 && cx <= ib.x1 && cy >= ib.y0 && cy <= ib.y1
         );
         if (isInterior) { if (!bestInterior) bestInterior = { c: nc, r: nr }; }
-        else            { if (!bestExterior) bestExterior = { c: nc, r: nr }; }
+        else if (!avoidExterior) { if (!bestExterior) bestExterior = { c: nc, r: nr }; }
       }
     }
     // Prefer an interior cell — only fall back to exterior if nothing interior found at this d
     if (bestInterior) return bestInterior;
     if (bestExterior) return bestExterior;
   }
+  // avoidExterior was set but no interior cell found anywhere — fall back unconstrained.
+  if (avoidExterior) return nearestWalkable(blocked, cols, rows, c, r, innerBboxes, cellSize, avoidSet, false);
   return { c, r };
 }
 
@@ -779,7 +789,12 @@ export function findGridRoute(grid, startX, startY, destX, destY) {
   // Pass exitGapCells for start only: exit-gap cells have forbidden outbound edges
   // (exitGap → interior) that force A* outside the building when the origin is near an exit.
   const start = nearestWalkable(blocked, cols, rows, sc.c, sc.r, grid.innerBboxes, cellSize, grid.exitGapCells);
-  const end = nearestWalkable(blocked, cols, rows, dc.c, dc.r, grid.innerBboxes, cellSize);
+  // Pass avoidExterior=true when the raw destination cell is blocked (e.g. inside a large
+  // blocking zone or booth).  Without this, the Chebyshev spiral reaches exterior walkable
+  // cells before interior corridor cells and snaps the destination outside the building,
+  // forcing A* to route via the building exterior instead of through the interior.
+  const destCellBlocked = !!blocked[dc.r * cols + dc.c];
+  const end = nearestWalkable(blocked, cols, rows, dc.c, dc.r, grid.innerBboxes, cellSize, null, destCellBlocked);
 
   const gridPath = aStarGrid(blocked, cols, rows, start.c, start.r, end.c, end.r, forbiddenEdges);
   if (!gridPath) return null;

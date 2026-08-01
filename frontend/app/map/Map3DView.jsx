@@ -7,7 +7,6 @@ import { groupOuterLoops, insetPolygonLoop } from "./mapUtils.js";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const BOOTH_H   = 22;   // height of each extruded booth block (map units)
-const ZONE_H    = 10;   // height of named zone blocks (shorter, flatter than booths)
 const FLOOR_GAP = 200;  // vertical separation between floors (map units)
 const ROUTE_Y   = 5;    // route tube sits this far above floor level
 // Inward offset applied to each company group's merged outer polygon (map units
@@ -25,6 +24,10 @@ const LOOK_LAG     = 2.5;  // look-direction lerp rate per second (reduced from 
 const RETREAT_DIST   = 220; // horizontal units to pull back from the final waypoint
 const RETREAT_H_GAIN = 90;  // additional height gain during retreat (frames booth from above-eye level)
 const RETREAT_DUR    = 1.8; // seconds for the retreat ease-out animation
+// Drone-follow camera — matches retreat values so mid-walkthrough framing is identical
+// to the arrival framing: arrival becomes a seamless continuation, not a zoom-out jump.
+const DRONE_DIST = RETREAT_DIST;   // horizontal follow distance behind walker (220)
+const DRONE_H    = RETREAT_H_GAIN; // height above walker's eye level (90)
 
 // ── Module-level helpers (no hooks) ───────────────────────────────────────────
 
@@ -95,6 +98,14 @@ function makeEmojiTexture(emoji) {
   return new THREE.CanvasTexture(canvas);
 }
 
+// Returns a Promise<THREE.Texture> for an uploaded image path
+function makeUploadTexture(url) {
+  return new Promise((resolve) => {
+    const loader = new THREE.TextureLoader();
+    loader.load(url, resolve, undefined, () => resolve(makeEmojiTexture("📍")));
+  });
+}
+
 // ── Map3DView component ────────────────────────────────────────────────────────
 // Coordinate mapping: map (x, y) → Three.js world (x, floorY, y).
 // Y axis is vertical/up; XZ plane is the floor.
@@ -107,6 +118,8 @@ export default function Map3DView({
   navRoute,       // null | { type, path?, pathA?, pathB?, stairsFrom?, stairsTo? }
   navStart,       // null | { x, y, floor }
   navDest,        // null | { x, y, floor }
+  navCameraConfig, // { distance, height } — drone camera settings from DB
+  navMarkerIcons,  // { route_start, route_end, … } — icon config from DB
   tapStartMode,   // bool — next tap sets route start
   onBoothTap,     // (booth, hall, { cx, cy, mergedLabel }) → void
   onZoneTap,      // (zone, { cx, cy }) → void
@@ -132,6 +145,9 @@ export default function Map3DView({
 
     const t = {};
     tRef.current = t;
+    // Camera distance/height for drone follow — read from DB config, default to module constants
+    t.camDist = navCameraConfig?.distance ?? DRONE_DIST;
+    t.camH    = navCameraConfig?.height   ?? DRONE_H;
 
     const W = el.clientWidth  || window.innerWidth;
     const H = el.clientHeight || window.innerHeight;
@@ -254,7 +270,7 @@ export default function Map3DView({
       }
     }
 
-    // ── Build named zones — flat boxes, shorter than booths ──────────────────
+    // ── Build named zones — same height as booths for visual consistency ─────
     for (const zone of (zones ?? [])) {
       const colorStr = hallColors[zone.hall_name] || "#00ffb3";
       const shape = zone.shape_type || "rectangle";
@@ -275,10 +291,10 @@ export default function Map3DView({
         bw = Math.max(Math.abs(x2 - x1), 1); bd = Math.max(Math.abs(y2 - y1), 1);
       }
       const zoneFloorY = ((hallFloors ?? {})[zone.hall_name] ?? 0) * FLOOR_GAP;
-      const geo = new THREE.BoxGeometry(bw, ZONE_H, bd);
+      const geo = new THREE.BoxGeometry(bw, BOOTH_H, bd);
       const mat = new THREE.MeshLambertMaterial({ color: parseColor(colorStr), transparent: true, opacity: 0.6 });
       const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.set(cx, zoneFloorY + ZONE_H / 2, cz);
+      mesh.position.set(cx, zoneFloorY + BOOTH_H / 2, cz);
       t.scene.add(mesh);
       t.disposables.push({ geometry: geo, material: mat });
       t.zoneEntries.push({ mesh, zone, cx, cz, colorStr });
@@ -406,27 +422,34 @@ export default function Map3DView({
           // Cancel any in-flight overview tween and disable user orbit input
           t.tween = null;
           t.controls.enabled = false;
-          // Jump camera to start of path, facing the first look-ahead point
-          const startPt = curve.getPointAt(0);
-          const lookT   = Math.min(1, LOOK_AHEAD / curveLen);
-          const lookPt  = curve.getPointAt(lookT);
-          lookPt.y = startPt.y - 3;
-          t.camera.position.copy(startPt);
-          t.camera.lookAt(lookPt);
+          // Place drone camera behind and above the path start
+          const startPt  = curve.getPointAt(0);
+          const lookT    = Math.min(1, LOOK_AHEAD / curveLen);
+          const lookPt   = curve.getPointAt(lookT);
+          const initFwd  = new THREE.Vector3(lookPt.x - startPt.x, 0, lookPt.z - startPt.z);
+          if (initFwd.lengthSq() > 0.0001) initFwd.normalize(); else initFwd.set(0, 0, 1);
+          t.camera.position.set(
+            startPt.x - initFwd.x * t.camDist,
+            startPt.y + t.camH,
+            startPt.z - initFwd.z * t.camDist,
+          );
+          t.camera.lookAt(startPt.x, startPt.y - 3, startPt.z);
           t.walk = {
             curve,
             curveLen,
             progress:       0,
-            smoothLook:     lookPt.clone(),
+            smoothLook:     new THREE.Vector3(startPt.x, startPt.y - 3, startPt.z),
             paused:         false,
             wptArcLengths,
             onComplete:     onComplete ?? null,
             // Reusable scratch vectors — avoids per-frame GC allocation in the RAF loop
-            _pos:   new THREE.Vector3(),
-            _p1:    new THREE.Vector3(),
-            _p2:    new THREE.Vector3(),
-            _p3:    new THREE.Vector3(),
-            _ahead: new THREE.Vector3(),
+            _pos:      new THREE.Vector3(),
+            _p1:       new THREE.Vector3(),
+            _p2:       new THREE.Vector3(),
+            _p3:       new THREE.Vector3(),
+            _ahead:    new THREE.Vector3(),
+            _fwd:      new THREE.Vector3(), // scratch: per-frame forward direction compute
+            _droneDir: initFwd.clone(), // smoothed XZ forward direction for drone camera offset
             // Retreat phase (populated when tParam reaches 1.0)
             retreating:      false,
             retreatFrom:     null,
@@ -466,11 +489,17 @@ export default function Map3DView({
           ws.progress  = nextAL !== undefined ? Math.min(nextAL, ws.curveLen) : ws.curveLen;
           const tParam = ws.progress / ws.curveLen;
           const pos    = ws.curve.getPointAt(tParam, ws._pos);
-          t.camera.position.copy(pos);
           const lookT  = Math.min(1.0, (ws.progress + LOOK_AHEAD) / ws.curveLen);
           ws.curve.getPointAt(lookT, ws._ahead);
-          ws._ahead.y = pos.y - 3;
-          ws.smoothLook.copy(ws._ahead); // snap look immediately; RAF lerp continues from here
+          // Snap drone direction to current path direction
+          const sfFwd = new THREE.Vector3(ws._ahead.x - pos.x, 0, ws._ahead.z - pos.z);
+          if (sfFwd.lengthSq() > 0.0001) { sfFwd.normalize(); ws._droneDir.copy(sfFwd); }
+          t.camera.position.set(
+            pos.x - ws._droneDir.x * t.camDist,
+            pos.y + t.camH,
+            pos.z - ws._droneDir.z * t.camDist,
+          );
+          ws.smoothLook.set(pos.x, pos.y - 3, pos.z);
           t.camera.lookAt(ws.smoothLook);
         },
         stepBack() {
@@ -485,11 +514,17 @@ export default function Map3DView({
           ws.progress  = prevAL;
           const tParam = ws.progress / ws.curveLen;
           const pos    = ws.curve.getPointAt(tParam, ws._pos);
-          t.camera.position.copy(pos);
           const lookT  = Math.min(1.0, (ws.progress + LOOK_AHEAD) / ws.curveLen);
           ws.curve.getPointAt(lookT, ws._ahead);
-          ws._ahead.y = pos.y - 3;
-          ws.smoothLook.copy(ws._ahead);
+          // Snap drone direction to current path direction
+          const sbFwd = new THREE.Vector3(ws._ahead.x - pos.x, 0, ws._ahead.z - pos.z);
+          if (sbFwd.lengthSq() > 0.0001) { sbFwd.normalize(); ws._droneDir.copy(sbFwd); }
+          t.camera.position.set(
+            pos.x - ws._droneDir.x * t.camDist,
+            pos.y + t.camH,
+            pos.z - ws._droneDir.z * t.camDist,
+          );
+          ws.smoothLook.set(pos.x, pos.y - 3, pos.z);
           t.camera.lookAt(ws.smoothLook);
         },
       };
@@ -543,19 +578,16 @@ export default function Map3DView({
           }
 
         } else {
-          // ── Normal path-following ─────────────────────────────────────────
+          // ── Normal path-following (drone camera) ─────────────────────────
           if (!ws.paused) {
             ws.progress = Math.min(ws.progress + delta * WALK_SPEED, ws.curveLen);
           }
           const tParam = ws.progress / ws.curveLen;
           const pos    = ws.curve.getPointAt(tParam, ws._pos);
-          t.camera.position.copy(pos);
 
-          // Multi-sample blended look-ahead for smoother turning.
-          // Three samples (near 35u / mid 70u / far 122u) are weighted 50/30/20.
-          // The weighted average anticipates upcoming turns early so the camera
-          // starts rotating before the corner rather than snapping at it — while
-          // still tracking close enough that it never appears to lag behind.
+          // Multi-sample blended look-ahead to compute forward travel direction.
+          // Three samples (near 35u / mid 70u / far 122u) weighted 50/30/20 anticipate
+          // upcoming turns early so the drone camera starts rotating before the corner.
           const L1 = Math.min(1.0, (ws.progress + LOOK_AHEAD)       / ws.curveLen);
           const L2 = Math.min(1.0, (ws.progress + LOOK_AHEAD * 2.0) / ws.curveLen);
           const L3 = Math.min(1.0, (ws.progress + LOOK_AHEAD * 3.5) / ws.curveLen);
@@ -564,17 +596,31 @@ export default function Map3DView({
           ws.curve.getPointAt(L3, ws._p3);
           ws._ahead.set(
             ws._p1.x * 0.50 + ws._p2.x * 0.30 + ws._p3.x * 0.20,
-            pos.y - 3,
+            pos.y,
             ws._p1.z * 0.50 + ws._p2.z * 0.30 + ws._p3.z * 0.20,
           );
-          ws.smoothLook.lerp(ws._ahead, Math.min(1, delta * LOOK_LAG));
+          // Smooth the forward travel direction (XZ only) — uses scratch _fwd to avoid GC
+          ws._fwd.set(ws._ahead.x - pos.x, 0, ws._ahead.z - pos.z);
+          if (ws._fwd.lengthSq() > 0.0001) {
+            ws._fwd.normalize();
+            ws._droneDir.lerp(ws._fwd, Math.min(1, delta * LOOK_LAG));
+            if (ws._droneDir.lengthSq() > 0.0001) ws._droneDir.normalize();
+          }
+          // Drone camera: positioned behind and above the walker
+          t.camera.position.set(
+            pos.x - ws._droneDir.x * t.camDist,
+            pos.y + t.camH,
+            pos.z - ws._droneDir.z * t.camDist,
+          );
+          // Look at walker's current position from the drone perspective
+          ws.smoothLook.set(pos.x, pos.y - 3, pos.z);
           t.camera.lookAt(ws.smoothLook);
 
           // At the end of the path, trigger a retreat instead of stopping in-booth.
-          // The retreat backs the camera out along the reverse of the final approach
-          // direction, lifting it slightly, for an "establishing shot" of the booth.
+          // Since the drone camera is already at t.camDist / t.camH, the retreat
+          // starts from the current camera position — arrival is a seamless continuation.
           if (!ws.paused && tParam >= 1.0) {
-            const finalPos = pos.clone(); // inside or at the booth boundary
+            const finalPos = pos.clone(); // at the booth boundary / destination
             // Final approach vector: from the point LOOK_AHEAD before the end to the end
             const approachT    = Math.max(0, 1.0 - LOOK_AHEAD / ws.curveLen);
             const approachFrom = ws.curve.getPointAt(approachT);
@@ -584,14 +630,14 @@ export default function Map3DView({
               .normalize();
             // If path is degenerate (all waypoints at same XZ), fall back to +Z retreat
             if (approachDir.lengthSq() < 0.01) approachDir.set(0, 0, 1);
-            // Retreat destination: back up + lift
+            // Retreat destination: same formula as drone camera — ensures from ≈ to
             const retreatTo = finalPos.clone()
-              .addScaledVector(approachDir, -RETREAT_DIST)
-              .setY(finalPos.y + RETREAT_H_GAIN);
+              .addScaledVector(approachDir, -t.camDist)
+              .setY(finalPos.y + t.camH);
             // Orbit / look target: booth center at comfortable mid-height
             const retreatLook = new THREE.Vector3(finalPos.x, finalPos.y - 3, finalPos.z);
             ws.retreating      = true;
-            ws.retreatFrom     = finalPos;
+            ws.retreatFrom     = t.camera.position.clone(); // start from current drone pos
             ws.retreatTo       = retreatTo;
             ws.retreatLook     = retreatLook;
             ws.retreatProgress = 0;
@@ -633,6 +679,14 @@ export default function Map3DView({
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // scene built once; halls/hallColors are populated before mount
+
+  // ── Sync camera config whenever prop changes (t initialized once but config may change) ──
+  useEffect(() => {
+    const t = tRef.current;
+    if (!t) return;
+    t.camDist = navCameraConfig?.distance ?? DRONE_DIST;
+    t.camH    = navCameraConfig?.height   ?? DRONE_H;
+  }, [navCameraConfig]);
 
   // ── Route — rebuild when navRoute / markers change ────────────────────────
   useEffect(() => {
@@ -733,22 +787,30 @@ export default function Map3DView({
       } catch (_) { /* skip malformed paths */ }
     }
 
-    // Helper: emoji sprite marker for route start/end/stairs
-    function addMarker(mx, mz, floorY, emoji) {
-      const tex    = makeEmojiTexture(emoji);
-      const mat    = new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false });
-      const sprite = new THREE.Sprite(mat);
-      sprite.position.set(mx, floorY + BOOTH_H + 16, mz);
-      sprite.scale.set(MARKER_SIZE, MARKER_SIZE, 1);
-      t.scene.add(sprite);
-      t.routeObjects.push(sprite);
+    // Helper: sprite marker for route start/end/stairs.
+    // iconOrEmoji may be a string emoji OR { type: 'builtin'|'upload', value: string }
+    function addMarker(mx, mz, floorY, iconOrEmoji) {
+      const icon = typeof iconOrEmoji === 'string' ? { type: 'builtin', value: iconOrEmoji } : iconOrEmoji;
+      function placeSprite(tex) {
+        const mat    = new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false });
+        const sprite = new THREE.Sprite(mat);
+        sprite.position.set(mx, floorY + BOOTH_H + 16, mz);
+        sprite.scale.set(MARKER_SIZE, MARKER_SIZE, 1);
+        t.scene.add(sprite);
+        t.routeObjects.push(sprite);
+      }
+      if (icon.type === 'upload' && icon.value) {
+        makeUploadTexture(icon.value).then(placeSprite);
+      } else {
+        placeSprite(makeEmojiTexture(icon.value ?? '📍'));
+      }
     }
 
     if (navRoute.type === "single") {
       const floorY = (navStart?.floor ?? 0) * FLOOR_GAP;
       addRouteTube(navRoute.path, floorY, "#00ffb3");
-      if (navStart) addMarker(navStart.x, navStart.y, floorY, "🏁");
-      if (navDest)  addMarker(navDest.x,  navDest.y,  floorY, "📍");
+      if (navStart) addMarker(navStart.x, navStart.y, floorY, navMarkerIcons?.route_start ?? "🏁");
+      if (navDest)  addMarker(navDest.x,  navDest.y,  floorY, navMarkerIcons?.route_end   ?? "📍");
       // Build walkthrough path at eye-level height
       const wpts = (navRoute.path ?? []).map(p => new THREE.Vector3(p.x, floorY + EYE_H, p.y));
       t.walkthroughPath = wpts.length >= 2 ? wpts : null;
@@ -758,10 +820,10 @@ export default function Map3DView({
       const floorBY = (navDest?.floor  ?? 0) * FLOOR_GAP;
       addRouteTube(pathA, floorAY, "#00ffb3");
       addRouteTube(pathB, floorBY, "#f59e0b");
-      if (navStart)    addMarker(navStart.x,    navStart.y,    floorAY, "🏁");
+      if (navStart)    addMarker(navStart.x,    navStart.y,    floorAY, navMarkerIcons?.route_start ?? "🏁");
       if (stairsFrom)  addMarker(stairsFrom.x,  stairsFrom.y,  floorAY, "🪜");
       if (stairsTo)    addMarker(stairsTo.x,    stairsTo.y,    floorBY, "🪜");
-      if (navDest)     addMarker(navDest.x,     navDest.y,     floorBY, "📍");
+      if (navDest)     addMarker(navDest.x,     navDest.y,     floorBY, navMarkerIcons?.route_end   ?? "📍");
       // Build walkthrough path: floor-A segment + 3 interpolated transition
       // waypoints across the staircase + floor-B segment. CatmullRomCurve3
       // smooths the vertical ramp, creating a natural "going upstairs" feel.
@@ -780,7 +842,7 @@ export default function Map3DView({
         t.walkthroughPath = [...ptsA, ...mid, ...ptsB];
       }
     }
-  }, [navRoute, navStart, navDest]);
+  }, [navRoute, navStart, navDest, navMarkerIcons]);
 
   // ── Selection highlight — update booth material color when selected ───────────
   useEffect(() => {

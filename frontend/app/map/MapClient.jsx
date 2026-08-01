@@ -177,6 +177,21 @@ function zoneCenter(zone) {
   return { x: ((zone.x1 ?? 0) + (zone.x2 ?? 0)) / 2, y: ((zone.y1 ?? 0) + (zone.y2 ?? 0)) / 2 };
 }
 
+function zoneArea(zone) {
+  const shape = zone.shape_type || 'rectangle';
+  if (shape === 'circle') return Math.PI * (zone.radius ?? 50) ** 2;
+  if (shape === 'polygon' && Array.isArray(zone.points) && zone.points.length >= 3) {
+    let area = 0;
+    const pts = zone.points;
+    for (let i = 0; i < pts.length; i++) {
+      const j = (i + 1) % pts.length;
+      area += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+    }
+    return Math.abs(area) / 2;
+  }
+  return Math.abs((zone.x2 ?? 0) - (zone.x1 ?? 0)) * Math.abs((zone.y2 ?? 0) - (zone.y1 ?? 0));
+}
+
 function buildBoothGroups(booths) {
   const companyMap = new Map();
   const result = [];
@@ -973,6 +988,14 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const { lang, isRTL } = useLang();
   const isEN = lang === "en";
 
+  const [navCameraConfig, setNavCameraConfig] = useState({ distance: 220, height: 90 });
+  const [navMarkerIcons, setNavMarkerIcons] = useState({
+    route_start: { type: 'builtin', value: '🏁' },
+    route_end: { type: 'builtin', value: '📍' },
+    door_entrance: { type: 'builtin', value: '🚶' },
+    door_exit: { type: 'builtin', value: '🚪' },
+    door_bidirectional: { type: 'builtin', value: '↔️' },
+  });
   const [mapData, setMapData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null); // null | string
@@ -1261,6 +1284,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
         if (d.mapZones) setMapZones(d.mapZones);
         if (d.mapWalls) setMapWalls(d.mapWalls);
         if (d.mapDoors) setMapDoors(d.mapDoors);
+        if (d.navCameraConfig) setNavCameraConfig(d.navCameraConfig);
+        if (d.navMarkerIcons) setNavMarkerIcons(prev => ({ ...prev, ...d.navMarkerIcons }));
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -2053,6 +2078,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
               navRoute={navRoute}
               navStart={navStart}
               navDest={navDest}
+              navCameraConfig={navCameraConfig}
+              navMarkerIcons={navMarkerIcons}
               tapStartMode={tapStartMode}
               onBoothTap={onBooth3DTap}
               onZoneTap={onZone3DTap}
@@ -2143,10 +2170,18 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
               })}
 
               {/* Named zones — below booths (booths appear on top).
+                  Fills and labels are visual-only (pointerEvents:none); click
+                  handling is done by the transparent hit overlays rendered after
+                  booths so zones are always tappable even when booth polygons
+                  cover the zone area.
                   Wrapped in zonesLayerRef so onGestureStart can hide them to
-                  reduce per-frame GPU paint work during active gestures. */}
+                  reduce per-frame GPU paint work during active gestures.
+                  Sorted by area descending: large zones rendered first (bottom),
+                  small zones last (top) so their labels stay visible. */}
               <g ref={zonesLayerRef}>
-              {mapZones.filter((z) => z.title_fa && z.is_visible !== false).map((zone) => {
+              {[...mapZones.filter((z) => z.title_fa && z.is_visible !== false)]
+                .sort((a, b) => zoneArea(b) - zoneArea(a))
+                .map((zone) => {
                 const color = hallColors[zone.hall_name] || "#00ffb3";
                 const isActive = selectedZone?.id === zone.id;
                 const fill   = isActive ? `${color}bb` : `${color}40`;
@@ -2154,8 +2189,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                 const sw     = isActive ? 2 : 1.5;
                 const shapeProps = {
                   fill, stroke, strokeWidth: sw,
-                  style: { cursor: "pointer" },
-                  onClick: (e) => onZoneClick(e, zone),
+                  style: { pointerEvents: "none" }, // visual only — hits handled below
                 };
                 const shape  = zone.shape_type || "rectangle";
                 const center = zoneCenter(zone);
@@ -2268,6 +2302,42 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                 })
               )}
 
+              {/* Zone hit overlays — rendered after booth polygons so zone taps register
+                  even when booth polygons visually cover the zone area.
+                  fill="transparent" makes each shape fully hit-testable but invisible.
+                  Sorted by descending area: largest zones rendered first, smallest last
+                  (last = topmost in SVG z-order = highest click priority), so a small
+                  specific zone inside a large zone boundary always wins the tap. */}
+              <g>
+              {[...mapZones.filter((z) => z.title_fa && z.is_visible !== false)]
+                .sort((a, b) => zoneArea(b) - zoneArea(a))
+                .map((zone) => {
+                  const shape = zone.shape_type || "rectangle";
+                  const hitProps = {
+                    fill: "transparent",
+                    stroke: "none",
+                    style: { cursor: "pointer" },
+                    onClick: (e) => onZoneClick(e, zone),
+                  };
+                  return (
+                    <g key={`zh-${zone.id}`}>
+                      {shape === "circle" ? (
+                        <circle cx={zone.cx} cy={zone.cy} r={zone.radius ?? 50} {...hitProps} />
+                      ) : shape === "polygon" && Array.isArray(zone.points) && zone.points.length >= 3 ? (
+                        <polygon points={zone.points.map((p) => `${p.x},${p.y}`).join(" ")} {...hitProps} />
+                      ) : (
+                        <rect
+                          x={zone.x1} y={zone.y1}
+                          width={Math.abs((zone.x2 ?? 0) - (zone.x1 ?? 0))}
+                          height={Math.abs((zone.y2 ?? 0) - (zone.y1 ?? 0))}
+                          {...hitProps}
+                        />
+                      )}
+                    </g>
+                  );
+                })}
+              </g>
+
               {/* Wall polylines intentionally not rendered here — walls are
                   invisible obstacles to users. They still block A* pathfinding
                   via buildWalkableGrid (Step 6). Admin editing is in iph-apn. */}
@@ -2315,6 +2385,30 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                 const arrowStroke = aL * 0.1;
 
                 // Inline helper — returns flat array of <polygon> elements.
+                // Render a nav pin (emoji text or uploaded image) at (px, py)
+                const svgNavPin = (px, py, iconObj, fs, key) => {
+                  if (iconObj?.type === 'upload' && iconObj.value) {
+                    const sz = fs * 1.6;
+                    return (
+                      <image
+                        key={key}
+                        href={iconObj.value}
+                        x={px - sz / 2} y={py - sz / 2}
+                        width={sz} height={sz}
+                        filter="url(#markerDrop)"
+                        style={{ pointerEvents: 'none' }}
+                      />
+                    );
+                  }
+                  const emoji = iconObj?.value ?? (iconObj?.type === 'builtin' ? iconObj.value : null);
+                  return (
+                    <text key={key} x={px} y={py} textAnchor="middle" dominantBaseline="central"
+                      fontSize={fs} filter="url(#markerDrop)" style={{ userSelect: 'none' }}>
+                      {emoji}
+                    </text>
+                  );
+                };
+
                 // NOT a React component (no JSX <ArrowFn>) to avoid React unmounting
                 // and remounting all arrow DOM nodes on every re-render due to unstable
                 // function identity when defined inside a render closure.
@@ -2341,8 +2435,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                     <g style={{ pointerEvents: "none" }}>
                       <polyline points={path.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="#00ffb3" strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash} strokeOpacity={0.9} />
                       {arrowPolygons(path, "#00ffb3", "a")}
-                      <text x={start.x} y={start.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs * 1.3} filter="url(#markerDrop)" style={{ userSelect: "none" }}>🏁</text>
-                      <text x={dest.x} y={dest.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs * 1.4} filter="url(#markerDrop)" style={{ userSelect: "none" }}>📍</text>
+                      {svgNavPin(start.x, start.y, navMarkerIcons.route_start, signFs * 1.3, "pin-start")}
+                      {svgNavPin(dest.x, dest.y, navMarkerIcons.route_end, signFs * 1.4, "pin-dest")}
                     </g>
                   );
                 }
@@ -2360,13 +2454,13 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                       <polyline points={pathB.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="#f59e0b" strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash} strokeOpacity={0.85} />
                       {arrowPolygons(pathB, "#f59e0b", "ab")}
                       {/* Start pin */}
-                      <text x={startPt.x} y={startPt.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs * 1.3} filter="url(#markerDrop)" style={{ userSelect: "none" }}>🏁</text>
+                      {svgNavPin(startPt.x, startPt.y, navMarkerIcons.route_start, signFs * 1.3, "pin-start-mf")}
                       {/* Staircase on start floor */}
                       <text x={stairsFrom.x} y={stairsFrom.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs * 1.3} filter="url(#markerDrop)" style={{ userSelect: "none" }}>🪜</text>
                       {/* Staircase on dest floor */}
                       <text x={stairsTo.x} y={stairsTo.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs * 1.3} filter="url(#markerDrop)" style={{ userSelect: "none" }}>🪜</text>
                       {/* Destination pin */}
-                      <text x={destPt.x} y={destPt.y} textAnchor="middle" dominantBaseline="central" fontSize={signFs * 1.4} filter="url(#markerDrop)" style={{ userSelect: "none" }}>📍</text>
+                      {svgNavPin(destPt.x, destPt.y, navMarkerIcons.route_end, signFs * 1.4, "pin-dest-mf")}
                     </g>
                   );
                 }
