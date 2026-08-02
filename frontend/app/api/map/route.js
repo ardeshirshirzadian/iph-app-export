@@ -142,7 +142,7 @@ export async function GET() {
     };
     const navMarkerIcons = { ...navMarkerIconsDefaults, ...(navMarkersResult.rows[0]?.value ?? {}) };
 
-    const MAP_APPEARANCE_CAM_DEFAULTS = { pitch: 50, distance: 1.0 };
+    const MAP_APPEARANCE_CAM_DEFAULTS = { pitch: 50, distance: 1.0, heading: 86 };
     const MAP_APPEARANCE_BG_DEFAULTS  = { dark: '#021f20', light: '#e8f5f0' };
     const appearanceResult = await query("SELECT value FROM app_settings WHERE key = 'map_appearance_config'");
     const appearanceStored = appearanceResult.rows[0]?.value ?? {};
@@ -150,6 +150,14 @@ export async function GET() {
       default_camera: { ...MAP_APPEARANCE_CAM_DEFAULTS, ...(appearanceStored.default_camera ?? {}) },
       background:     { ...MAP_APPEARANCE_BG_DEFAULTS,  ...(appearanceStored.background     ?? {}) },
     };
+
+    const GESTURE_HINT_DEFAULTS = {
+      enabled: true,
+      fa: '☝️ یک انگشت: جابجایی نقشه\n✌️ دو انگشت: چرخش و زوم',
+      en: '☝️ One finger: move map\n✌️ Two fingers: rotate + zoom',
+    };
+    const gestureHintResult = await query("SELECT value FROM app_settings WHERE key = 'map_gesture_hint_config'");
+    const gestureHintConfig = { ...GESTURE_HINT_DEFAULTS, ...(gestureHintResult.rows[0]?.value ?? {}) };
 
     return NextResponse.json({
       websiteEvent: json.data?.websiteEvent ?? null,
@@ -162,6 +170,7 @@ export async function GET() {
       navCameraConfig,
       navMarkerIcons,
       mapAppearanceConfig,
+      gestureHintConfig,
     });
   } catch (err) {
     console.error('[api/map]', err.message);

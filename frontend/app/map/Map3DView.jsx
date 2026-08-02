@@ -120,7 +120,7 @@ export default function Map3DView({
   navDest,          // null | { x, y, floor }
   navCameraConfig,  // { distance, height } — drone/walkthrough camera settings from DB
   navMarkerIcons,   // { route_start, route_end, … } — icon config from DB
-  idleCameraConfig, // { default_camera: { pitch, distance } } — idle overview camera from DB
+  idleCameraConfig, // { default_camera: { pitch, distance, heading } } — idle overview camera from DB
   bgColor,          // string hex — map background color (theme-specific, from DB)
   tapStartMode,     // bool — next tap sets route start
   onBoothTap,       // (booth, hall, { cx, cy, mergedLabel }) → void
@@ -185,6 +185,8 @@ export default function Map3DView({
     t.controls.panSpeed        = 0.7;
     t.controls.rotateSpeed     = 0.5;
     t.controls.zoomSpeed       = 1.0;
+    // Google Maps touch convention: 1-finger → pan, 2-finger → rotate + pinch-zoom
+    t.controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
 
     t.raycaster   = new THREE.Raycaster();
     t.boothEntries = []; // { mesh, booth, hall, mergedLabel, cx, cz, colorStr }
@@ -306,8 +308,16 @@ export default function Map3DView({
     // ── Camera initial position ───────────────────────────────────────────────
     // idleCameraConfig controls the overview/idle framing (distinct from the
     // walkthrough drone camera which uses navCameraConfig / t.camDist / t.camH).
-    // pitch: elevation angle in degrees (higher → more aerial/top-down).
+    //
+    // pitch:   elevation angle in degrees (higher → more aerial/top-down).
     // distance: multiplier on the map-span-based base distance.
+    // heading: compass bearing (0°=north, 90°=east, 180°=south, 270°=west) of
+    //          where the camera sits relative to the orbit target.
+    //          Default 86° = camera placed almost due east (near Hall E entrance)
+    //          looking almost due west toward Hall A.
+    //
+    //          Derivation: Hall E entrance Three.js (5275, 0, 1239) vs map
+    //          center (2786, 0, 1405) → ΔX=+2489, ΔZ=-166 → bearing ≈ 86°.
     if (allXs.length && allZs.length) {
       const minX = Math.min(...allXs), maxX = Math.max(...allXs);
       const minZ = Math.min(...allZs), maxZ = Math.max(...allZs);
@@ -315,15 +325,16 @@ export default function Map3DView({
       const span = Math.max(maxX - minX, maxZ - minZ);
       const pitchDeg   = idleCameraConfig?.default_camera?.pitch    ?? 50;
       const distFactor = idleCameraConfig?.default_camera?.distance ?? 1.0;
-      const dist = span * 0.85 * distFactor;
-      const pitchRad = pitchDeg * Math.PI / 180;
-      // Keep the same horizontal direction as before (-0.35 x, +0.9 z)
-      // and derive height from pitch so the angle is geometrically meaningful.
+      const headingDeg = idleCameraConfig?.default_camera?.heading  ?? 86;
+      const dist       = span * 0.85 * distFactor;
+      const pitchRad   = pitchDeg   * Math.PI / 180;
+      const headingRad = headingDeg * Math.PI / 180;
+      // Compass: camera offset from target = (sin(h)*d, tan(p)*d, -cos(h)*d)
       t.controls.target.set(scX, 0, scZ);
       t.camera.position.set(
-        scX - dist * 0.35,
+        scX + Math.sin(headingRad) * dist,
         dist * Math.tan(pitchRad),
-        scZ + dist * 0.9,
+        scZ - Math.cos(headingRad) * dist,
       );
       t.controls.update();
       t.defaultCamPos  = t.camera.position.clone();

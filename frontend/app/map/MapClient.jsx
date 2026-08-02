@@ -991,6 +991,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const [navCameraConfig, setNavCameraConfig] = useState({ distance: 220, height: 90 });
   const [mapAppearanceConfig, setMapAppearanceConfig] = useState(null);
   const [mapTheme, setMapTheme] = useState('dark'); // tracks 'dark'|'light' for bg color
+  const [gestureHintConfig, setGestureHintConfig] = useState(null);
+  const [showGestureHint, setShowGestureHint] = useState(false);
   const [navMarkerIcons, setNavMarkerIcons] = useState({
     route_start: { type: 'builtin', value: '🏁' },
     route_end: { type: 'builtin', value: '📍' },
@@ -1289,6 +1291,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
         if (d.navCameraConfig) setNavCameraConfig(d.navCameraConfig);
         if (d.navMarkerIcons) setNavMarkerIcons(prev => ({ ...prev, ...d.navMarkerIcons }));
         if (d.mapAppearanceConfig) setMapAppearanceConfig(d.mapAppearanceConfig);
+        if (d.gestureHintConfig)   setGestureHintConfig(d.gestureHintConfig);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -1315,6 +1318,27 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
 
   // Keep view3DRef in sync so closures/timeouts always read the current mode.
   useEffect(() => { view3DRef.current = view3D; }, [view3D]);
+
+  // One-time gesture hint: show the first time 3D mode is active (or default-on).
+  // Reads gestureHintConfig from admin; persists "seen" flag in localStorage.
+  const hintTimerRef = useRef(null);
+  const hintShownRef = useRef(false); // prevents double-show within session
+  function dismissGestureHint() {
+    setShowGestureHint(false);
+    if (hintTimerRef.current) { clearTimeout(hintTimerRef.current); hintTimerRef.current = null; }
+    try { localStorage.setItem('iph_map3d_hint_seen', '1'); } catch {}
+  }
+  useEffect(() => {
+    if (!view3D) return;
+    if (hintShownRef.current) return;
+    if (!(gestureHintConfig?.enabled ?? true)) return;
+    try { if (localStorage.getItem('iph_map3d_hint_seen')) return; } catch {}
+    hintShownRef.current = true;
+    setShowGestureHint(true);
+    hintTimerRef.current = setTimeout(dismissGestureHint, 5000);
+    return () => { if (hintTimerRef.current) clearTimeout(hintTimerRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view3D, gestureHintConfig]);
 
   // Track current theme ('dark'|'light') so 3D scene background updates when theme switches.
   // Reads the 'light' class applied to <html> by ThemeSync.js.
@@ -2142,6 +2166,47 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                 });
               }}
             />
+          )}
+
+          {/* ── One-time gesture hint (3D mode, first visit) ─────────────── */}
+          {/* RULE 4 compliance: no backdrop-filter — uses solid rgba background  */}
+          {/* so it stays crisp during gestures without extra GPU compositing.   */}
+          {view3D && showGestureHint && (
+            <div
+              onClick={dismissGestureHint}
+              style={{
+                position: 'absolute',
+                bottom: 90,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                background: 'rgba(2, 31, 32, 0.92)',
+                border: '1px solid rgba(0, 255, 179, 0.25)',
+                borderRadius: 16,
+                padding: '14px 22px',
+                zIndex: 35,
+                textAlign: 'center',
+                whiteSpace: 'pre-line',
+                cursor: 'pointer',
+                pointerEvents: 'auto',
+                userSelect: 'none',
+                minWidth: 220,
+                maxWidth: 300,
+                boxShadow: '0 4px 24px rgba(0,0,0,0.55)',
+              }}
+              dir={isEN ? 'ltr' : 'rtl'}
+              aria-label={isEN ? 'Gesture guide — tap to dismiss' : 'راهنمای اشاره‌گر — لمس کنید تا بسته شود'}
+            >
+              <div style={{ fontSize: 13, color: '#ffffff', lineHeight: 1.9 }}>
+                {gestureHintConfig
+                  ? (isEN ? gestureHintConfig.en : gestureHintConfig.fa)
+                  : (isEN
+                    ? '☝️ One finger: move map\n✌️ Two fingers: rotate + zoom'
+                    : '☝️ یک انگشت: جابجایی نقشه\n✌️ دو انگشت: چرخش و زوم')}
+              </div>
+              <div style={{ fontSize: 11, color: 'rgba(0,255,179,0.55)', marginTop: 8 }}>
+                {isEN ? 'Tap to dismiss' : 'برای بستن لمس کنید'}
+              </div>
+            </div>
           )}
 
           {/* ── 2D mode: CSS-transform wrapper + SVG overlay ── */}
