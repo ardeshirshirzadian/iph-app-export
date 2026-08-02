@@ -993,6 +993,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const [mapTheme, setMapTheme] = useState('dark'); // tracks 'dark'|'light' for bg color
   const [gestureHintConfig, setGestureHintConfig] = useState(null);
   const [showGestureHint, setShowGestureHint] = useState(false);
+  const [routeAppearanceConfig, setRouteAppearanceConfig] = useState(null);
   const [navMarkerIcons, setNavMarkerIcons] = useState({
     route_start: { type: 'builtin', value: '🏁' },
     route_end: { type: 'builtin', value: '📍' },
@@ -1291,7 +1292,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
         if (d.navCameraConfig) setNavCameraConfig(d.navCameraConfig);
         if (d.navMarkerIcons) setNavMarkerIcons(prev => ({ ...prev, ...d.navMarkerIcons }));
         if (d.mapAppearanceConfig) setMapAppearanceConfig(d.mapAppearanceConfig);
-        if (d.gestureHintConfig)   setGestureHintConfig(d.gestureHintConfig);
+        if (d.gestureHintConfig)      setGestureHintConfig(d.gestureHintConfig);
+        if (d.routeAppearanceConfig)  setRouteAppearanceConfig(d.routeAppearanceConfig);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -1887,6 +1889,12 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
     ? (mapAppearanceConfig?.background?.light ?? '#e8f5f0')
     : (mapAppearanceConfig?.background?.dark  ?? '#021f20');
 
+  // Theme-resolved route/navigation colors (fallback to hardcoded defaults if unset)
+  const ROUTE_COLOR_DEFAULTS = mapTheme === 'light'
+    ? { routeLine: '#007755', routeArrow: '#007755', walkthroughHalo: '#007755', walkthroughStripe: '#007755' }
+    : { routeLine: '#00ffb3', routeArrow: '#00ffb3', walkthroughHalo: '#00ffb3', walkthroughStripe: '#00ffb3' };
+  const routeColors = { ...ROUTE_COLOR_DEFAULTS, ...(routeAppearanceConfig?.[mapTheme] ?? {}) };
+
   const { w: mapW, h: mapH } = dimRef.current;
   const planUrl = mapData ? getPlanUrl(mapData.bare_plan) : null;
   // sign circle / font size relative to map coordinate space
@@ -2142,6 +2150,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
               navMarkerIcons={navMarkerIcons}
               idleCameraConfig={mapAppearanceConfig}
               bgColor={mapBgColor}
+              routeColors={routeColors}
               tapStartMode={tapStartMode}
               onBoothTap={onBooth3DTap}
               onZoneTap={onZone3DTap}
@@ -2536,8 +2545,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                   const start = path[0], dest = path[path.length - 1];
                   return (
                     <g style={{ pointerEvents: "none" }}>
-                      <polyline points={path.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="#00ffb3" strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash} strokeOpacity={0.9} />
-                      {arrowPolygons(path, "#00ffb3", "a")}
+                      <polyline points={path.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke={routeColors.routeLine} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash} strokeOpacity={0.9} />
+                      {arrowPolygons(path, routeColors.routeArrow, "a")}
                       {svgNavPin(start.x, start.y, navMarkerIcons.route_start, signFs * 1.3, "pin-start")}
                       {svgNavPin(dest.x, dest.y, navMarkerIcons.route_end, signFs * 1.4, "pin-dest")}
                     </g>
@@ -2550,10 +2559,10 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                   const startPt = pathA[0], destPt = pathB[pathB.length - 1];
                   return (
                     <g style={{ pointerEvents: "none" }}>
-                      {/* Ground-floor segment (green) + its arrows */}
-                      <polyline points={pathA.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="#00ffb3" strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash} strokeOpacity={0.9} />
-                      {arrowPolygons(pathA, "#00ffb3", "aa")}
-                      {/* Upper-floor segment (amber) + its arrows */}
+                      {/* Ground-floor segment + its arrows */}
+                      <polyline points={pathA.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke={routeColors.routeLine} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash} strokeOpacity={0.9} />
+                      {arrowPolygons(pathA, routeColors.routeArrow, "aa")}
+                      {/* Upper-floor segment (amber secondary, intentionally hardcoded) */}
                       <polyline points={pathB.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="#f59e0b" strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash} strokeOpacity={0.85} />
                       {arrowPolygons(pathB, "#f59e0b", "ab")}
                       {/* Start pin */}

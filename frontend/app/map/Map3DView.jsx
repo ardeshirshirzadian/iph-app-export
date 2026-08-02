@@ -122,6 +122,7 @@ export default function Map3DView({
   navMarkerIcons,   // { route_start, route_end, … } — icon config from DB
   idleCameraConfig, // { default_camera: { pitch, distance, heading } } — idle overview camera from DB
   bgColor,          // string hex — map background color (theme-specific, from DB)
+  routeColors,      // { routeLine, routeArrow, walkthroughHalo, walkthroughStripe } — from DB, theme-resolved
   tapStartMode,     // bool — next tap sets route start
   onBoothTap,       // (booth, hall, { cx, cy, mergedLabel }) → void
   onZoneTap,        // (zone, { cx, cy }) → void
@@ -187,6 +188,12 @@ export default function Map3DView({
     t.controls.zoomSpeed       = 1.0;
     // Google Maps touch convention: 1-finger → pan, 2-finger → rotate + pinch-zoom
     t.controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
+    // Always pan on the horizontal world plane regardless of camera pitch.
+    // With screenSpacePanning=true (default), vertical drags move along camera-local Y,
+    // which at shallow pitch angles points partly upward in world space — causing the
+    // view to lift instead of translate, making pan feel angle-dependent and sluggish.
+    // false → _panUp uses (cameraRight × worldUp), always a horizontal XZ vector.
+    t.controls.screenSpacePanning = false;
 
     t.raycaster   = new THREE.Raycaster();
     t.boothEntries = []; // { mesh, booth, hall, mergedLabel, cx, cz, colorStr }
@@ -773,9 +780,13 @@ export default function Map3DView({
       return tex;
     }
 
-    // Waze-style glowing navigation ribbon with animated directional flow
-    function addRouteTube(path2D, floorY, hexColor) {
+    // Waze-style glowing navigation ribbon with animated directional flow.
+    // stripeColor: color of the animated core tube + flow-texture dash pattern.
+    // haloColor:   color of the wide soft glow surrounding the tube.
+    function addRouteTube(path2D, floorY, stripeColor, haloColor) {
       if (!path2D || path2D.length < 2) return;
+      const stripe = stripeColor || '#00ffb3';
+      const halo   = haloColor   || stripe;
       const pts = path2D.map((p) => new THREE.Vector3(p.x, floorY + ROUTE_Y, p.y));
       try {
         // Use piecewise-linear CurvePath (not CatmullRomCurve3) so the tube exactly
@@ -788,14 +799,14 @@ export default function Map3DView({
         const tubeSeg = Math.max(pts.length * 6, 32);
 
         // Animated flow texture — repeat density proportional to path length
-        const flowTex = createFlowTexture(hexColor);
+        const flowTex = createFlowTexture(stripe);
         flowTex.repeat.set(Math.max(3, Math.round(len / 55)), 1);
         t.routeTextures.push(flowTex);
 
         // Glowing core tube (uses additive blending for bloom-like glow)
         const coreGeo = new THREE.TubeGeometry(curve, tubeSeg, 2.5, 8, false);
         const coreMat = new THREE.MeshBasicMaterial({
-          color: new THREE.Color(hexColor),
+          color: new THREE.Color(stripe),
           map: flowTex,
           transparent: true,
           opacity: 1.0,
@@ -809,7 +820,7 @@ export default function Map3DView({
         // Wide soft halo (gives the "thick glowing route" feel)
         const haloGeo = new THREE.TubeGeometry(curve, tubeSeg, 7, 8, false);
         const haloMat = new THREE.MeshBasicMaterial({
-          color: new THREE.Color(hexColor),
+          color: new THREE.Color(halo),
           transparent: true,
           opacity: 0.12,
           blending: THREE.AdditiveBlending,
@@ -840,9 +851,13 @@ export default function Map3DView({
       }
     }
 
+    // Theme-resolved colors from admin config (fallback to accent defaults)
+    const rStripe = routeColors?.walkthroughStripe ?? '#00ffb3';
+    const rHalo   = routeColors?.walkthroughHalo   ?? '#00ffb3';
+
     if (navRoute.type === "single") {
       const floorY = (navStart?.floor ?? 0) * FLOOR_GAP;
-      addRouteTube(navRoute.path, floorY, "#00ffb3");
+      addRouteTube(navRoute.path, floorY, rStripe, rHalo);
       if (navStart) addMarker(navStart.x, navStart.y, floorY, navMarkerIcons?.route_start ?? "🏁");
       if (navDest)  addMarker(navDest.x,  navDest.y,  floorY, navMarkerIcons?.route_end   ?? "📍");
       // Build walkthrough path at eye-level height
@@ -852,8 +867,8 @@ export default function Map3DView({
       const { pathA, pathB, stairsFrom, stairsTo } = navRoute;
       const floorAY = (navStart?.floor ?? 0) * FLOOR_GAP;
       const floorBY = (navDest?.floor  ?? 0) * FLOOR_GAP;
-      addRouteTube(pathA, floorAY, "#00ffb3");
-      addRouteTube(pathB, floorBY, "#f59e0b");
+      addRouteTube(pathA, floorAY, rStripe, rHalo);
+      addRouteTube(pathB, floorBY, '#f59e0b', '#f59e0b'); // secondary floor keeps amber
       if (navStart)    addMarker(navStart.x,    navStart.y,    floorAY, navMarkerIcons?.route_start ?? "🏁");
       if (stairsFrom)  addMarker(stairsFrom.x,  stairsFrom.y,  floorAY, "🪜");
       if (stairsTo)    addMarker(stairsTo.x,    stairsTo.y,    floorBY, "🪜");
@@ -876,7 +891,7 @@ export default function Map3DView({
         t.walkthroughPath = [...ptsA, ...mid, ...ptsB];
       }
     }
-  }, [navRoute, navStart, navDest, navMarkerIcons]);
+  }, [navRoute, navStart, navDest, navMarkerIcons, routeColors]);
 
   // ── Selection highlight — update booth material color when selected ───────────
   useEffect(() => {

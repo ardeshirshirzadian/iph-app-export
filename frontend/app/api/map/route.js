@@ -159,6 +159,17 @@ export async function GET() {
     const gestureHintResult = await query("SELECT value FROM app_settings WHERE key = 'map_gesture_hint_config'");
     const gestureHintConfig = { ...GESTURE_HINT_DEFAULTS, ...(gestureHintResult.rows[0]?.value ?? {}) };
 
+    const ROUTE_APPEARANCE_DEFAULTS = {
+      dark:  { routeLine: '#00ffb3', routeArrow: '#00ffb3', walkthroughHalo: '#00ffb3', walkthroughStripe: '#00ffb3' },
+      light: { routeLine: '#007755', routeArrow: '#007755', walkthroughHalo: '#007755', walkthroughStripe: '#007755' },
+    };
+    const routeAppearanceResult = await query("SELECT value FROM app_settings WHERE key = 'route_appearance_config'");
+    const routeAppearanceStored = routeAppearanceResult.rows[0]?.value ?? {};
+    const routeAppearanceConfig = {
+      dark:  { ...ROUTE_APPEARANCE_DEFAULTS.dark,  ...(routeAppearanceStored.dark  ?? {}) },
+      light: { ...ROUTE_APPEARANCE_DEFAULTS.light, ...(routeAppearanceStored.light ?? {}) },
+    };
+
     return NextResponse.json({
       websiteEvent: json.data?.websiteEvent ?? null,
       hallColors,
@@ -171,6 +182,7 @@ export async function GET() {
       navMarkerIcons,
       mapAppearanceConfig,
       gestureHintConfig,
+      routeAppearanceConfig,
     });
   } catch (err) {
     console.error('[api/map]', err.message);
