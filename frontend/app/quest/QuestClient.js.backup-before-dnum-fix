@@ -854,7 +854,6 @@ function getCooldownMinutes(lastScanAt, hours, now) {
 
 // dNum: apply Persian digits when lang==='fa', otherwise plain string
 function dNum(n, lang) {
-  if (n === null || n === undefined) return '';
   return lang === 'fa' ? toPersianDigits(n) : String(n);
 }
 // toPersianNum kept for callers that are already inside a lang==='fa' guard
