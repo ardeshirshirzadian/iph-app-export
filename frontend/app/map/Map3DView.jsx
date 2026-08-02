@@ -111,24 +111,26 @@ function makeUploadTexture(url) {
 // Y axis is vertical/up; XZ plane is the floor.
 
 export default function Map3DView({
-  halls,          // hallGroups from MapClient (includes .floor, .groups)
-  hallColors,     // { [hallName]: hexColor }
-  hallFloors,     // { [hallName]: floorNumber } — same lookup used by pathfinding
-  zones,          // named map_zones (title_fa truthy) to render as 3D blocks
-  navRoute,       // null | { type, path?, pathA?, pathB?, stairsFrom?, stairsTo? }
-  navStart,       // null | { x, y, floor }
-  navDest,        // null | { x, y, floor }
-  navCameraConfig, // { distance, height } — drone camera settings from DB
-  navMarkerIcons,  // { route_start, route_end, … } — icon config from DB
-  tapStartMode,   // bool — next tap sets route start
-  onBoothTap,     // (booth, hall, { cx, cy, mergedLabel }) → void
-  onZoneTap,      // (zone, { cx, cy }) → void
-  onGroundTap,    // (mapX, mapY) → void  — tap on empty ground in tapStartMode
-  onBackgroundTap, // () → void — tap on empty space (close sheets)
-  controlRef,     // ref whose .current receives { focusOnPoint, resetView, zoom }
-  selectedBoothId, // company id of currently selected booth (or null)
-  selectedZoneId,  // zone.id of currently selected zone (or null)
-  onReady,        // () => void — fires synchronously at end of scene-setup effect
+  halls,            // hallGroups from MapClient (includes .floor, .groups)
+  hallColors,       // { [hallName]: hexColor }
+  hallFloors,       // { [hallName]: floorNumber } — same lookup used by pathfinding
+  zones,            // named map_zones (title_fa truthy) to render as 3D blocks
+  navRoute,         // null | { type, path?, pathA?, pathB?, stairsFrom?, stairsTo? }
+  navStart,         // null | { x, y, floor }
+  navDest,          // null | { x, y, floor }
+  navCameraConfig,  // { distance, height } — drone/walkthrough camera settings from DB
+  navMarkerIcons,   // { route_start, route_end, … } — icon config from DB
+  idleCameraConfig, // { default_camera: { pitch, distance } } — idle overview camera from DB
+  bgColor,          // string hex — map background color (theme-specific, from DB)
+  tapStartMode,     // bool — next tap sets route start
+  onBoothTap,       // (booth, hall, { cx, cy, mergedLabel }) → void
+  onZoneTap,        // (zone, { cx, cy }) → void
+  onGroundTap,      // (mapX, mapY) → void  — tap on empty ground in tapStartMode
+  onBackgroundTap,  // () → void — tap on empty space (close sheets)
+  controlRef,       // ref whose .current receives { focusOnPoint, resetView, zoom }
+  selectedBoothId,  // company id of currently selected booth (or null)
+  selectedZoneId,   // zone.id of currently selected zone (or null)
+  onReady,          // () => void — fires synchronously at end of scene-setup effect
 }) {
   const mountRef = useRef(null);
   const tRef     = useRef(null); // holds all Three.js state (scene, camera, …)
@@ -154,7 +156,8 @@ export default function Map3DView({
 
     // Scene
     t.scene = new THREE.Scene();
-    t.scene.background = new THREE.Color(0x021f20);
+    try { t.scene.background = new THREE.Color(bgColor ?? '#021f20'); }
+    catch { t.scene.background = new THREE.Color(0x021f20); }
 
     // Camera
     t.camera = new THREE.PerspectiveCamera(48, W / H, 1, 40000);
@@ -301,14 +304,27 @@ export default function Map3DView({
     }
 
     // ── Camera initial position ───────────────────────────────────────────────
+    // idleCameraConfig controls the overview/idle framing (distinct from the
+    // walkthrough drone camera which uses navCameraConfig / t.camDist / t.camH).
+    // pitch: elevation angle in degrees (higher → more aerial/top-down).
+    // distance: multiplier on the map-span-based base distance.
     if (allXs.length && allZs.length) {
       const minX = Math.min(...allXs), maxX = Math.max(...allXs);
       const minZ = Math.min(...allZs), maxZ = Math.max(...allZs);
       const scX  = (minX + maxX) / 2, scZ = (minZ + maxZ) / 2;
       const span = Math.max(maxX - minX, maxZ - minZ);
-      const dist = span * 0.85;
+      const pitchDeg   = idleCameraConfig?.default_camera?.pitch    ?? 50;
+      const distFactor = idleCameraConfig?.default_camera?.distance ?? 1.0;
+      const dist = span * 0.85 * distFactor;
+      const pitchRad = pitchDeg * Math.PI / 180;
+      // Keep the same horizontal direction as before (-0.35 x, +0.9 z)
+      // and derive height from pitch so the angle is geometrically meaningful.
       t.controls.target.set(scX, 0, scZ);
-      t.camera.position.set(scX - dist * 0.35, dist * 0.7, scZ + dist * 0.9);
+      t.camera.position.set(
+        scX - dist * 0.35,
+        dist * Math.tan(pitchRad),
+        scZ + dist * 0.9,
+      );
       t.controls.update();
       t.defaultCamPos  = t.camera.position.clone();
       t.defaultTarget  = t.controls.target.clone();
@@ -687,6 +703,13 @@ export default function Map3DView({
     t.camDist = navCameraConfig?.distance ?? DRONE_DIST;
     t.camH    = navCameraConfig?.height   ?? DRONE_H;
   }, [navCameraConfig]);
+
+  // ── Sync scene background color when theme or admin config changes ──────────
+  useEffect(() => {
+    const t = tRef.current;
+    if (!t?.scene) return;
+    try { t.scene.background = new THREE.Color(bgColor ?? '#021f20'); } catch {}
+  }, [bgColor]);
 
   // ── Route — rebuild when navRoute / markers change ────────────────────────
   useEffect(() => {

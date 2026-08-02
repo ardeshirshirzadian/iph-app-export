@@ -142,6 +142,15 @@ export async function GET() {
     };
     const navMarkerIcons = { ...navMarkerIconsDefaults, ...(navMarkersResult.rows[0]?.value ?? {}) };
 
+    const MAP_APPEARANCE_CAM_DEFAULTS = { pitch: 50, distance: 1.0 };
+    const MAP_APPEARANCE_BG_DEFAULTS  = { dark: '#021f20', light: '#e8f5f0' };
+    const appearanceResult = await query("SELECT value FROM app_settings WHERE key = 'map_appearance_config'");
+    const appearanceStored = appearanceResult.rows[0]?.value ?? {};
+    const mapAppearanceConfig = {
+      default_camera: { ...MAP_APPEARANCE_CAM_DEFAULTS, ...(appearanceStored.default_camera ?? {}) },
+      background:     { ...MAP_APPEARANCE_BG_DEFAULTS,  ...(appearanceStored.background     ?? {}) },
+    };
+
     return NextResponse.json({
       websiteEvent: json.data?.websiteEvent ?? null,
       hallColors,
@@ -152,6 +161,7 @@ export async function GET() {
       mapWalls,
       navCameraConfig,
       navMarkerIcons,
+      mapAppearanceConfig,
     });
   } catch (err) {
     console.error('[api/map]', err.message);

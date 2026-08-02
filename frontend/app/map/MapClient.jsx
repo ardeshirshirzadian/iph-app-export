@@ -989,6 +989,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const isEN = lang === "en";
 
   const [navCameraConfig, setNavCameraConfig] = useState({ distance: 220, height: 90 });
+  const [mapAppearanceConfig, setMapAppearanceConfig] = useState(null);
+  const [mapTheme, setMapTheme] = useState('dark'); // tracks 'dark'|'light' for bg color
   const [navMarkerIcons, setNavMarkerIcons] = useState({
     route_start: { type: 'builtin', value: '🏁' },
     route_end: { type: 'builtin', value: '📍' },
@@ -1010,7 +1012,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const [mapWalls, setMapWalls] = useState([]);
   const [mapDoors, setMapDoors] = useState([]);
   const [elementTooltip, setElementTooltip] = useState(null); // { el, sx, sy }
-  const [view3D, setView3D] = useState(false);
+  const [view3D, setView3D] = useState(true);
 
   // Navigation state
   const [navDest, setNavDest] = useState(null);       // { x, y, name, floor }
@@ -1068,7 +1070,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const signsLayerRef = useRef(null);
   const elementsLayerRef = useRef(null);
   // mirrors view3D state so closures/timeouts always read the current mode
-  const view3DRef    = useRef(false);
+  const view3DRef    = useRef(true); // true = 3D is the default starting mode
   // imperative handle to the Map3DView component (focusOnPoint, resetView, zoom)
   const map3DViewRef = useRef(null);
 
@@ -1286,6 +1288,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
         if (d.mapDoors) setMapDoors(d.mapDoors);
         if (d.navCameraConfig) setNavCameraConfig(d.navCameraConfig);
         if (d.navMarkerIcons) setNavMarkerIcons(prev => ({ ...prev, ...d.navMarkerIcons }));
+        if (d.mapAppearanceConfig) setMapAppearanceConfig(d.mapAppearanceConfig);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -1312,6 +1315,16 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
 
   // Keep view3DRef in sync so closures/timeouts always read the current mode.
   useEffect(() => { view3DRef.current = view3D; }, [view3D]);
+
+  // Track current theme ('dark'|'light') so 3D scene background updates when theme switches.
+  // Reads the 'light' class applied to <html> by ThemeSync.js.
+  useEffect(() => {
+    const update = () => setMapTheme(document.documentElement.classList.contains('light') ? 'light' : 'dark');
+    update();
+    const obs = new MutationObserver(update);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => obs.disconnect();
+  }, []);
 
 
   // CHANGE 1: Consolidated non-passive event listeners (pointer + touchmove + wheel)
@@ -1845,6 +1858,11 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
 
   // ── Derived map geometry ───────────────────────────────────────────────────
 
+  // Theme-specific 3D scene background from admin config (A4)
+  const mapBgColor = mapTheme === 'light'
+    ? (mapAppearanceConfig?.background?.light ?? '#e8f5f0')
+    : (mapAppearanceConfig?.background?.dark  ?? '#021f20');
+
   const { w: mapW, h: mapH } = dimRef.current;
   const planUrl = mapData ? getPlanUrl(mapData.bare_plan) : null;
   // sign circle / font size relative to map coordinate space
@@ -2037,6 +2055,24 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
               }}
               title={isEN ? "Fit to screen" : "نمای کامل"}
             >⊙</button>
+            {/* Compass: reset idle 3D camera angle — 3D-only, hidden in 2D mode */}
+            {view3D && (
+              <button
+                onClick={(e) => { e.stopPropagation(); map3DViewRef.current?.resetView(); }}
+                aria-label="Reset view angle"
+                className="w-11 h-11 rounded-full flex items-center justify-center text-base transition-all active:scale-90"
+                style={{
+                  background: "var(--nav-bg)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text)",
+                  fontFamily: "inherit", cursor: "pointer",
+                  boxShadow: "0 2px 14px rgba(0,0,0,0.45)",
+                  backdropFilter: "blur(8px)",
+                  pointerEvents: "auto",
+                }}
+                title={isEN ? "Reset view angle" : "بازگشت به زاویه پیش‌فرض"}
+              >🧭</button>
+            )}
           </div>
         )}
 
@@ -2080,6 +2116,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
               navDest={navDest}
               navCameraConfig={navCameraConfig}
               navMarkerIcons={navMarkerIcons}
+              idleCameraConfig={mapAppearanceConfig}
+              bgColor={mapBgColor}
               tapStartMode={tapStartMode}
               onBoothTap={onBooth3DTap}
               onZoneTap={onZone3DTap}
