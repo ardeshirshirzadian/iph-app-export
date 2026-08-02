@@ -324,14 +324,14 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
             className="font-medium leading-7"
             style={{ fontSize: "var(--quest-title-size)", color: "var(--quest-title-color)" }}
           >
-            {mission.title}
+            {dNum(mission.title, langProp)}
           </span>
           <span className="text-xs font-bold flex-shrink-0 mr-2" style={{ color: "var(--accent)" }}>
             +{dNum(mission.xpReward, langProp)} {xpUnit || "XP"}
           </span>
         </div>
         <p className="leading-6 mb-1.5 truncate" style={{ fontSize: "var(--quest-subtitle-size)", color: "var(--quest-subtitle-color)" }}>
-          {mission.description}
+          {dNum(mission.description, langProp)}
         </p>
         {isFeaturedBooth ? (
           <div className="flex items-center justify-between gap-2">
@@ -708,10 +708,10 @@ function BadgeCard({ badge, onQuizClick, onFeaturedClick, onSurveyClick, onSocia
       </div>
       <p className="font-bold leading-6"
         style={{ fontSize: "var(--quest-badge-size)", color: badge.earned ? "var(--accent)" : "var(--quest-badge-color)" }}>
-        {badge.name}
+        {dNum(badge.name, lang)}
       </p>
       <p className="text-[11px] leading-5 mt-0.5" style={{ color: "var(--text-dim)" }}>
-        {badge.description}
+        {dNum(badge.description, lang)}
       </p>
       {badge.earned ? (
         <div
