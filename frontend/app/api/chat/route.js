@@ -1,30 +1,40 @@
 export async function POST(request) {
   const body = await request.json();
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 90_000);
+  const PRIMARY_URL = 'http://93.118.140.186:18085/chat';   // سرور GPU شرکت
+  const FALLBACK_URL = 'http://172.17.0.1:8000/chat';        // بک‌اند لوکال VPS (CPU)
+
+  async function tryFetch(url, timeoutMs) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`status ${response.status}`);
+      return await response.json();
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
 
   try {
-    const response = await fetch('http://172.17.0.1:8000/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    const data = await response.json();
+    const data = await tryFetch(PRIMARY_URL, 15_000);
     return Response.json(data);
-  } catch (err) {
-    if (err.name === 'AbortError') {
+  } catch (primaryErr) {
+    console.warn('Primary chatbot backend (GPU server) failed, falling back to VPS:', primaryErr.message);
+    try {
+      const data = await tryFetch(FALLBACK_URL, 90_000);
+      return Response.json(data);
+    } catch (fallbackErr) {
+      console.error('Fallback chatbot backend (VPS) also failed:', fallbackErr.message);
       return Response.json(
-        { answer: 'پاسخ‌گویی کمی طول کشید، لطفاً دوباره تلاش کنید' },
-        { status: 504 }
+        { answer: 'خطا در ارتباط با سرور. لطفاً دوباره تلاش کنید.' },
+        { status: 502 }
       );
     }
-    return Response.json(
-      { answer: 'خطا در ارتباط با سرور. لطفاً دوباره تلاش کنید.' },
-      { status: 502 }
-    );
-  } finally {
-    clearTimeout(timeout);
   }
 }
