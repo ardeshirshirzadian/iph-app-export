@@ -38,6 +38,8 @@ export default function MapLabelsClient({ initialConfig }) {
     setSaveStatus(null);
   };
 
+  const threshold = Number(config.booth_label_zoom_threshold ?? 600);
+
   const handleSave = async () => {
     setSaving(true);
     setSaveStatus(null);
@@ -57,6 +59,62 @@ export default function MapLabelsClient({ initialConfig }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {/* ── Booth label zoom threshold ── */}
+      <div
+        style={{
+          background: 'var(--surface)',
+          border: '1px solid var(--border)',
+          borderRadius: 14,
+          padding: 20,
+        }}
+      >
+        <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', margin: '0 0 4px' }}>
+          نمایش نام غرفه در نمای ۳D
+        </h3>
+        <p style={{ fontSize: 12, color: 'var(--text-dim)', margin: '0 0 16px' }}>
+          برچسب نام غرفه (فارسی/انگلیسی) هنگامی که دوربین به اندازه کافی نزدیک باشد روی سقف غرفه‌ها نمایش داده می‌شود.
+          مقدار ۰ = برچسب‌ها همیشه پنهان. مقدار بیشتر = از فاصله بیشتری قابل مشاهده‌اند.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+            آستانه نمایش نام غرفه (واحد نقشه) — مقدار فعلی: <strong style={{ color: 'var(--text)' }}>{threshold}</strong>
+          </label>
+          <input
+            type="range"
+            min={0}
+            max={3000}
+            step={50}
+            value={threshold}
+            onChange={(e) => update('booth_label_zoom_threshold', Number(e.target.value))}
+            style={{ width: '100%', accentColor: 'var(--accent)' }}
+          />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="number"
+              min={0}
+              max={3000}
+              step={50}
+              value={threshold}
+              onChange={(e) => update('booth_label_zoom_threshold', Math.max(0, Math.min(3000, Number(e.target.value) || 0)))}
+              style={{
+                width: 100,
+                background: 'var(--surface-input)',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                padding: '6px 10px',
+                fontSize: 13,
+                color: 'var(--text)',
+                fontFamily: 'inherit',
+                outline: 'none',
+              }}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+              پیشنهاد: ۶۰۰ (نمایش در نزدیکی) — ۱۵۰۰ (نمایش از فاصله متوسط)
+            </span>
+          </div>
+        </div>
+      </div>
+
       {FIELDS.map(({ group, items }) => (
         <div
           key={group}

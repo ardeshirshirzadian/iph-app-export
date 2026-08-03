@@ -13,6 +13,7 @@ const DEFAULTS = {
   origin_panel_title_en: 'Where are you starting from?',
   origin_search_placeholder_fa: 'جستجو...',
   origin_search_placeholder_en: 'Search...',
+  booth_label_zoom_threshold: 600,
 };
 
 export default async function MapLabelsPage() {

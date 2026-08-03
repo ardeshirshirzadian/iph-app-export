@@ -2034,6 +2034,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
               controlRef={map3DViewRef}
               selectedBoothId={selectedBooth?.booth?.company?.id ?? null}
               selectedZoneId={selectedZone?.id ?? null}
+              lang={lang}
+              boothLabelThreshold={mapLabelsConfig?.booth_label_zoom_threshold ?? 600}
               onReady={() => {
                 if (!pendingWalkthroughRef.current) return;
                 pendingWalkthroughRef.current = false;

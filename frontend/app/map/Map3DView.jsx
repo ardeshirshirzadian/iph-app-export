@@ -106,32 +106,101 @@ function makeUploadTexture(url) {
   });
 }
 
+// Renders a text string to a canvas-backed sprite texture.
+// Returns { tex: THREE.CanvasTexture, w: canvasWidth, h: canvasHeight }.
+// dir: 'ltr' | 'rtl' — controls canvas text direction attribute.
+const _LABEL_FONT_SIZE = 22;
+const _LABEL_PAD_X     = 13;
+const _LABEL_PAD_Y     = 7;
+const _LABEL_MAX_TEXT_W = 260; // px — truncate beyond this width
+
+function makeTextLabelTexture(text, dir = 'ltr') {
+  // Measure text width using an offscreen canvas
+  const probe = document.createElement('canvas');
+  probe.width = 512; probe.height = 1;
+  const pCtx = probe.getContext('2d');
+  pCtx.font = `500 ${_LABEL_FONT_SIZE}px Vazirmatn, Tahoma, Arial, sans-serif`;
+
+  let display = text;
+  let textW = pCtx.measureText(display).width;
+  if (textW > _LABEL_MAX_TEXT_W) {
+    let lo = 1, hi = text.length - 1, best = 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (pCtx.measureText(text.slice(0, mid) + '…').width <= _LABEL_MAX_TEXT_W) {
+        best = mid; lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    display = text.slice(0, best) + '…';
+    textW = pCtx.measureText(display).width;
+  }
+
+  const W = Math.ceil(textW) + _LABEL_PAD_X * 2;
+  const H = _LABEL_FONT_SIZE + _LABEL_PAD_Y * 2;
+  const r = H / 2; // pill radius
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  // Pill-shaped semi-transparent background
+  ctx.fillStyle = 'rgba(0,0,0,0.58)';
+  ctx.beginPath();
+  ctx.moveTo(r, 0);
+  ctx.lineTo(W - r, 0);
+  ctx.arcTo(W, 0, W, r, r);
+  ctx.lineTo(W, H - r);
+  ctx.arcTo(W, H, W - r, H, r);
+  ctx.lineTo(r, H);
+  ctx.arcTo(0, H, 0, H - r, r);
+  ctx.lineTo(0, r);
+  ctx.arcTo(0, 0, r, 0, r);
+  ctx.closePath();
+  ctx.fill();
+
+  // White text with subtle drop shadow
+  ctx.font      = `500 ${_LABEL_FONT_SIZE}px Vazirmatn, Tahoma, Arial, sans-serif`;
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  if ('direction' in ctx) ctx.direction = dir;
+  ctx.shadowColor = 'rgba(0,0,0,0.65)';
+  ctx.shadowBlur  = 4;
+  ctx.fillText(display, W / 2, H / 2);
+
+  return { tex: new THREE.CanvasTexture(canvas), w: W, h: H };
+}
+
 // ── Map3DView component ────────────────────────────────────────────────────────
 // Coordinate mapping: map (x, y) → Three.js world (x, floorY, y).
 // Y axis is vertical/up; XZ plane is the floor.
 
 export default function Map3DView({
-  halls,            // hallGroups from MapClient (includes .floor, .groups)
-  hallColors,       // { [hallName]: hexColor }
-  hallFloors,       // { [hallName]: floorNumber } — same lookup used by pathfinding
-  zones,            // named map_zones (title_fa truthy) to render as 3D blocks
-  navRoute,         // null | { type, path?, pathA?, pathB?, stairsFrom?, stairsTo? }
-  navStart,         // null | { x, y, floor }
-  navDest,          // null | { x, y, floor }
-  navCameraConfig,  // { distance, height } — drone/walkthrough camera settings from DB
-  navMarkerIcons,   // { route_start, route_end, … } — icon config from DB
-  idleCameraConfig, // { default_camera: { pitch, distance, heading } } — idle overview camera from DB
-  bgColor,          // string hex — map background color (theme-specific, from DB)
-  routeColors,      // { routeLine, routeArrow, walkthroughHalo, walkthroughStripe } — from DB, theme-resolved
-  tapStartMode,     // bool — next tap sets route start
-  onBoothTap,       // (booth, hall, { cx, cy, mergedLabel }) → void
-  onZoneTap,        // (zone, { cx, cy }) → void
-  onGroundTap,      // (mapX, mapY) → void  — tap on empty ground in tapStartMode
-  onBackgroundTap,  // () → void — tap on empty space (close sheets)
-  controlRef,       // ref whose .current receives { focusOnPoint, resetView, zoom }
-  selectedBoothId,  // company id of currently selected booth (or null)
-  selectedZoneId,   // zone.id of currently selected zone (or null)
-  onReady,          // () => void — fires synchronously at end of scene-setup effect
+  halls,                // hallGroups from MapClient (includes .floor, .groups)
+  hallColors,           // { [hallName]: hexColor }
+  hallFloors,           // { [hallName]: floorNumber } — same lookup used by pathfinding
+  zones,                // named map_zones (title_fa truthy) to render as 3D blocks
+  navRoute,             // null | { type, path?, pathA?, pathB?, stairsFrom?, stairsTo? }
+  navStart,             // null | { x, y, floor }
+  navDest,              // null | { x, y, floor }
+  navCameraConfig,      // { distance, height } — drone/walkthrough camera settings from DB
+  navMarkerIcons,       // { route_start, route_end, … } — icon config from DB
+  idleCameraConfig,     // { default_camera: { pitch, distance, heading } } — idle overview camera from DB
+  bgColor,              // string hex — map background color (theme-specific, from DB)
+  routeColors,          // { routeLine, routeArrow, walkthroughHalo, walkthroughStripe } — from DB, theme-resolved
+  tapStartMode,         // bool — next tap sets route start
+  onBoothTap,           // (booth, hall, { cx, cy, mergedLabel }) → void
+  onZoneTap,            // (zone, { cx, cy }) → void
+  onGroundTap,          // (mapX, mapY) → void  — tap on empty ground in tapStartMode
+  onBackgroundTap,      // () → void — tap on empty space (close sheets)
+  controlRef,           // ref whose .current receives { focusOnPoint, resetView, zoom }
+  selectedBoothId,      // company id of currently selected booth (or null)
+  selectedZoneId,       // zone.id of currently selected zone (or null)
+  onReady,              // () => void — fires synchronously at end of scene-setup effect
+  lang = 'fa',          // 'fa' | 'en' — controls booth label language
+  boothLabelThreshold,  // number (map units) — camera XZ distance below which labels appear
 }) {
   const mountRef = useRef(null);
   const tRef     = useRef(null); // holds all Three.js state (scene, camera, …)
@@ -140,6 +209,9 @@ export default function Map3DView({
   useEffect(() => {
     cbRef.current = { onBoothTap, onZoneTap, tapStartMode, onGroundTap, onBackgroundTap };
   }, [onBoothTap, onZoneTap, tapStartMode, onGroundTap, onBackgroundTap]);
+  // Track lang in a ref so the scene-setup effect (which runs once) can read initial value
+  const langRef = useRef(lang);
+  useEffect(() => { langRef.current = lang; }, [lang]);
 
   // ── Scene setup (runs once on mount, halls is populated before mount) ────────
   useEffect(() => {
@@ -198,6 +270,7 @@ export default function Map3DView({
     t.raycaster   = new THREE.Raycaster();
     t.boothEntries = []; // { mesh, booth, hall, mergedLabel, cx, cz, colorStr }
     t.zoneEntries  = []; // { mesh, zone, cx, cz, colorStr }
+    t.zoneLabelEntries = []; // { sprite, mat, texFa, texEn, scaleFa, scaleEn, cx, cz }
     t.disposables  = []; // { geometry?, material? } — disposed on unmount
     t.routeObjects   = [];
     t.routeTextures  = [];
@@ -310,6 +383,84 @@ export default function Map3DView({
       t.scene.add(mesh);
       t.disposables.push({ geometry: geo, material: mat });
       t.zoneEntries.push({ mesh, zone, cx, cz, colorStr });
+
+      // ── Zone name label sprite (same pill style as booth labels) ────────────
+      const titleFa = (zone.title_fa ?? '').trim();
+      const titleEn = (zone.title_en ?? '').trim();
+      if (titleFa || titleEn) {
+        const ZL_H = 20; // world-unit sprite height — matches booth label scale
+        const resFa = titleFa ? makeTextLabelTexture(titleFa, 'rtl') : null;
+        const resEn = titleEn ? makeTextLabelTexture(titleEn, 'ltr') : null;
+        const scaleFa = resFa ? [(resFa.w / resFa.h) * ZL_H, ZL_H] : [ZL_H, ZL_H];
+        const scaleEn = resEn ? [(resEn.w / resEn.h) * ZL_H, ZL_H] : [ZL_H, ZL_H];
+        const initFa  = langRef.current !== 'en';
+        const initRes = initFa ? (resFa ?? resEn) : (resEn ?? resFa);
+        if (initRes) {
+          const initScale = initFa ? scaleFa : scaleEn;
+          const zMat    = new THREE.SpriteMaterial({ map: initRes.tex, depthTest: false, depthWrite: false, transparent: true });
+          const zSprite = new THREE.Sprite(zMat);
+          zSprite.position.set(cx, zoneFloorY + BOOTH_H + 10, cz);
+          zSprite.scale.set(initScale[0], initScale[1], 1);
+          zSprite.visible = false;
+          t.scene.add(zSprite);
+          t.zoneLabelEntries.push({
+            sprite: zSprite, mat: zMat,
+            texFa: resFa?.tex ?? null,
+            texEn: resEn?.tex ?? null,
+            scaleFa, scaleEn,
+            cx, cz,
+          });
+        }
+      }
+    }
+
+    // ── Booth name label sprites ──────────────────────────────────────────────
+    // One sprite per company (deduped). Canvas-rendered text pill, initially
+    // hidden; visibility toggled each frame based on camera XZ distance.
+    t.labelEntries = []; // { sprite, mat, texFa, texEn, scaleFa, scaleEn, cx, cz }
+    t.boothLabelThreshSq = 0; // set by boothLabelThreshold prop effect below
+    const LABEL_H_WU = 20; // sprite height in world units
+    const labeledCos = new Set();
+    for (const entry of t.boothEntries) {
+      const co = entry.booth.company;
+      if (!co?.id) continue;
+      if (labeledCos.has(co.id)) continue;
+      labeledCos.add(co.id);
+
+      const nameFa = (co.brand_name_fa ?? '').trim();
+      const nameEn = (co.brand_name_en ?? '').trim();
+      if (!nameFa && !nameEn) continue;
+
+      const resultFa = nameFa ? makeTextLabelTexture(nameFa, 'rtl') : null;
+      const resultEn = nameEn ? makeTextLabelTexture(nameEn, 'ltr') : null;
+
+      const scaleFa = resultFa
+        ? [(resultFa.w / resultFa.h) * LABEL_H_WU, LABEL_H_WU]
+        : [LABEL_H_WU, LABEL_H_WU];
+      const scaleEn = resultEn
+        ? [(resultEn.w / resultEn.h) * LABEL_H_WU, LABEL_H_WU]
+        : [LABEL_H_WU, LABEL_H_WU];
+
+      const initFa   = langRef.current !== 'en';
+      const initRes  = initFa ? (resultFa ?? resultEn) : (resultEn ?? resultFa);
+      if (!initRes) continue;
+      const initScale = initFa ? scaleFa : scaleEn;
+
+      const mat    = new THREE.SpriteMaterial({ map: initRes.tex, depthTest: false, depthWrite: false, transparent: true });
+      const sprite = new THREE.Sprite(mat);
+      const floorY = (entry.hall.floor ?? 0) * FLOOR_GAP;
+      sprite.position.set(entry.cx, floorY + BOOTH_H + 10, entry.cz);
+      sprite.scale.set(initScale[0], initScale[1], 1);
+      sprite.visible = false;
+      t.scene.add(sprite);
+
+      t.labelEntries.push({
+        sprite, mat,
+        texFa: resultFa?.tex ?? null,
+        texEn: resultEn?.tex ?? null,
+        scaleFa, scaleEn,
+        cx: entry.cx, cz: entry.cz,
+      });
     }
 
     // ── Camera initial position ───────────────────────────────────────────────
@@ -681,6 +832,31 @@ export default function Map3DView({
 
       // OrbitControls update — skip during active walkthrough to avoid fighting camera
       if (!t.walk) t.controls.update();
+
+      // Label visibility (booths + zones) — checked every 2nd frame.
+      // Works for both idle (OrbitControls camera) and walkthrough (drone camera)
+      // since t.camera is the single camera used in both modes.
+      if (t.labelEntries?.length || t.zoneLabelEntries?.length) {
+        t._lblFrame = ((t._lblFrame ?? 0) + 1);
+        if (t._lblFrame % 2 === 0) {
+          const thSq = t.boothLabelThreshSq ?? 0;
+          const cp   = t.camera.position;
+          if (thSq > 0) {
+            for (const le of (t.labelEntries ?? [])) {
+              const dx = cp.x - le.cx, dz = cp.z - le.cz;
+              le.sprite.visible = (dx * dx + dz * dz) < thSq;
+            }
+            for (const le of (t.zoneLabelEntries ?? [])) {
+              const dx = cp.x - le.cx, dz = cp.z - le.cz;
+              le.sprite.visible = (dx * dx + dz * dz) < thSq;
+            }
+          } else {
+            for (const le of (t.labelEntries ?? [])) le.sprite.visible = false;
+            for (const le of (t.zoneLabelEntries ?? [])) le.sprite.visible = false;
+          }
+        }
+      }
+
       t.renderer.render(t.scene, t.camera);
     }
     animate();
@@ -706,6 +882,16 @@ export default function Map3DView({
       t.renderer.domElement.removeEventListener("click", onClick);
       t.controls.dispose();
       t.disposables.forEach((d) => { d.geometry?.dispose(); d.material?.dispose(); });
+      for (const le of (t.labelEntries ?? [])) {
+        le.texFa?.dispose();
+        le.texEn?.dispose();
+        le.mat.dispose();
+      }
+      for (const le of (t.zoneLabelEntries ?? [])) {
+        le.texFa?.dispose();
+        le.texEn?.dispose();
+        le.mat.dispose();
+      }
       t.scene.clear();
       t.renderer.dispose();
       if (el.contains(t.renderer.domElement)) el.removeChild(t.renderer.domElement);
@@ -944,6 +1130,41 @@ export default function Map3DView({
     }
     t.highlightedZoneEntries = entries;
   }, [selectedZoneId]);
+
+  // ── Label language switch — swap booth + zone sprite textures when lang changes ──
+  useEffect(() => {
+    const t = tRef.current;
+    if (!t) return;
+    const useFa = lang !== 'en';
+    for (const le of (t.labelEntries ?? [])) {
+      const tex   = useFa ? (le.texFa ?? le.texEn) : (le.texEn ?? le.texFa);
+      const scale = useFa ? le.scaleFa : le.scaleEn;
+      if (tex) {
+        // eslint-disable-next-line react-hooks/immutability
+        le.mat.map = tex;
+        le.mat.needsUpdate = true;
+      }
+      le.sprite.scale.set(scale[0], scale[1], 1);
+    }
+    for (const le of (t.zoneLabelEntries ?? [])) {
+      const tex   = useFa ? (le.texFa ?? le.texEn) : (le.texEn ?? le.texFa);
+      const scale = useFa ? le.scaleFa : le.scaleEn;
+      if (tex) {
+        // eslint-disable-next-line react-hooks/immutability
+        le.mat.map = tex;
+        le.mat.needsUpdate = true;
+      }
+      le.sprite.scale.set(scale[0], scale[1], 1);
+    }
+  }, [lang]);
+
+  // ── Booth label zoom threshold — keep squared value on tRef for RAF loop ──
+  useEffect(() => {
+    const t = tRef.current;
+    if (!t) return;
+    const thr = boothLabelThreshold ?? 0;
+    t.boothLabelThreshSq = thr > 0 ? thr * thr : 0;
+  }, [boothLabelThreshold]);
 
   return <div ref={mountRef} style={{ position: "absolute", inset: 0 }} />;
 }
