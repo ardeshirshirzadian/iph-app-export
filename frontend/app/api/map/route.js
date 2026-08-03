@@ -170,6 +170,9 @@ export async function GET() {
       light: { ...ROUTE_APPEARANCE_DEFAULTS.light, ...(routeAppearanceStored.light ?? {}) },
     };
 
+    const mapLabelsResult = await query("SELECT value FROM app_settings WHERE key = 'map_labels_config'");
+    const mapLabelsConfig = mapLabelsResult.rows[0]?.value ?? null;
+
     return NextResponse.json({
       websiteEvent: json.data?.websiteEvent ?? null,
       hallColors,
@@ -183,6 +186,7 @@ export async function GET() {
       mapAppearanceConfig,
       gestureHintConfig,
       routeAppearanceConfig,
+      mapLabelsConfig,
     });
   } catch (err) {
     console.error('[api/map]', err.message);

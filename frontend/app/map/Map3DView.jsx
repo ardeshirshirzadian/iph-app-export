@@ -304,7 +304,7 @@ export default function Map3DView({
       }
       const zoneFloorY = ((hallFloors ?? {})[zone.hall_name] ?? 0) * FLOOR_GAP;
       const geo = new THREE.BoxGeometry(bw, BOOTH_H, bd);
-      const mat = new THREE.MeshLambertMaterial({ color: parseColor(colorStr), transparent: true, opacity: 0.6 });
+      const mat = new THREE.MeshLambertMaterial({ color: parseColor(colorStr) });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.position.set(cx, zoneFloorY + BOOTH_H / 2, cz);
       t.scene.add(mesh);

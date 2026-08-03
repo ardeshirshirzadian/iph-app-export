@@ -305,8 +305,11 @@ function routeArrows(pts, interval) {
 
 // ── Search Bar ────────────────────────────────────────────────────────────────
 
-function MapSearchBar({ query, setQuery, open, setOpen, results, onSelect, destName, onClearDest, lang, isRTL }) {
+function MapSearchBar({ query, setQuery, open, setOpen, results, onSelect, destName, onClearDest, lang, isRTL, labels }) {
   const isEN = lang === "en";
+  const searchPh = isEN
+    ? (labels?.search_placeholder_en ?? "Search booths and facilities…")
+    : (labels?.search_placeholder_fa ?? "جستجوی غرفه یا امکانات…");
   return (
     <div
       className="absolute z-[25]"
@@ -327,7 +330,7 @@ function MapSearchBar({ query, setQuery, open, setOpen, results, onSelect, destN
           value={query}
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
-          placeholder={isEN ? "Search booths and facilities…" : "جستجوی غرفه یا امکانات…"}
+          placeholder={searchPh}
           style={{
             flex: 1, background: "none", border: "none", outline: "none",
             color: "var(--text)", fontFamily: "inherit", fontSize: 14,
@@ -392,9 +395,16 @@ function MapSearchBar({ query, setQuery, open, setOpen, results, onSelect, destN
 }
 
 // ── Start Point Panel ─────────────────────────────────────────────────────────
+// List-only origin selection. Map-tap and QR-scan modes removed.
 
-function StartPanel({ lang, isRTL, onTapMode, onScanMode, startQuery, setStartQuery, startResults, onSelectStart, onCancel, scanActive, videoRef }) {
+function StartPanel({ lang, isRTL, startQuery, setStartQuery, startResults, onSelectStart, onCancel, labels }) {
   const isEN = lang === "en";
+  const panelTitle = isEN
+    ? (labels?.origin_panel_title_en ?? "Where are you starting from?")
+    : (labels?.origin_panel_title_fa ?? "نقطه شروع را انتخاب کنید");
+  const searchPh = isEN
+    ? (labels?.origin_search_placeholder_en ?? "Search…")
+    : (labels?.origin_search_placeholder_fa ?? "جستجو…");
   return (
     <div className="fixed inset-0 z-[58] flex flex-col justify-end" style={{ direction: isRTL ? "rtl" : "ltr" }}>
       <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.42)" }} onClick={onCancel} />
@@ -410,71 +420,20 @@ function StartPanel({ lang, isRTL, onTapMode, onScanMode, startQuery, setStartQu
         <div className="flex justify-center mb-4">
           <div style={{ width: 40, height: 4, background: "var(--border)", borderRadius: 2 }} />
         </div>
-        <p style={{ fontWeight: 700, fontSize: 16, color: "var(--text)", marginBottom: 4 }}>
-          {isEN ? "Where are you starting from?" : "نقطه شروع را انتخاب کنید"}
-        </p>
-        <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>
-          {isEN ? "Pick your current location on the map." : "موقعیت فعلی خود را مشخص کنید."}
-        </p>
-
-        {/* Quick-pick buttons */}
-        <div className="flex gap-3 mb-5">
-          <button
-            onClick={onTapMode}
-            style={{
-              flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
-              padding: "14px 8px", background: "rgba(0,255,179,0.07)",
-              border: "1px solid rgba(0,255,179,0.3)", borderRadius: 14,
-              cursor: "pointer", fontFamily: "inherit", color: "var(--accent)",
-            }}
-          >
-            <span style={{ fontSize: 24 }}>📍</span>
-            <span style={{ fontSize: 12, fontWeight: 600 }}>{isEN ? "Tap on map" : "روی نقشه بزنید"}</span>
-          </button>
-          <button
-            onClick={onScanMode}
-            style={{
-              flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
-              padding: "14px 8px",
-              background: scanActive ? "rgba(59,130,246,0.12)" : "var(--surface-2)",
-              border: `1px solid ${scanActive ? "rgba(59,130,246,0.6)" : "var(--border)"}`,
-              borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
-              color: scanActive ? "#60a5fa" : "var(--text)",
-            }}
-          >
-            <span style={{ fontSize: 24 }}>📷</span>
-            <span style={{ fontSize: 12, fontWeight: 600 }}>{isEN ? "Scan QR" : "اسکن QR"}</span>
-          </button>
-        </div>
-
-        {/* Inline QR video */}
-        {scanActive && (
-          <div className="mb-4">
-            <video
-              ref={videoRef}
-              style={{ width: "100%", borderRadius: 12, background: "#000", aspectRatio: "4/3", objectFit: "cover", display: "block" }}
-              playsInline muted
-            />
-            <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6, textAlign: "center" }}>
-              {isEN ? "Point camera at a booth QR code" : "دوربین را روی QR غرفه بگیرید"}
-            </p>
-          </div>
-        )}
-
-        {/* Search list */}
-        <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
-          {isEN ? "Or search for a booth / location:" : "یا از لیست انتخاب کنید:"}
+        <p style={{ fontWeight: 700, fontSize: 16, color: "var(--text)", marginBottom: 12 }}>
+          {panelTitle}
         </p>
         <input
           value={startQuery}
           onChange={(e) => setStartQuery(e.target.value)}
-          placeholder={isEN ? "Search…" : "جستجو…"}
+          placeholder={searchPh}
+          autoFocus
           style={{
             width: "100%", boxSizing: "border-box",
             background: "var(--surface-2)", border: "1px solid var(--border)",
             borderRadius: 10, padding: "9px 12px", fontSize: 13,
             color: "var(--text)", fontFamily: "inherit", outline: "none",
-            direction: isRTL ? "rtl" : "ltr", marginBottom: 4,
+            direction: isRTL ? "rtl" : "ltr", marginBottom: 8,
           }}
         />
         {startResults.map((r) => (
@@ -559,6 +518,25 @@ function RouteInfoCard({ route, lang, isRTL, onClear, is3D = false, walkActive =
             {isEN ? "Calculating route…" : "در حال محاسبه مسیر…"}
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (route.type === "no_route") {
+    return (
+      <div className="absolute z-[20]" style={{ ...cardStyle, border: "1px solid rgba(249,115,22,0.4)" }}>
+        <div style={infoRow}>
+          <span style={{ fontSize: 22 }}>🚫</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#f97316" }}>
+              {isEN ? "No route found" : "مسیری یافت نشد"}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+              {isEN ? "Could not find a path between these two points" : "مسیری بین این دو نقطه قابل محاسبه نیست"}
+            </div>
+          </div>
+        </div>
+        <div style={btnRow}>{clearBtn}</div>
       </div>
     );
   }
@@ -669,7 +647,7 @@ function RouteInfoCard({ route, lang, isRTL, onClear, is3D = false, walkActive =
 
 // ── Booth Bottom Sheet ─────────────────────────────────────────────────────────
 
-function BoothSheet({ booth, hall, mergedLabel, lang, isRTL, onClose, onNavigate }) {
+function BoothSheet({ booth, hall, mergedLabel, lang, isRTL, onClose, onNavigate, labels }) {
   const isEN = lang === "en";
   const co = booth.company;
   const [imgErr, setImgErr] = useState(false);
@@ -773,7 +751,7 @@ function BoothSheet({ booth, hall, mergedLabel, lang, isRTL, onClose, onNavigate
               className="w-full py-3 rounded-xl font-bold text-sm transition-all active:scale-95"
               style={{ background: "var(--accent)", color: "var(--bg)", fontFamily: "inherit", cursor: "pointer", border: "none" }}
             >
-              {isEN ? "Set as destination" : "تنظیم به‌عنوان مقصد"}
+              {isEN ? (labels?.set_destination_en ?? "Set as destination") : (labels?.set_destination_fa ?? "تنظیم به‌عنوان مقصد")}
             </button>
           )}
           <div className="flex gap-2">
@@ -813,7 +791,7 @@ function BoothSheet({ booth, hall, mergedLabel, lang, isRTL, onClose, onNavigate
 
 // ── Zone Sheet ────────────────────────────────────────────────────────────────
 
-function ZoneSheet({ zone, lang, isRTL, onClose, onNavigate }) {
+function ZoneSheet({ zone, lang, isRTL, onClose, onNavigate, labels }) {
   const isEN = lang === "en";
   const title = isEN ? (zone.title_en || zone.title_fa) : zone.title_fa;
   return (
@@ -855,7 +833,7 @@ function ZoneSheet({ zone, lang, isRTL, onClose, onNavigate }) {
             className="flex-1 py-3 rounded-xl font-bold text-sm transition-all active:scale-95"
             style={{ background: "var(--accent)", color: "var(--bg)", fontFamily: "inherit", cursor: "pointer", border: "none" }}
           >
-            {isEN ? "Set as destination" : "تنظیم به عنوان مقصد"}
+            {isEN ? (labels?.set_destination_en ?? "Set as destination") : (labels?.set_destination_fa ?? "تنظیم به‌عنوان مقصد")}
           </button>
           <button
             onClick={onClose}
@@ -994,6 +972,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const [gestureHintConfig, setGestureHintConfig] = useState(null);
   const [showGestureHint, setShowGestureHint] = useState(false);
   const [routeAppearanceConfig, setRouteAppearanceConfig] = useState(null);
+  const [mapLabelsConfig, setMapLabelsConfig] = useState(null);
   const [navMarkerIcons, setNavMarkerIcons] = useState({
     route_start: { type: 'builtin', value: '🏁' },
     route_end: { type: 'builtin', value: '📍' },
@@ -1022,7 +1001,6 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const [navStart, setNavStart] = useState(null);     // { x, y }
   const [navRoute, setNavRoute] = useState(null);     // result from findMultiFloorRoute
   const [startPanelOpen, setStartPanelOpen] = useState(false);
-  const [tapStartMode, setTapStartMode] = useState(false);
   const [walkActive, setWalkActive] = useState(false); // 3D first-person walkthrough in progress
   const [walkPaused, setWalkPaused] = useState(false); // walkthrough paused mid-route
   const pendingWalkthroughRef = useRef(false); // set by Navigate btn in 2D mode; consumed by view3D effect
@@ -1031,11 +1009,6 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [startQuery, setStartQuery] = useState("");
-
-  // QR scanner
-  const [scanActive, setScanActive] = useState(false);
-  const qrVideoRef = useRef(null);
-  const qrControlsRef = useRef(null);
 
   const containerRef = useRef(null);
   const wrapperRef = useRef(null); // receives CSS transform
@@ -1294,6 +1267,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
         if (d.mapAppearanceConfig) setMapAppearanceConfig(d.mapAppearanceConfig);
         if (d.gestureHintConfig)      setGestureHintConfig(d.gestureHintConfig);
         if (d.routeAppearanceConfig)  setRouteAppearanceConfig(d.routeAppearanceConfig);
+        if (d.mapLabelsConfig)        setMapLabelsConfig(d.mapLabelsConfig);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -1587,7 +1561,6 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   }
 
   function onZone3DTap(zone, meta) {
-    if (tapStartMode) { confirmStart(meta.cx, meta.cy); return; }
     setSelectedBooth(null);
     setSelectedZone(zone);
   }
@@ -1609,8 +1582,6 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
 
   // 3D mode booth tap — drag detection is handled inside Map3DView before this fires.
   function onBooth3DTap(booth, hall, meta) {
-    // meta = { cx: mapX, cy: mapY, mergedLabel }
-    if (tapStartMode) { confirmStart(meta.cx, meta.cy); return; }
     if (!booth.company) return;
     setSelectedZone(null);
     setSelectedBooth({ booth, hall, mergedLabel: meta.mergedLabel || null });
@@ -1743,12 +1714,9 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
     }
   }
 
-  function confirmStart(startX, startY) {
+  function confirmStart(startX, startY, startFloorHint = null) {
     setNavStart({ x: startX, y: startY });
     setStartPanelOpen(false);
-    setTapStartMode(false);
-    setScanActive(false);
-    stopQrScan();
     if (navDest) {
       // Show "computing" immediately so the UI updates before the synchronous
       // grid build + A* run (which can take ~1 s the first time).
@@ -1774,7 +1742,9 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
           );
         }
 
-        const startFloor = getFloorAtPoint(sx, sy, halls);
+        // Prefer the floor carried from the search result (zones/booths include it).
+        // Fall back to coordinate-based detection for ground taps or unknown origins.
+        const startFloor = startFloorHint != null ? startFloorHint : getFloorAtPoint(sx, sy, halls);
         const destFloor  = dest.floor ?? 0;
         const route = findMultiFloorRoute(
           floorGridsRef.current,
@@ -1784,7 +1754,10 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
         );
 
         if (!route) {
-          setNavRoute({ type: "no_connection" });
+          // Same-floor A* returned null — no path exists between the two points in the grid.
+          // Use a distinct type so the UI can show an accurate message instead of the
+          // floor-connection message (which is only correct for the multi-floor case).
+          setNavRoute({ type: "no_route" });
         } else {
           if (route.type === "no_connection" && startFloor !== destFloor) {
             // Cross-floor failure — emit details so misconfigured stairs are easy to spot
@@ -1822,65 +1795,9 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
       setWalkPaused(false);
     }
     setNavDest(null); setNavStart(null); setNavRoute(null);
-    setStartPanelOpen(false); setTapStartMode(false);
+    setStartPanelOpen(false);
     setSearchQuery(""); setSearchOpen(false);
-    setScanActive(false); stopQrScan();
   }
-
-  // ── QR scanner ─────────────────────────────────────────────────────────────
-
-  function stopQrScan() {
-    if (qrControlsRef.current) {
-      try { qrControlsRef.current.stop(); } catch (_) {}
-      qrControlsRef.current = null;
-    }
-  }
-
-  const startQrScan = useCallback(async () => {
-    setScanActive(true);
-    try {
-      const { BrowserMultiFormatReader } = await import("@zxing/browser");
-      const reader = new BrowserMultiFormatReader();
-      const controls = await reader.decodeFromConstraints(
-        { video: { facingMode: "environment" } },
-        qrVideoRef.current,
-        (result) => { if (result) handleQrResult(result.getText()); }
-      );
-      qrControlsRef.current = controls;
-    } catch (err) {
-      console.error("[QR scan]", err);
-      setScanActive(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function handleQrResult(text) {
-    if (!text.startsWith("IPH-BOOTH-")) return;
-    stopQrScan();
-    setScanActive(false);
-    const uuid = text.replace("IPH-BOOTH-", "");
-    try {
-      const res = await fetch(`/api/map/booth-by-qr?uuid=${encodeURIComponent(uuid)}`);
-      const data = await res.json();
-      if (!data.company) return;
-      const companyId = data.company.id;
-      for (const hall of (mapData?.halls ?? [])) {
-        for (const booth of (hall.booths ?? [])) {
-          if (booth.company?.id !== companyId) continue;
-          const pts = booth.bounds ?? [];
-          if (!pts.length) continue;
-          const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
-          confirmStart((Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2);
-          return;
-        }
-      }
-    } catch (err) {
-      console.error("[QR lookup]", err);
-    }
-  }
-
-  // Cleanup QR scanner on unmount
-  useEffect(() => () => stopQrScan(), []);
 
   // ── Derived map geometry ───────────────────────────────────────────────────
 
@@ -1990,18 +1907,6 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
             doubleTapJustFiredRef.current = false;
             return;
           }
-          // In 2D mode only: tap anywhere on the map to set start.
-          // In 3D mode Map3DView's canvas click handler handles this instead.
-          if (!view3D && tapStartMode && !dragRef.current.moved) {
-            const rect = containerRef.current?.getBoundingClientRect();
-            if (rect) {
-              const { x: tx, y: ty, scale } = tRef.current;
-              const svgX = (e.clientX - rect.left - tx) / scale;
-              const svgY = (e.clientY - rect.top - ty) / scale;
-              confirmStart(svgX, svgY);
-            }
-            return;
-          }
           setSelectedBooth(null); setSignTooltip(null); setElementTooltip(null); setSearchOpen(false);
         }}
       >
@@ -2040,6 +1945,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
             onClearDest={clearNav}
             lang={lang}
             isRTL={isRTL}
+            labels={mapLabelsConfig}
           />
         )}
 
@@ -2077,21 +1983,6 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                 pointerEvents: "auto",
               }}
             >−</button>
-            <button
-              onClick={(e) => { e.stopPropagation(); view3D ? map3DViewRef.current?.resetView() : resetView(); }}
-              aria-label="Reset view"
-              className="w-11 h-11 rounded-full flex items-center justify-center text-base transition-all active:scale-90"
-              style={{
-                background: "var(--nav-bg)",
-                border: "1px solid var(--border)",
-                color: "var(--text)",
-                fontFamily: "inherit", cursor: "pointer",
-                boxShadow: "0 2px 14px rgba(0,0,0,0.45)",
-                backdropFilter: "blur(8px)",
-                pointerEvents: "auto",
-              }}
-              title={isEN ? "Fit to screen" : "نمای کامل"}
-            >⊙</button>
             {/* Compass: reset idle 3D camera angle — 3D-only, hidden in 2D mode */}
             {view3D && (
               <button
@@ -2110,27 +2001,6 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                 title={isEN ? "Reset view angle" : "بازگشت به زاویه پیش‌فرض"}
               >🧭</button>
             )}
-          </div>
-        )}
-
-        {/* Tap-to-start overlay hint */}
-        {tapStartMode && (
-          <div
-            className="absolute inset-0 z-[22] flex items-end justify-center pointer-events-none"
-            style={{ paddingBottom: 80 }}
-          >
-            <div
-              style={{
-                background: "var(--sheet-bg)", backdropFilter: "blur(12px)",
-                border: "1px solid var(--border-accent)", borderRadius: 14,
-                padding: "10px 20px", fontSize: 13, color: "var(--accent)",
-                boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
-              }}
-            >
-              {isEN
-                ? (view3D ? "Tap a booth block to set your start point" : "Tap anywhere on the map to set your start point")
-                : (view3D ? "روی یک غرفه بزنید تا موقعیت شروع تعیین شود" : "روی نقشه بزنید تا موقعیت شروع تعیین شود")}
-            </div>
           </div>
         )}
 
@@ -2156,10 +2026,10 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
               idleCameraConfig={mapAppearanceConfig}
               bgColor={mapBgColor}
               routeColors={routeColors}
-              tapStartMode={tapStartMode}
+              tapStartMode={false}
               onBoothTap={onBooth3DTap}
               onZoneTap={onZone3DTap}
-              onGroundTap={(x, y) => { if (tapStartMode) confirmStart(x, y); }}
+              onGroundTap={() => {}}
               onBackgroundTap={() => { setSelectedBooth(null); setSelectedZone(null); setSearchOpen(false); setElementTooltip(null); setSignTooltip(null); }}
               controlRef={map3DViewRef}
               selectedBoothId={selectedBooth?.booth?.company?.id ?? null}
@@ -2371,9 +2241,9 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                         points={pts}
                         fill={
                           active
-                            ? `${hc}cc`
+                            ? `${hc}aa`
                             : !isVacant
-                            ? `${hc}60`
+                            ? `${hc}40`
                             : "rgba(255,255,255,0.04)"
                         }
                         stroke={
@@ -2382,7 +2252,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                             : active
                             ? hc
                             : !isVacant
-                            ? `${hc}cc`
+                            ? `${hc}80`
                             : "rgba(255,255,255,0.15)"
                         }
                         strokeWidth={active ? 3.5 : 2.5}
@@ -2406,7 +2276,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                           key={`gb-${group.company.id}`}
                           d={outerPath}
                           fill="none"
-                          stroke={active ? hc : `${hc}cc`}
+                          stroke={active ? hc : `${hc}80`}
                           strokeWidth={active ? 4 : 2.5}
                           strokeLinecap="round"
                           style={{ pointerEvents: "none" }}
@@ -2489,7 +2359,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                   during active gestures (reduces GPU compositing complexity) */}
               <g ref={routeLayerRef}>
               {navRoute && (() => {
-                if (navRoute.type === "no_connection") return null;
+                if (navRoute.type === "no_connection" || navRoute.type === "no_route") return null;
                 const strokeW = mapW / 180;
                 const markerR = signR * 1.5;
                 const dash = `${mapW / 70} ${mapW / 220}`;
@@ -2777,6 +2647,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
             mergedLabel={selectedBooth.mergedLabel}
             lang={lang}
             isRTL={isRTL}
+            labels={mapLabelsConfig}
             onClose={() => setSelectedBooth(null)}
             onNavigate={selectedBooth.booth.bounds?.length ? () => {
               const pts = selectedBooth.booth.bounds;
@@ -2806,6 +2677,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
             zone={selectedZone}
             lang={lang}
             isRTL={isRTL}
+            labels={mapLabelsConfig}
             onClose={() => setSelectedZone(null)}
             onNavigate={() => {
               const c = zoneCenter(selectedZone);
@@ -2816,19 +2688,16 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
       )}
 
       {/* ── Start point panel ── */}
-      {startPanelOpen && !tapStartMode && (
+      {startPanelOpen && (
         <StartPanel
           lang={lang}
           isRTL={isRTL}
-          onTapMode={() => { setTapStartMode(true); setStartPanelOpen(false); setScanActive(false); stopQrScan(); }}
-          onScanMode={() => { if (!scanActive) startQrScan(); else { setScanActive(false); stopQrScan(); } }}
           startQuery={startQuery}
           setStartQuery={setStartQuery}
           startResults={startSearchResults}
-          onSelectStart={(r) => confirmStart(r.x, r.y)}
+          onSelectStart={(r) => confirmStart(r.x, r.y, r.floor ?? null)}
           onCancel={clearNav}
-          scanActive={scanActive}
-          videoRef={qrVideoRef}
+          labels={mapLabelsConfig}
         />
       )}
 

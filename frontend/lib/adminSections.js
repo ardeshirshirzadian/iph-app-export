@@ -103,4 +103,11 @@ export const ADMIN_SECTIONS = [
     icon: '📋',
     desc: 'تنظیمات صفحه ثبت‌نام و مدیریت پلن‌های رویداد',
   },
+  {
+    key: 'map-labels',
+    label: 'برچسب‌های نقشه',
+    path: '/apn/map-labels',
+    icon: '🗺️',
+    desc: 'ویرایش متون نقشه: پلاس‌هولدرها، عناوین و دکمه‌ها',
+  },
 ];

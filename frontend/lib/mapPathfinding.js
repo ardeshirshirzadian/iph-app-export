@@ -788,7 +788,13 @@ export function findGridRoute(grid, startX, startY, destX, destY) {
   const dc = toCell(destX, destY);
   // Pass exitGapCells for start only: exit-gap cells have forbidden outbound edges
   // (exitGap → interior) that force A* outside the building when the origin is near an exit.
-  const start = nearestWalkable(blocked, cols, rows, sc.c, sc.r, grid.innerBboxes, cellSize, grid.exitGapCells);
+  // Also pass avoidExterior=true when the start cell is blocked (e.g. inside a large blocking
+  // zone like a stage): without this the Chebyshev spiral reaches exterior walkable cells before
+  // interior corridor cells, and A* then cannot re-enter the building through nearby exit-only
+  // doors (exitGap → interior is forbidden), producing a null path instead of a valid route.
+  // This mirrors the identical avoidExterior logic applied to the destination below.
+  const startCellBlocked = !!blocked[sc.r * cols + sc.c];
+  const start = nearestWalkable(blocked, cols, rows, sc.c, sc.r, grid.innerBboxes, cellSize, grid.exitGapCells, startCellBlocked);
   // Pass avoidExterior=true when the raw destination cell is blocked (e.g. inside a large
   // blocking zone or booth).  Without this, the Chebyshev spiral reaches exterior walkable
   // cells before interior corridor cells and snaps the destination outside the building,

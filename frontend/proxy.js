@@ -98,6 +98,7 @@ const API_SECTION_PREFIXES = [
   ['/api/admin/book', 'book'],
   ['/api/admin/cart', 'cart'],
   ['/api/admin/registration', 'registration'],
+  ['/api/admin/map-labels', 'map-labels'],
 ]
 
 function hasPermission(adminData, section) {
