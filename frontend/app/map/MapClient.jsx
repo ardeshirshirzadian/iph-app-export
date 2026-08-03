@@ -1889,11 +1889,16 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
     ? (mapAppearanceConfig?.background?.light ?? '#e8f5f0')
     : (mapAppearanceConfig?.background?.dark  ?? '#021f20');
 
-  // Theme-resolved route/navigation colors (fallback to hardcoded defaults if unset)
-  const ROUTE_COLOR_DEFAULTS = mapTheme === 'light'
-    ? { routeLine: '#007755', routeArrow: '#007755', walkthroughHalo: '#007755', walkthroughStripe: '#007755' }
-    : { routeLine: '#00ffb3', routeArrow: '#00ffb3', walkthroughHalo: '#00ffb3', walkthroughStripe: '#00ffb3' };
-  const routeColors = { ...ROUTE_COLOR_DEFAULTS, ...(routeAppearanceConfig?.[mapTheme] ?? {}) };
+  // Theme-resolved route/navigation colors (fallback to hardcoded defaults if unset).
+  // Memoized so the object identity is stable across renders — a new object on every
+  // render would spuriously re-trigger Map3DView's route effect (which stops any
+  // in-progress walkthrough) whenever MapClient re-renders (e.g. setWalkActive).
+  const routeColors = useMemo(() => {
+    const defaults = mapTheme === 'light'
+      ? { routeLine: '#007755', routeArrow: '#007755', walkthroughHalo: '#007755', walkthroughStripe: '#007755' }
+      : { routeLine: '#00ffb3', routeArrow: '#00ffb3', walkthroughHalo: '#00ffb3', walkthroughStripe: '#00ffb3' };
+    return { ...defaults, ...(routeAppearanceConfig?.[mapTheme] ?? {}) };
+  }, [mapTheme, routeAppearanceConfig]);
 
   const { w: mapW, h: mapH } = dimRef.current;
   const planUrl = mapData ? getPlanUrl(mapData.bare_plan) : null;
