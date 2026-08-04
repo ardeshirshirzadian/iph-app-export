@@ -1243,7 +1243,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   // ── Data fetch ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    fetch("/api/map")
+    fetch("/api/map", { signal: AbortSignal.timeout(20000) })
       .then((r) => r.json())
       .then((d) => {
         // CHANGE 3-C: also extract hallColors and mapElements

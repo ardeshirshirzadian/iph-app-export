@@ -1,27 +1,42 @@
 /**
- * MAP GESTURE STRESS-TEST INSTRUMENTATION
- * ========================================
- * Paste this entire script into the browser DevTools console while on the /map page.
- * It installs hooks that log every gesture lifecycle event, memory snapshot,
- * backdrop-filter suppression state, React re-render triggers, and route computation
- * timing — giving Ardeshir precise data to pinpoint the intermittent crash.
+ * MAP GESTURE STRESS-TEST INSTRUMENTATION (v2 — throttled, lightweight)
+ * ========================================================================
+ * Paste this entire script into the browser DevTools console while on /map.
  *
  * USAGE:
- *   1. Open /map in Safari (iOS) or Chrome desktop DevTools
- *   2. Paste this script in the Console tab
- *   3. Reproduce the crash scenario (or run AUTO-TEST below)
- *   4. Copy the log output from console and report back
+ *   1. Open /map in Safari DevTools or Chrome DevTools
+ *   2. Paste this script in the Console tab — it stops any prior instance first
+ *   3. Reproduce the crash scenario (pan, pinch, open sheets, switch 2D/3D)
+ *   4. Press R to dump the full log as JSON, copy it, report back
  *
- * The script is read-only — it does NOT modify the page's state or DOM.
+ * Keys: T=auto-test zoom  M=memory snapshot  R=full report  C=reset  S=stop
+ *
+ * INSTRUMENTATION PHILOSOPHY (v2 changes from v1):
+ *   - No window.requestAnimationFrame replacement (it was dead code wrapping
+ *     every RAF callback from React/Three.js for zero benefit)
+ *   - snapMemory() (full DOM getComputedStyle scan) REMOVED from gesture
+ *     start/end paths — replaced by lightweight heap-only snapshot
+ *   - All RISK log messages throttled to at most once per 5 seconds
+ *   - Singleton guard: auto-stops prior instance if script is re-pasted
+ *   - setInterval during-gesture sampling uses heap-only (no DOM scan)
+ *   - Full DOM audit only runs on: M key, canvas mount/unmount, initial load
  */
 
 (function () {
   'use strict';
 
+  // ── Singleton guard ───────────────────────────────────────────────────────
+  if (window.__mapStress) {
+    console.log('[MAP-STRESS] Stopping previous instance before reinitializing...');
+    window.__mapStress.stop();
+  }
+
   // ── Config ────────────────────────────────────────────────────────────────
   const LOG_PREFIX = '[MAP-STRESS]';
-  const SAMPLE_INTERVAL_MS = 500; // memory/GPU snapshot interval during stress
   const MAX_LOG_LINES = 2000;
+  const WARN_THROTTLE_MS = 5000;   // RISK messages: at most once per 5 seconds
+  const FPS_SAMPLE_INTERVAL = 1000; // FPS measured once per second (unchanged)
+  const MEM_SAMPLE_MS = 2000;      // heap sampling during gesture: every 2s (was 500ms)
 
   // ── Internal state ────────────────────────────────────────────────────────
   let logs = [];
@@ -35,7 +50,20 @@
   let lastGestureStart = 0;
   let maxGestureDuration = 0;
   let crashRiskLevel = 0;
+  let fpsSamples = [];
 
+  // Throttle timestamps for RISK-level warnings
+  let lastFpsWarnTime = 0;
+  let lastBdWarnTime = 0;
+  let lastHeapWarnTime = 0;
+  let lastGestureFpsWarnTime = 0;
+
+  // Capture originals BEFORE any replacement (only fetch and setTimeout are replaced)
+  const origFetch = window.fetch;
+  const origSetTimeout = window.setTimeout;
+  const origRAF = window.requestAnimationFrame;  // NOT replaced — just captured for use
+
+  // ── Log helper ────────────────────────────────────────────────────────────
   function log(category, msg, data) {
     const entry = {
       t: (performance.now() / 1000).toFixed(3) + 's',
@@ -64,61 +92,34 @@
     }
   }
 
-  // ── Memory snapshot ───────────────────────────────────────────────────────
-  function snapMemory(label) {
-    const info = {};
-
-    // JS heap (Chrome only)
-    if (performance.memory) {
-      info.jsHeapUsedMB = (performance.memory.usedJSHeapSize / 1048576).toFixed(1);
-      info.jsHeapTotalMB = (performance.memory.totalJSHeapSize / 1048576).toFixed(1);
-      info.jsHeapLimitMB = (performance.memory.jsHeapSizeLimit / 1048576).toFixed(1);
-      const pct = ((performance.memory.usedJSHeapSize / performance.memory.jsHeapSizeLimit) * 100).toFixed(1);
-      info.heapPct = pct + '%';
-
-      if (pct > 70) {
+  // ── Lightweight heap snapshot (NO DOM scan) ───────────────────────────────
+  // Use this on gesture start/end and periodic sampling — it's fast.
+  function snapHeap(label) {
+    if (!performance.memory) {
+      log('MEMORY', label + ' (heap API unavailable on this browser)');
+      return {};
+    }
+    const info = {
+      jsHeapUsedMB: (performance.memory.usedJSHeapSize / 1048576).toFixed(1),
+      jsHeapTotalMB: (performance.memory.totalJSHeapSize / 1048576).toFixed(1),
+      heapPct: ((performance.memory.usedJSHeapSize / performance.memory.jsHeapSizeLimit) * 100).toFixed(1) + '%',
+    };
+    const pct = parseFloat(info.heapPct);
+    if (pct > 70) {
+      const now2 = performance.now();
+      if (now2 - lastHeapWarnTime > WARN_THROTTLE_MS) {
+        lastHeapWarnTime = now2;
         crashRiskLevel = Math.max(crashRiskLevel, 2);
-        log('RISK', `JS heap at ${pct}% — crash risk elevated`, info);
+        log('RISK', `JS heap at ${info.heapPct} — crash risk elevated`, info);
       }
     }
-
-    // WebGL info (GPU memory estimate)
-    const canvases = document.querySelectorAll('canvas');
-    info.canvasCount = canvases.length;
-    canvases.forEach((c, i) => {
-      const gl = c.getContext('webgl2') || c.getContext('webgl') || c.getContext('experimental-webgl');
-      if (gl) {
-        const ext = gl.getExtension('WEBGL_debug_renderer_info');
-        if (ext) {
-          info[`canvas${i}_renderer`] = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
-          info[`canvas${i}_vendor`]   = gl.getParameter(ext.UNMASKED_VENDOR_WEBGL);
-        }
-        info[`canvas${i}_size`] = `${c.width}×${c.height}`;
-        // Estimate framebuffer memory: w×h×4 bytes×2 (front+back) + MSAA overhead
-        const fbMB = (c.width * c.height * 8 / 1048576).toFixed(1);
-        info[`canvas${i}_estimatedFramebufferMB`] = fbMB;
-      }
-    });
-
-    // Count backdrop-filter active elements
-    const bdElements = countBackdropFilters();
-    info.backdropFilterElements = bdElements.count;
-    info.backdropFilterSuppressed = bdElements.suppressed;
-    info.backdropFilterActive = bdElements.active;
-
-    if (bdElements.active > 0 && gestureActive) {
-      crashRiskLevel = Math.max(crashRiskLevel, 3);
-      log('RISK',
-        `CRITICAL: ${bdElements.active} backdrop-filter elements ACTIVE during gesture!`,
-        { active: bdElements.activeList }
-      );
-    }
-
     log('MEMORY', label, info);
     return info;
   }
 
-  // ── Backdrop-filter audit ─────────────────────────────────────────────────
+  // ── Backdrop-filter audit (EXPENSIVE — DOM scan) ──────────────────────────
+  // Only call this manually (M key), on canvas events, and at initial load.
+  // NEVER call from the gesture observer or periodic timer.
   function countBackdropFilters() {
     const all = document.querySelectorAll('*');
     let count = 0, suppressed = 0, active = 0;
@@ -129,7 +130,6 @@
       const bf = style.backdropFilter || style.webkitBackdropFilter || '';
       if (bf && bf !== 'none') {
         count++;
-        // Check if it's inside a .map-gesture-active subtree
         if (el.closest('.map-gesture-active')) {
           suppressed++;
         } else {
@@ -138,7 +138,6 @@
             tag: el.tagName,
             classes: el.className?.toString().slice(0, 80),
             bf: bf.slice(0, 40),
-            inert: el.closest('[inert]') ? 'inert' : 'live',
           });
         }
       }
@@ -147,19 +146,61 @@
     return { count, suppressed, active, activeList };
   }
 
-  // ── gesture-active class observer ─────────────────────────────────────────
+  // ── Full memory snapshot (heap + DOM audit) ───────────────────────────────
+  // EXPENSIVE — only use for manual snapshots and canvas events.
+  function snapMemory(label) {
+    const info = snapHeap(label);
+
+    // Canvas info
+    const canvases = document.querySelectorAll('canvas');
+    info.canvasCount = canvases.length;
+    canvases.forEach((c, i) => {
+      const gl = c.getContext('webgl2') || c.getContext('webgl') || c.getContext('experimental-webgl');
+      if (gl) {
+        const ext = gl.getExtension('WEBGL_debug_renderer_info');
+        if (ext) {
+          info[`canvas${i}_renderer`] = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
+        }
+        info[`canvas${i}_size`] = `${c.width}×${c.height}`;
+        info[`canvas${i}_estimatedFramebufferMB`] = (c.width * c.height * 8 / 1048576).toFixed(1);
+      }
+    });
+
+    // Backdrop-filter DOM scan (the expensive part)
+    const bdElements = countBackdropFilters();
+    info.backdropFilterElements = bdElements.count;
+    info.backdropFilterActive = bdElements.active;
+    info.backdropFilterSuppressed = bdElements.suppressed;
+
+    if (bdElements.active > 0 && gestureActive) {
+      const now2 = performance.now();
+      if (now2 - lastBdWarnTime > WARN_THROTTLE_MS) {
+        lastBdWarnTime = now2;
+        crashRiskLevel = Math.max(crashRiskLevel, 3);
+        log('RISK',
+          `CRITICAL: ${bdElements.active} backdrop-filter elements ACTIVE during gesture!`,
+          { active: bdElements.activeList }
+        );
+      }
+    }
+
+    return info;
+  }
+
+  // ── Gesture-active class observer ─────────────────────────────────────────
   function findPageRoot() {
-    // MapClient renders pageRootRef on the first flex-col div with 100dvh height
     return document.querySelector('[style*="100dvh"]') ||
            document.querySelector('.flex.flex-col') ||
            document.body;
   }
 
   const pageRoot = findPageRoot();
+  let classObserver = null;
+
   if (!pageRoot) {
     log('DOM', 'WARNING: Could not find pageRootRef — gesture-active monitoring disabled');
   } else {
-    const classObserver = new MutationObserver((mutations) => {
+    classObserver = new MutationObserver((mutations) => {
       for (const m of mutations) {
         if (m.attributeName === 'class') {
           const hasGestureActive = m.target.classList.contains('map-gesture-active');
@@ -167,14 +208,16 @@
             gestureActive = true;
             gestureCount++;
             lastGestureStart = performance.now();
-            log('GESTURE', `Gesture ${gestureCount} START — backdrop-filter suppressed on ${pageRoot.tagName}`);
-            snapMemory(`pre-gesture-${gestureCount}`);
+            // Lightweight: heap only, NO DOM scan here
+            log('GESTURE', `Gesture ${gestureCount} START — backdrop-filter suppressed`);
+            snapHeap(`pre-gesture-${gestureCount}`);
           } else if (!hasGestureActive && gestureActive) {
             gestureActive = false;
             const dur = performance.now() - lastGestureStart;
             maxGestureDuration = Math.max(maxGestureDuration, dur);
+            // Lightweight: heap only, NO DOM scan here
             log('GESTURE', `Gesture ${gestureCount} END — duration ${dur.toFixed(0)}ms`);
-            snapMemory(`post-gesture-${gestureCount}`);
+            snapHeap(`post-gesture-${gestureCount}`);
           }
         }
       }
@@ -185,37 +228,45 @@
     });
   }
 
-  // ── FPS monitor ───────────────────────────────────────────────────────────
-  let fpsSamples = [];
+  // ── FPS monitor (uses origRAF directly — no wrapping overhead) ────────────
   function measureFPS(now) {
     frameCount++;
     const dt = now - lastFrameTime;
-    if (dt >= 1000) {
+    if (dt >= FPS_SAMPLE_INTERVAL) {
       const fps = Math.round((frameCount / dt) * 1000);
       fpsSamples.push(fps);
+
       if (fps < 30 && gestureActive) {
-        crashRiskLevel = Math.max(crashRiskLevel, 2);
-        log('PERF', `LOW FPS during gesture: ${fps} fps — GPU under pressure`);
+        const now2 = performance.now();
+        if (now2 - lastGestureFpsWarnTime > WARN_THROTTLE_MS) {
+          lastGestureFpsWarnTime = now2;
+          crashRiskLevel = Math.max(crashRiskLevel, 2);
+          log('PERF', `LOW FPS during gesture: ${fps} fps — GPU under pressure`);
+        }
       } else if (fps < 15) {
-        crashRiskLevel = Math.max(crashRiskLevel, 3);
-        log('RISK', `CRITICAL LOW FPS: ${fps} fps — likely to crash`);
+        // THROTTLED: at most once per 5 seconds to prevent console spam
+        const now2 = performance.now();
+        if (now2 - lastFpsWarnTime > WARN_THROTTLE_MS) {
+          lastFpsWarnTime = now2;
+          crashRiskLevel = Math.max(crashRiskLevel, 3);
+          log('RISK', `CRITICAL LOW FPS: ${fps} fps — likely to crash`);
+        }
       }
+
       frameCount = 0;
       lastFrameTime = now;
     }
-    fpsMonitorId = requestAnimationFrame(measureFPS);
+    // Use origRAF directly — no wrapper/closure overhead
+    fpsMonitorId = origRAF(measureFPS);
   }
-  fpsMonitorId = requestAnimationFrame(measureFPS);
+  fpsMonitorId = origRAF(measureFPS);
 
-  // ── Intercept fetch to detect in-flight requests during gestures ──────────
-  const origFetch = window.fetch;
+  // ── fetch interceptor (detect in-flight requests during gestures) ─────────
   window.fetch = function (url, opts) {
     const urlStr = typeof url === 'string' ? url : url?.url || String(url);
     const isMapApi = urlStr.includes('/api/map') || urlStr.includes('/api/quest');
     if (isMapApi && gestureActive) {
-      log('ROUTE', `fetch during ACTIVE gesture: ${urlStr}`, {
-        gestureCount, url: urlStr,
-      });
+      log('ROUTE', `fetch during ACTIVE gesture: ${urlStr}`, { gestureCount });
     }
     const start = performance.now();
     return origFetch.apply(this, arguments).then(res => {
@@ -232,8 +283,7 @@
     });
   };
 
-  // ── Intercept setTimeout to detect long-blocking callbacks ───────────────
-  const origSetTimeout = window.setTimeout;
+  // ── setTimeout interceptor (detect long-blocking callbacks) ──────────────
   window.setTimeout = function (fn, delay, ...args) {
     const wrapped = function (...cbArgs) {
       const start = performance.now();
@@ -246,40 +296,28 @@
         });
         if (dur > 1000) {
           crashRiskLevel = Math.max(crashRiskLevel, 2);
-          log('RISK', `Main thread BLOCKED ${dur.toFixed(0)}ms — likely buildFloorGrids or heavy A* compute`);
+          log('RISK', `Main thread BLOCKED ${dur.toFixed(0)}ms — likely buildFloorGrids`);
         }
       }
       return result;
     };
-    return origSetTimeout.call(this, wrapped, delay, ...args);
+    return origSetTimeout.call(window, wrapped, delay, ...args);
   };
 
-  // ── Intercept requestAnimationFrame to count render frames per second ─────
-  let rafCallCount = 0;
-  const origRAF = window.requestAnimationFrame;
-  window.requestAnimationFrame = function (cb) {
-    const wrapped = function (ts) {
-      rafCallCount++;
-      return cb(ts);
-    };
-    return origRAF.call(this, wrapped);
-  };
-
-  // ── DOM MutationObserver: detect component mount/unmount ──────────────────
+  // ── DOM MutationObserver: detect canvas mount/unmount ─────────────────────
   const mountObserver = new MutationObserver((mutations) => {
     for (const m of mutations) {
       for (const node of m.addedNodes) {
         if (node.nodeType === 1) {
-          // Canvas added → Three.js renderer mounted (3D mode)
           if (node.tagName === 'CANVAS') {
             renderCount++;
             log('REACT', `Three.js canvas MOUNTED (render #${renderCount})`, {
               size: `${node.width}×${node.height}`,
               gestureActive,
             });
+            // Full DOM scan here is OK — canvas mount is a rare event
             snapMemory(`canvas-mount-${renderCount}`);
           }
-          // Fixed overlay added (sheets, panels)
           const style = node.className?.toString() || '';
           if (style.includes('fixed') && style.includes('inset')) {
             log('DOM', `Fixed overlay ADDED: ${node.tagName}`, {
@@ -293,7 +331,7 @@
         if (node.nodeType === 1) {
           if (node.tagName === 'CANVAS') {
             log('REACT', `Three.js canvas UNMOUNTED`, { gestureActive });
-            // Small delay to let renderer.dispose() run, then check memory
+            // Full DOM scan after 200ms delay (rare event, OK to be expensive)
             origSetTimeout(() => snapMemory('canvas-unmount'), 200);
           }
         }
@@ -302,26 +340,23 @@
   });
   mountObserver.observe(document.body, { childList: true, subtree: true });
 
-  // ── Periodic memory sampling ──────────────────────────────────────────────
+  // ── Periodic heap sampling during gestures (lightweight, no DOM scan) ─────
   memSampleId = setInterval(() => {
-    if (gestureActive) snapMemory('mid-gesture-sample');
-  }, SAMPLE_INTERVAL_MS);
+    if (gestureActive) snapHeap('mid-gesture-sample');
+  }, MEM_SAMPLE_MS);
 
   // ── Initial state snapshot ────────────────────────────────────────────────
-  log('OK', '=== MAP STRESS TEST INSTRUMENTATION ACTIVE ===');
+  log('OK', '=== MAP STRESS TEST INSTRUMENTATION v2 ACTIVE ===');
+  // Full DOM scan once at startup (page is idle, OK to be expensive)
   snapMemory('initial-state');
 
   const bdAudit = countBackdropFilters();
   log('DOM', 'Initial backdrop-filter audit', bdAudit);
   if (bdAudit.active > 0) {
-    log('DOM', 'Active backdrop-filter elements found at rest:', bdAudit.activeList);
+    log('DOM', 'Active backdrop-filter elements at rest:', bdAudit.activeList);
   }
 
-  // ── AUTO-TEST: simulate rapid zoom events (keyboard-triggered) ───────────
-  // Press 'T' to run a 20-cycle rapid zoom simulation (desktop/Chrome only)
-  // Press 'M' to dump the current memory snapshot
-  // Press 'R' to dump the full log as JSON
-  // Press 'C' to clear and reset counters
+  // ── Keyboard controls ─────────────────────────────────────────────────────
   window.addEventListener('keydown', (e) => {
     if (e.key === 'T' || e.key === 't') {
       log('GESTURE', '=== AUTO-TEST: 20-cycle rapid wheel zoom starting ===');
@@ -342,7 +377,6 @@
           snapMemory('auto-test-complete');
           return;
         }
-        // Alternating zoom-in / zoom-out
         const delta = cycle % 2 === 0 ? -100 : 100;
         const rect = mapContainer.getBoundingClientRect();
         const cx = rect.left + rect.width / 2;
@@ -354,12 +388,13 @@
         });
         mapContainer.dispatchEvent(evt);
         cycle++;
-        origSetTimeout(fireWheelCycle, 80); // 80ms between zooms → ~12 per second
+        origSetTimeout(fireWheelCycle, 80);
       }
       fireWheelCycle();
     }
 
     if (e.key === 'M' || e.key === 'm') {
+      // Full DOM scan on demand (M key) — explicit user request, OK to be slow
       snapMemory('manual-snapshot');
     }
 
@@ -372,6 +407,7 @@
           ? (fpsSamples.reduce((a, b) => a + b, 0) / fpsSamples.length).toFixed(1)
           : 'n/a',
         minFPS: fpsSamples.length ? Math.min(...fpsSamples) : 'n/a',
+        recentFPS: fpsSamples.slice(-10),
         logCount: logs.length,
         logs,
       };
@@ -386,16 +422,23 @@
       fpsSamples = [];
       crashRiskLevel = 0;
       maxGestureDuration = 0;
+      lastFpsWarnTime = 0;
+      lastBdWarnTime = 0;
+      lastHeapWarnTime = 0;
+      lastGestureFpsWarnTime = 0;
       log('OK', 'Counters reset');
+    }
+
+    if (e.key === 'S' || e.key === 's') {
+      window.__mapStress.stop();
+      log('OK', 'Instrumentation STOPPED — re-paste script to restart');
     }
   });
 
-  log('OK', 'Controls: T=auto-test zoom, M=memory snapshot, R=full report, C=reset');
-  log('OK', 'Begin testing: open map, switch 2D/3D, pan, pinch, open sheets, select destinations');
-
   // ── Expose helpers globally ───────────────────────────────────────────────
   window.__mapStress = {
-    snapMemory,
+    snapMemory,     // full DOM scan — use sparingly
+    snapHeap,       // lightweight heap only
     countBackdropFilters,
     getLogs: () => logs,
     getReport: () => ({
@@ -404,6 +447,7 @@
       crashRiskLevel,
       avgFPS: fpsSamples.length ? fpsSamples.reduce((a, b) => a + b, 0) / fpsSamples.length : null,
       minFPS: fpsSamples.length ? Math.min(...fpsSamples) : null,
+      recentFPS: fpsSamples.slice(-10),
       logs,
     }),
     stop() {
@@ -413,10 +457,12 @@
       mountObserver?.disconnect();
       window.fetch = origFetch;
       window.setTimeout = origSetTimeout;
-      window.requestAnimationFrame = origRAF;
+      // Note: origRAF was never replaced — nothing to restore
       log('OK', 'Stress-test instrumentation stopped');
     },
   };
 
-  log('OK', 'Access via window.__mapStress.getReport() or window.__mapStress.stop()');
+  log('OK', 'Keys: T=auto-test zoom  M=memory+DOM snapshot  R=report  C=reset  S=stop');
+  log('OK', 'Begin: open map, switch 2D/3D, pan, pinch, open sheets, select destinations');
+  log('OK', 'If instrumentation feels slow: it is not — re-pasting re-runs the singleton guard');
 })();

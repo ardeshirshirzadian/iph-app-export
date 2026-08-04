@@ -69,6 +69,7 @@ export async function GET() {
       },
       body: JSON.stringify({ query: GET_WEBSITE_EVENT }),
       cache: 'no-store',
+      signal: AbortSignal.timeout(12000),
     });
 
     const json = await res.json();
