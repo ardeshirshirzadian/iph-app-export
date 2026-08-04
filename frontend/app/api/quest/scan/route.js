@@ -215,6 +215,60 @@ export async function POST(request) {
     // Cache user display name so leaderboard doesn't need live Rasayesh calls
     cacheUserName(userUuid, displayNameFa, displayNameEn).catch(() => {});
 
+    // ── Mission completion XP grants (booth_scan, hall_scan, special_booth) ──
+    // Every other mission type (quiz, survey, social_share) already inserts into
+    // quest_xp_grants on completion.  Scan-triggered missions were missing this step:
+    // the scan was recorded in quest_scans (per-booth XP), but the one-time mission
+    // completion bonus from quest_content.xp_reward was never written.
+    // ON CONFLICT DO NOTHING makes every check idempotent — safe to run on every scan.
+    try {
+      const { rows: scanMissions } = await query(
+        `SELECT id, mission_type, xp_reward, total, target_hall_name, hall_match_mode, target_company_id
+         FROM quest_content
+         WHERE is_active = true AND xp_reward > 0
+           AND mission_type IN ('booth_scan', 'hall_scan', 'special_booth')`
+      );
+
+      for (const m of scanMissions) {
+        let completed = false;
+
+        if (m.mission_type === 'booth_scan') {
+          const { rows } = await query(
+            `SELECT COUNT(*) AS cnt FROM quest_scans WHERE user_uuid = $1`,
+            [userUuid]
+          );
+          completed = parseInt(rows[0].cnt, 10) >= m.total;
+
+        } else if (m.mission_type === 'hall_scan') {
+          if (!m.target_hall_name) continue;
+          const { rows } = await query(
+            `SELECT COUNT(DISTINCT qs.company_id) AS cnt
+             FROM quest_scans qs
+             JOIN companies c ON c.id = qs.company_id
+             WHERE qs.user_uuid = $1 AND c.hall_name = $2`,
+            [userUuid, m.target_hall_name]
+          );
+          const scanned = parseInt(rows[0].cnt, 10);
+          completed = m.hall_match_mode === 'any' ? scanned >= 1 : scanned >= m.total;
+
+        } else if (m.mission_type === 'special_booth') {
+          if (!m.target_company_id || company.id !== m.target_company_id) continue;
+          completed = true;
+        }
+
+        if (completed) {
+          await query(
+            `INSERT INTO quest_xp_grants (user_uuid, source_type, source_id, xp_amount)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (user_uuid, source_type, source_id) DO NOTHING`,
+            [userUuid, `mission_${m.mission_type}`, m.id, m.xp_reward]
+          ).catch(() => {});
+        }
+      }
+    } catch (missionXpErr) {
+      console.error('[quest/scan] mission XP grant failed:', missionXpErr.message);
+    }
+
     // Manual rewards: upsert mission progress and/or badge progress
     if (company.is_manual) {
       if (company.linked_mission_id) {
