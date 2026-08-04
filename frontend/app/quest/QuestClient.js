@@ -3,7 +3,7 @@
 // / content.badges with live API data. The `content` prop only drives copy & order.
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import BottomNav from "../components/BottomNav";
 import PageHeader from "@/components/PageHeader";
@@ -141,11 +141,25 @@ function UserCard({ user, thresholds, levelColors, labels, lang }) {
     [user.xp, thresholds]
   );
   const [animated, setAnimated] = useState(false);
+  const [xpFlash, setXpFlash] = useState(false);
+  const prevXpRef = useRef(user.xp);
+  const animatedXp = useAnimatedCounter(user.xp);
 
   useEffect(() => {
     const t = setTimeout(() => setAnimated(true), 100);
     return () => clearTimeout(t);
   }, []);
+
+  // Brief glow flash when XP increases (e.g. after a poll detects new XP)
+  useEffect(() => {
+    if (user.xp > prevXpRef.current) {
+      setXpFlash(true);
+      const t = setTimeout(() => setXpFlash(false), 1200);
+      prevXpRef.current = user.xp;
+      return () => clearTimeout(t);
+    }
+    prevXpRef.current = user.xp;
+  }, [user.xp]);
 
   const color = levelColors[currentIdx] || levelColors[levelColors.length - 1];
 
@@ -173,7 +187,15 @@ function UserCard({ user, thresholds, levelColors, labels, lang }) {
 
       <div className="flex items-center justify-between text-sm mb-2">
         <span style={{ color: "var(--text-muted)" }}>{labels.xpLabel}</span>
-        <span className="font-bold" style={{ color: "var(--accent)" }}>{dNum(user.xp, lang)} {labels.xpUnit}</span>
+        <span
+          className="font-bold transition-all duration-500"
+          style={{
+            color: "var(--accent)",
+            textShadow: xpFlash ? '0 0 16px var(--accent), 0 0 32px rgba(0,255,179,0.4)' : undefined,
+          }}
+        >
+          {dNum(animatedXp, lang)} {labels.xpUnit}
+        </span>
       </div>
 
       <div className="h-2.5 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
@@ -193,7 +215,7 @@ function UserCard({ user, thresholds, levelColors, labels, lang }) {
             {labels.nextLevelPrefix} {next.name}
           </span>
           <span className="text-xs" style={{ color: "var(--text-faint)" }}>
-            {dNum(next.min - user.xp, lang)} {labels.xpRemainingSuffix}
+            {dNum(Math.max(0, next.min - animatedXp), lang)} {labels.xpRemainingSuffix}
           </span>
         </div>
       )}
@@ -859,6 +881,46 @@ function dNum(n, lang) {
 }
 // toPersianNum kept for callers that are already inside a lang==='fa' guard
 function toPersianNum(n) { return toPersianDigits(n); }
+
+// Smoothly counts displayed value from old to new when `target` changes.
+// Renders 60fps via requestAnimationFrame; cleans up on unmount or re-trigger.
+function useAnimatedCounter(target, duration = 800) {
+  const [display, setDisplay] = useState(target);
+  const displayRef = useRef(target);   // current rendered value (avoids stale closure)
+  const rafRef = useRef(null);
+  const prevTargetRef = useRef(target);
+
+  useEffect(() => {
+    if (target === prevTargetRef.current) return;
+    prevTargetRef.current = target;
+
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+
+    const from = displayRef.current;
+    const diff = target - from;
+    const startTime = performance.now();
+
+    function tick(now) {
+      const t = Math.min(1, (now - startTime) / duration);
+      const eased = 1 - (1 - t) ** 3; // cubic ease-out
+      const val = Math.round(from + diff * eased);
+      displayRef.current = val;
+      setDisplay(val);
+      if (t < 1) {
+        rafRef.current = requestAnimationFrame(tick);
+      } else {
+        rafRef.current = null;
+      }
+    }
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    };
+  }, [target, duration]);
+
+  return display;
+}
 
 function repeatRuleLabel(booth, lang) {
   const hours = booth.repeatable_scan_hours || 1;
@@ -1973,10 +2035,67 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     return { ...defaults, ...saved };
   }, [isDark, appearanceConfig]);
 
-  function refreshQuest() {
+  const refreshQuest = useCallback(() => {
     fetch('/api/quest').then(r => r.json()).then(d => { if (Array.isArray(d.missions)) setLiveMissions(d.missions); }).catch(() => {});
     fetch('/api/quest/badges').then(r => r.json()).then(d => { if (Array.isArray(d.badges)) setLiveBadges(d.badges); }).catch(() => {});
-  }
+  }, []);
+
+  // ── Live XP/mission polling (45 s interval) ───────────────────────────────
+  // Uses Page Visibility API to pause when tab is hidden and immediately re-fetch
+  // when the user returns, so stale data is never shown on tab switch-back.
+  // Polls /api/quest/stats (lightweight: 3 DB queries) to detect XP/scan changes;
+  // triggers refreshQuest() (missions + badges) whenever something changed.
+  useEffect(() => {
+    let mounted = true;
+    let timerId = null;
+
+    async function pollNow() {
+      if (!mounted) return;
+      try {
+        const r = await fetch('/api/quest/stats');
+        if (!r.ok || !mounted) return;
+        const data = await r.json();
+        if (!mounted) return;
+        // Update XP/stats; compare against current to decide if missions need refresh.
+        setQuestStats(prev => {
+          const xpChanged = data.xp !== prev.xp;
+          const scansChanged = data.total_scans !== prev.total_scans;
+          if (xpChanged || scansChanged) {
+            // Defer so we're not calling side effects inside a state setter.
+            Promise.resolve().then(() => { if (mounted) refreshQuest(); });
+          }
+          return { ...prev, ...data };
+        });
+      } catch {}
+    }
+
+    function schedule() {
+      timerId = setTimeout(async () => {
+        if (!mounted) return;
+        await pollNow();
+        if (mounted) schedule();
+      }, 45_000);
+    }
+
+    function onVisibilityChange() {
+      if (document.hidden) {
+        clearTimeout(timerId);
+        timerId = null;
+      } else {
+        // Immediate refetch so returning users see fresh data right away.
+        pollNow();
+        schedule();
+      }
+    }
+
+    schedule();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      mounted = false;
+      clearTimeout(timerId);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [refreshQuest]);
 
   const missionList = useMemo(
     () => missions.map((m, i) => (
