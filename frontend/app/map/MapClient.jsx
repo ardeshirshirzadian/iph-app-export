@@ -2025,6 +2025,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
               navMarkerIcons={navMarkerIcons}
               idleCameraConfig={mapAppearanceConfig}
               bgColor={mapBgColor}
+              onGestureStart={onGestureStart}
+              onGestureEnd={onGestureSettle}
               routeColors={routeColors}
               tapStartMode={false}
               onBoothTap={onBooth3DTap}

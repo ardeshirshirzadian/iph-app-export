@@ -199,6 +199,8 @@ export default function Map3DView({
   selectedBoothId,      // company id of currently selected booth (or null)
   selectedZoneId,       // zone.id of currently selected zone (or null)
   onReady,              // () => void — fires synchronously at end of scene-setup effect
+  onGestureStart,       // () => void — fires when OrbitControls begins a gesture (RULE 4: suppress backdrop-filter)
+  onGestureEnd,         // () => void — fires when OrbitControls gesture ends
   lang = 'fa',          // 'fa' | 'en' — controls booth label language
   boothLabelThreshold,  // number (map units) — camera XZ distance below which labels appear
 }) {
@@ -266,6 +268,14 @@ export default function Map3DView({
     // view to lift instead of translate, making pan feel angle-dependent and sluggish.
     // false → _panUp uses (cameraRight × worldUp), always a horizontal XZ vector.
     t.controls.screenSpacePanning = false;
+
+    // RULE 4 (3D mode): suppress backdrop-filter on all overlays during OrbitControls
+    // gestures — same mechanism as the 2D gesture fix.  OrbitControls emits 'start'
+    // when the first pointer touches down and 'end' when all pointers lift.
+    // MapClient adds/removes 'map-gesture-active' on pageRootRef, which triggers the
+    // globals.css rule { backdrop-filter: none !important } on every descendant.
+    t.controls.addEventListener('start', () => { onGestureStart?.(); });
+    t.controls.addEventListener('end',   () => { onGestureEnd?.();   });
 
     t.raycaster   = new THREE.Raycaster();
     t.boothEntries = []; // { mesh, booth, hall, mergedLabel, cx, cz, colorStr }
@@ -892,6 +902,21 @@ export default function Map3DView({
         le.texEn?.dispose();
         le.mat.dispose();
       }
+      // Dispose route meshes/sprites and flow textures — not covered by t.disposables
+      // (route objects are built/torn down by the route effect, but that effect has no
+      // return cleanup, so we must dispose here on unmount to avoid GPU texture leaks
+      // when the user has an active route and switches 3D → 2D).
+      for (const o of (t.routeObjects ?? [])) {
+        if (o instanceof THREE.Sprite) {
+          o.material.map?.dispose();
+          o.material.dispose();
+        } else if (o instanceof THREE.Mesh) {
+          o.geometry?.dispose();
+          o.material?.map?.dispose();
+          o.material?.dispose();
+        }
+      }
+      for (const tex of (t.routeTextures ?? [])) tex?.dispose();
       t.scene.clear();
       t.renderer.dispose();
       if (el.contains(t.renderer.domElement)) el.removeChild(t.renderer.domElement);

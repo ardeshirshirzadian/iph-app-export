@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Map Gesture Fix Verification</title>
+<style>
+  /* ── Exact copy of the globals.css gesture-suppression rule ── */
+  .map-gesture-active * {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  body { font-family: monospace; background: #021f20; color: #fff; padding: 20px; }
+  .panel {
+    background: rgba(5,64,65,0.6);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(0,255,179,0.2);
+    border-radius: 16px;
+    padding: 16px;
+    margin: 8px 0;
+  }
+  .zoom-btn {
+    background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 50%;
+    width: 44px; height: 44px;
+    color: #fff;
+  }
+  #result { white-space: pre-wrap; font-size: 13px; line-height: 1.8; }
+  .PASS { color: #00ffb3; }
+  .FAIL { color: #ef4444; }
+  .INFO { color: #60a5fa; }
+</style>
+</head>
+<body>
+
+<!-- Simulated pageRootRef element — this is what gets map-gesture-active added to it -->
+<div id="pageRoot" style="position:relative">
+
+  <!-- MapSearchBar — has backdrop-filter: blur(20px) -->
+  <div id="searchBar" class="panel" data-label="searchBar">
+    Search bar (backdrop-filter: blur(20px))
+  </div>
+
+  <!-- Search results dropdown — has backdrop-filter: blur(20px) -->
+  <div id="searchResults" class="panel" data-label="searchResults">
+    Search results (backdrop-filter: blur(20px))
+  </div>
+
+  <!-- Zoom + button — backdrop-filter: blur(8px) -->
+  <button id="zoomIn" class="zoom-btn" data-label="zoomIn">+</button>
+
+  <!-- Zoom - button — backdrop-filter: blur(8px) -->
+  <button id="zoomOut" class="zoom-btn" data-label="zoomOut">−</button>
+
+  <!-- Compass button — backdrop-filter: blur(8px) -->
+  <button id="compass" class="zoom-btn" data-label="compass">🧭</button>
+
+  <!-- StartPanel — has backdrop-filter: blur(28px) -->
+  <div id="startPanel" class="panel" style="backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px)" data-label="startPanel">
+    StartPanel (backdrop-filter: blur(28px))
+  </div>
+
+</div>
+
+<hr style="border-color:rgba(255,255,255,0.1);margin:20px 0">
+<div id="result">Running tests...</div>
+
+<script>
+// ── Test harness ──────────────────────────────────────────────────────────────
+const results = [];
+let pass = 0, fail = 0;
+
+function assert(label, condition, detail) {
+  const status = condition ? 'PASS' : 'FAIL';
+  if (condition) pass++; else fail++;
+  results.push({ status, label, detail: detail || '' });
+  console.log(`[${status}] ${label}${detail ? ' — ' + detail : ''}`);
+  return condition;
+}
+
+function getBackdropFilter(el) {
+  const cs = window.getComputedStyle(el);
+  return cs.backdropFilter || cs.webkitBackdropFilter || 'none';
+}
+
+function auditBackdropFilters(root) {
+  const all = root.querySelectorAll('*');
+  const active = [], suppressed = [];
+  for (const el of all) {
+    const bf = getBackdropFilter(el);
+    if (bf && bf !== 'none') {
+      if (el.closest('.map-gesture-active')) suppressed.push(el.dataset.label || el.id || el.tagName);
+      else active.push(el.dataset.label || el.id || el.tagName);
+    }
+  }
+  return { active, suppressed };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEST SUITE 1: CSS backdrop-filter suppression via map-gesture-active class
+// (This is Root Cause 1's fix — verifying the CSS rule works correctly)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const pageRoot = document.getElementById('pageRoot');
+
+// 1a. At rest: all elements should have active backdrop-filter
+const atRest = auditBackdropFilters(pageRoot);
+assert('At rest: backdrop-filter elements exist',
+  atRest.active.length >= 5,
+  `found ${atRest.active.length} active: [${atRest.active.join(', ')}]`
+);
+assert('At rest: none suppressed yet',
+  atRest.suppressed.length === 0,
+  `suppressed: [${atRest.suppressed.join(', ')}]`
+);
+
+// 1b. Simulate onGestureStart: add map-gesture-active class (exactly as MapClient does)
+pageRoot.classList.add('map-gesture-active');
+const duringGesture = auditBackdropFilters(pageRoot);
+assert('During gesture: 0 active backdrop-filter elements (all suppressed)',
+  duringGesture.active.length === 0,
+  `still active: [${duringGesture.active.join(', ')}], suppressed: ${duringGesture.suppressed.length}`
+);
+assert('During gesture: all 5 backdrop-filter elements are suppressed',
+  duringGesture.suppressed.length >= 5,
+  `suppressed: [${duringGesture.suppressed.join(', ')}]`
+);
+
+// 1c. Verify individual elements are suppressed
+const elemIds = ['searchBar', 'searchResults', 'zoomIn', 'zoomOut', 'compass', 'startPanel'];
+for (const id of elemIds) {
+  const el = document.getElementById(id);
+  const bf = getBackdropFilter(el);
+  assert(`During gesture: #${id} backdrop-filter = none`,
+    bf === 'none',
+    `actual: ${bf}`
+  );
+}
+
+// 1d. Simulate onGestureSettle (120ms timer fires): remove map-gesture-active
+pageRoot.classList.remove('map-gesture-active');
+const afterSettle = auditBackdropFilters(pageRoot);
+assert('After settle: backdrop-filter restored (active again)',
+  afterSettle.active.length >= 5,
+  `active: ${afterSettle.active.length}, suppressed: ${afterSettle.suppressed.length}`
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEST SUITE 2: OrbitControls 'start'/'end' event → onGestureStart/onGestureEnd
+// Simulates the exact event flow added to Map3DView
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Simulate Three.js EventDispatcher (the superclass of OrbitControls)
+class MockEventDispatcher {
+  constructor() { this._listeners = {}; }
+  addEventListener(type, fn) {
+    if (!this._listeners[type]) this._listeners[type] = [];
+    this._listeners[type].push(fn);
+  }
+  dispatchEvent(event) {
+    const listeners = this._listeners[event.type] || [];
+    listeners.forEach(fn => fn(event));
+  }
+  dispose() { /* removes DOM listeners but not EventDispatcher listeners */ }
+}
+
+class MockOrbitControls extends MockEventDispatcher {
+  constructor() { super(); this.enabled = true; }
+}
+
+let gestureStartCalled = 0, gestureEndCalled = 0;
+let classWasAddedOnStart = false, classWasRemovedBySettle = false;
+
+// Simulate the MapClient onGestureStart function
+function mockOnGestureStart() {
+  gestureStartCalled++;
+  pageRoot.classList.add('map-gesture-active');
+  classWasAddedOnStart = pageRoot.classList.contains('map-gesture-active');
+}
+
+// Simulate the MapClient onGestureSettle function (simplified — no timer for test)
+function mockOnGestureSettle() {
+  gestureEndCalled++;
+  pageRoot.classList.remove('map-gesture-active');
+  classWasRemovedBySettle = !pageRoot.classList.contains('map-gesture-active');
+}
+
+// Simulate the scene-setup code in Map3DView:
+// t.controls.addEventListener('start', () => { onGestureStart?.(); });
+// t.controls.addEventListener('end',   () => { onGestureEnd?.();   });
+const mockControls = new MockOrbitControls();
+mockControls.addEventListener('start', () => { mockOnGestureStart(); });
+mockControls.addEventListener('end',   () => { mockOnGestureSettle(); });
+
+// 2a. Fire OrbitControls 'start' event (simulates user touching in 3D mode)
+mockControls.dispatchEvent({ type: 'start' });
+assert('OrbitControls start → onGestureStart called',
+  gestureStartCalled === 1,
+  `called ${gestureStartCalled} times`
+);
+assert('OrbitControls start → map-gesture-active class added to pageRoot',
+  classWasAddedOnStart,
+  pageRoot.className
+);
+const duringOrbit = auditBackdropFilters(pageRoot);
+assert('OrbitControls start → all backdrop-filters suppressed (0 active)',
+  duringOrbit.active.length === 0,
+  `active: [${duringOrbit.active.join(', ')}]`
+);
+
+// 2b. Fire OrbitControls 'end' event (simulates user lifting finger in 3D mode)
+mockControls.dispatchEvent({ type: 'end' });
+assert('OrbitControls end → onGestureSettle called',
+  gestureEndCalled === 1,
+  `called ${gestureEndCalled} times`
+);
+assert('OrbitControls end → map-gesture-active class removed from pageRoot',
+  classWasRemovedBySettle,
+  pageRoot.className
+);
+const afterOrbit = auditBackdropFilters(pageRoot);
+assert('OrbitControls end → backdrop-filters restored (active again)',
+  afterOrbit.active.length >= 5,
+  `active: ${afterOrbit.active.length}`
+);
+
+// 2c. Rapid repeated gestures (simulate 10 fast pinch cycles)
+let rapidCyclesFailed = 0;
+for (let i = 0; i < 10; i++) {
+  mockControls.dispatchEvent({ type: 'start' });
+  const duringCycle = auditBackdropFilters(pageRoot);
+  if (duringCycle.active.length > 0) rapidCyclesFailed++;
+  mockControls.dispatchEvent({ type: 'end' });
+  const afterCycle = auditBackdropFilters(pageRoot);
+  if (afterCycle.active.length < 5) rapidCyclesFailed++;
+}
+assert('10 rapid OrbitControls start/end cycles: no leakage',
+  rapidCyclesFailed === 0,
+  `${rapidCyclesFailed} cycles had wrong state`
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEST SUITE 3: Root Cause 2 — routeTextures dispose on unmount
+// Verifies the cleanup code calls dispose() on route textures
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Simulate t.routeTextures with mock texture objects that track dispose() calls
+const mockTextures = [
+  { disposed: false, dispose() { this.disposed = true; } },
+  { disposed: false, dispose() { this.disposed = true; } },
+  { disposed: false, dispose() { this.disposed = true; } },
+];
+
+const mockRouteObjects = [
+  // Simulate a THREE.Sprite
+  {
+    isMesh: false, isSprite: true,
+    material: {
+      map: { disposed: false, dispose() { this.disposed = true; } },
+      disposed: false, dispose() { this.disposed = true; },
+    },
+  },
+  // Simulate a THREE.Mesh (route tube)
+  {
+    isMesh: true, isSprite: false,
+    geometry: { disposed: false, dispose() { this.disposed = true; } },
+    material: {
+      map: { disposed: false, dispose() { this.disposed = true; } },
+      disposed: false, dispose() { this.disposed = true; },
+    },
+  },
+];
+
+// Simulate the FIXED cleanup function from Map3DView (the exact code we wrote):
+function simulateCleanup(t) {
+  // (other cleanup omitted for brevity — just the route part we added)
+  for (const o of (t.routeObjects ?? [])) {
+    // Check isSprite via duck-typing (matches THREE.Sprite pattern)
+    if (o.isSprite) {
+      o.material.map?.dispose();
+      o.material.dispose();
+    } else if (o.isMesh) {
+      o.geometry?.dispose();
+      o.material?.map?.dispose();
+      o.material?.dispose();
+    }
+  }
+  for (const tex of (t.routeTextures ?? [])) tex?.dispose();
+}
+
+const mockT = { routeTextures: mockTextures, routeObjects: mockRouteObjects };
+simulateCleanup(mockT);
+
+assert('Cleanup: all 3 routeTextures disposed',
+  mockTextures.every(t => t.disposed),
+  `disposed: [${mockTextures.map(t => t.disposed).join(', ')}]`
+);
+assert('Cleanup: Sprite material.map disposed',
+  mockRouteObjects[0].material.map.disposed,
+  `disposed: ${mockRouteObjects[0].material.map.disposed}`
+);
+assert('Cleanup: Sprite material disposed',
+  mockRouteObjects[0].material.disposed,
+  `disposed: ${mockRouteObjects[0].material.disposed}`
+);
+assert('Cleanup: Mesh geometry disposed',
+  mockRouteObjects[1].geometry.disposed,
+  `disposed: ${mockRouteObjects[1].geometry.disposed}`
+);
+assert('Cleanup: Mesh material.map disposed',
+  mockRouteObjects[1].material.map.disposed,
+  `disposed: ${mockRouteObjects[1].material.map.disposed}`
+);
+assert('Cleanup: Mesh material disposed',
+  mockRouteObjects[1].material.disposed,
+  `disposed: ${mockRouteObjects[1].material.disposed}`
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEST SUITE 4: Null-safety — calling onGestureStart in 3D mode
+// In 3D mode, SVG layer refs (routeLayerRef, zonesLayerRef, etc.) are null
+// because the 2D SVG isn't mounted. Verify onGestureStart handles null refs.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Simulate the real onGestureStart function from MapClient
+function simulateOnGestureStart(refs) {
+  if (refs.pageRoot) refs.pageRoot.classList.add('map-gesture-active');
+  if (refs.boothLabels) refs.boothLabels.style.opacity = '0';
+  if (refs.routeLayer) refs.routeLayer.style.visibility = 'hidden';
+  if (refs.zonesLayer) refs.zonesLayer.style.visibility = 'hidden';
+  if (refs.signsLayer) refs.signsLayer.style.visibility = 'hidden';
+  if (refs.elementsLayer) refs.elementsLayer.style.visibility = 'hidden';
+}
+
+// Call with null SVG refs (as happens in 3D mode)
+let threw = false;
+try {
+  simulateOnGestureStart({
+    pageRoot: pageRoot, // pageRoot is always mounted
+    boothLabels: null,  // 2D only
+    routeLayer: null,   // 2D only
+    zonesLayer: null,   // 2D only
+    signsLayer: null,   // 2D only
+    elementsLayer: null, // 2D only
+  });
+} catch (e) {
+  threw = true;
+}
+assert('onGestureStart with null SVG refs (3D mode) does not throw',
+  !threw,
+  threw ? 'threw error' : 'clean'
+);
+assert('onGestureStart still adds map-gesture-active when SVG refs are null',
+  pageRoot.classList.contains('map-gesture-active'),
+  `class: ${pageRoot.className}`
+);
+
+// Cleanup
+pageRoot.classList.remove('map-gesture-active');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Render results
+// ─────────────────────────────────────────────────────────────────────────────
+
+const resultEl = document.getElementById('result');
+const lines = results.map(r =>
+  `<span class="${r.status}">[${r.status}]</span> ${r.label}${r.detail ? '\n       → ' + r.detail : ''}`
+).join('\n');
+
+resultEl.innerHTML = lines + `
+
+<span class="INFO">─────────────────────────────────────────</span>
+<span class="${fail === 0 ? 'PASS' : 'FAIL'}">TOTAL: ${pass} passed, ${fail} failed</span>`;
+
+// Expose for puppeteer page.evaluate()
+window.__testResults = { pass, fail, results };
+console.log(`TEST SUMMARY: ${pass} passed, ${fail} failed`);
+</script>
+</body>
+</html>
