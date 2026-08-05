@@ -114,12 +114,18 @@ const _LABEL_FONT_SIZE = 22;
 const _LABEL_PAD_X     = 13;
 const _LABEL_PAD_Y     = 7;
 const _LABEL_MAX_TEXT_W = 260; // px — truncate beyond this width
+// Reuse a single probe canvas for all text measurements instead of creating one per label
+// (avoids creating ~700 throw-away canvas elements that briefly spike GPU/CPU memory at mount)
+let _probeCanvas = null;
+let _probeCtx    = null;
 
 function makeTextLabelTexture(text, dir = 'ltr') {
-  // Measure text width using an offscreen canvas
-  const probe = document.createElement('canvas');
-  probe.width = 512; probe.height = 1;
-  const pCtx = probe.getContext('2d');
+  if (!_probeCanvas) {
+    _probeCanvas = document.createElement('canvas');
+    _probeCanvas.width = 512; _probeCanvas.height = 1;
+    _probeCtx = _probeCanvas.getContext('2d');
+  }
+  const pCtx = _probeCtx;
   pCtx.font = `500 ${_LABEL_FONT_SIZE}px Vazirmatn, Tahoma, Arial, sans-serif`;
 
   let display = text;
@@ -238,11 +244,24 @@ export default function Map3DView({
     // Camera
     t.camera = new THREE.PerspectiveCamera(48, W / H, 1, 40000);
 
-    // WebGL renderer
-    t.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    // WebGL renderer — full quality always: Map3DView is a conditional render
+    // ({view3D && <Map3DView/>}) so it fully unmounts (WebGL context destroyed,
+    // all resources freed) the moment the user switches to 2D.  There is no
+    // "running in background" scenario that would justify quality reductions.
+    t.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     t.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     t.renderer.setSize(W, H);
     el.appendChild(t.renderer.domElement);
+
+    // Diagnostic: fired by iOS Safari under GPU memory pressure, often as a precursor
+    // to killing the tab.  preventDefault() signals we want context restoration.
+    t.renderer.domElement.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      console.warn('[Map3D] webglcontextlost — GPU memory pressure');
+    }, false);
+    t.renderer.domElement.addEventListener('webglcontextrestored', () => {
+      console.warn('[Map3D] webglcontextrestored');
+    }, false);
 
     // Lighting
     t.scene.add(new THREE.AmbientLight(0xffffff, 0.65));
@@ -396,39 +415,33 @@ export default function Map3DView({
       t.zoneEntries.push({ mesh, zone, cx, cz, colorStr });
 
       // ── Zone name label sprite (same pill style as booth labels) ────────────
+      // Texture creation is deferred to first enter-range in the RAF loop to avoid
+      // GPU-uploading all zone textures at mount.
       const titleFa = (zone.title_fa ?? '').trim();
       const titleEn = (zone.title_en ?? '').trim();
       if (titleFa || titleEn) {
         const ZL_H = 20; // world-unit sprite height — matches booth label scale
-        const resFa = titleFa ? makeTextLabelTexture(titleFa, 'rtl') : null;
-        const resEn = titleEn ? makeTextLabelTexture(titleEn, 'ltr') : null;
-        const scaleFa = resFa ? [(resFa.w / resFa.h) * ZL_H, ZL_H] : [ZL_H, ZL_H];
-        const scaleEn = resEn ? [(resEn.w / resEn.h) * ZL_H, ZL_H] : [ZL_H, ZL_H];
-        const initFa  = langRef.current !== 'en';
-        const initRes = initFa ? (resFa ?? resEn) : (resEn ?? resFa);
-        if (initRes) {
-          const initScale = initFa ? scaleFa : scaleEn;
-          const zMat    = new THREE.SpriteMaterial({ map: initRes.tex, depthTest: false, depthWrite: false, transparent: true });
-          const zSprite = new THREE.Sprite(zMat);
-          zSprite.position.set(cx, zoneFloorY + BOOTH_H + 10, cz);
-          zSprite.scale.set(initScale[0], initScale[1], 1);
-          zSprite.visible = false;
-          t.scene.add(zSprite);
-          t.zoneLabelEntries.push({
-            sprite: zSprite, mat: zMat,
-            texFa: resFa?.tex ?? null,
-            texEn: resEn?.tex ?? null,
-            scaleFa, scaleEn,
-            cx, cz,
-          });
-        }
+        const zMat    = new THREE.SpriteMaterial({ depthTest: false, depthWrite: false, transparent: true });
+        const zSprite = new THREE.Sprite(zMat);
+        zSprite.position.set(cx, zoneFloorY + BOOTH_H + 10, cz);
+        zSprite.scale.set(ZL_H, ZL_H, 1); // placeholder until first-time texture loads
+        zSprite.visible = false;
+        t.scene.add(zSprite);
+        t.zoneLabelEntries.push({
+          sprite: zSprite, mat: zMat,
+          titleFa, titleEn, ZL_H,
+          texFa: null, texEn: null,
+          scaleFa: null, scaleEn: null,
+          cx, cz,
+          texLoaded: false,
+        });
       }
     }
 
     // ── Booth name label sprites ──────────────────────────────────────────────
-    // One sprite per company (deduped). Canvas-rendered text pill, initially
-    // hidden; visibility toggled each frame based on camera XZ distance.
-    t.labelEntries = []; // { sprite, mat, texFa, texEn, scaleFa, scaleEn, cx, cz }
+    // One sprite per company (deduped). Textures are deferred — created on first
+    // enter-range in the RAF loop to avoid GPU-uploading all ~650 textures at mount.
+    t.labelEntries = []; // { sprite, mat, nameFa, nameEn, texFa, texEn, scaleFa, scaleEn, cx, cz, texLoaded }
     t.boothLabelThreshSq = 0; // set by boothLabelThreshold prop effect below
     const LABEL_H_WU = 20; // sprite height in world units
     const labeledCos = new Set();
@@ -442,35 +455,22 @@ export default function Map3DView({
       const nameEn = (co.brand_name_en ?? '').trim();
       if (!nameFa && !nameEn) continue;
 
-      const resultFa = nameFa ? makeTextLabelTexture(nameFa, 'rtl') : null;
-      const resultEn = nameEn ? makeTextLabelTexture(nameEn, 'ltr') : null;
-
-      const scaleFa = resultFa
-        ? [(resultFa.w / resultFa.h) * LABEL_H_WU, LABEL_H_WU]
-        : [LABEL_H_WU, LABEL_H_WU];
-      const scaleEn = resultEn
-        ? [(resultEn.w / resultEn.h) * LABEL_H_WU, LABEL_H_WU]
-        : [LABEL_H_WU, LABEL_H_WU];
-
-      const initFa   = langRef.current !== 'en';
-      const initRes  = initFa ? (resultFa ?? resultEn) : (resultEn ?? resultFa);
-      if (!initRes) continue;
-      const initScale = initFa ? scaleFa : scaleEn;
-
-      const mat    = new THREE.SpriteMaterial({ map: initRes.tex, depthTest: false, depthWrite: false, transparent: true });
+      // Sprite with no map yet — texture allocated on first enter-range
+      const mat    = new THREE.SpriteMaterial({ depthTest: false, depthWrite: false, transparent: true });
       const sprite = new THREE.Sprite(mat);
       const floorY = (entry.hall.floor ?? 0) * FLOOR_GAP;
       sprite.position.set(entry.cx, floorY + BOOTH_H + 10, entry.cz);
-      sprite.scale.set(initScale[0], initScale[1], 1);
+      sprite.scale.set(LABEL_H_WU, LABEL_H_WU, 1); // placeholder until first-time texture loads
       sprite.visible = false;
       t.scene.add(sprite);
 
       t.labelEntries.push({
         sprite, mat,
-        texFa: resultFa?.tex ?? null,
-        texEn: resultEn?.tex ?? null,
-        scaleFa, scaleEn,
+        nameFa, nameEn, LABEL_H_WU,
+        texFa: null, texEn: null,
+        scaleFa: null, scaleEn: null,
         cx: entry.cx, cz: entry.cz,
+        texLoaded: false,
       });
     }
 
@@ -747,6 +747,9 @@ export default function Map3DView({
     // ── RAF loop ──────────────────────────────────────────────────────────────
     function animate() {
       t.animId = requestAnimationFrame(animate);
+      // Skip rendering when tab is backgrounded — iOS kills backgrounded WebGL contexts
+      // under memory pressure; stopping the RAF prevents unnecessary GPU work.
+      if (document.hidden) return;
       const delta = t.clock.getDelta();
 
       // Animate route flow textures (scroll UV offset toward destination)
@@ -881,11 +884,44 @@ export default function Map3DView({
           if (thSq > 0) {
             for (const le of (t.labelEntries ?? [])) {
               const dx = cp.x - le.cx, dz = cp.z - le.cz;
-              le.sprite.visible = (dx * dx + dz * dz) < thSq;
+              const inRange = (dx * dx + dz * dz) < thSq;
+              if (inRange && !le.texLoaded) {
+                // First enter-range: create and GPU-upload texture now
+                const rFa = le.nameFa ? makeTextLabelTexture(le.nameFa, 'rtl') : null;
+                const rEn = le.nameEn ? makeTextLabelTexture(le.nameEn, 'ltr') : null;
+                const H   = le.LABEL_H_WU;
+                le.texFa   = rFa?.tex ?? null;
+                le.texEn   = rEn?.tex ?? null;
+                le.scaleFa = rFa ? [(rFa.w / rFa.h) * H, H] : [H, H];
+                le.scaleEn = rEn ? [(rEn.w / rEn.h) * H, H] : [H, H];
+                const useFa = langRef.current !== 'en';
+                const tex   = useFa ? (le.texFa ?? le.texEn) : (le.texEn ?? le.texFa);
+                const scale = useFa ? le.scaleFa : le.scaleEn;
+                if (tex) { le.mat.map = tex; le.mat.needsUpdate = true; }
+                le.sprite.scale.set(scale[0], scale[1], 1);
+                le.texLoaded = true;
+              }
+              le.sprite.visible = inRange && le.texLoaded;
             }
             for (const le of (t.zoneLabelEntries ?? [])) {
               const dx = cp.x - le.cx, dz = cp.z - le.cz;
-              le.sprite.visible = (dx * dx + dz * dz) < thSq;
+              const inRange = (dx * dx + dz * dz) < thSq;
+              if (inRange && !le.texLoaded) {
+                const rFa = le.titleFa ? makeTextLabelTexture(le.titleFa, 'rtl') : null;
+                const rEn = le.titleEn ? makeTextLabelTexture(le.titleEn, 'ltr') : null;
+                const H   = le.ZL_H;
+                le.texFa   = rFa?.tex ?? null;
+                le.texEn   = rEn?.tex ?? null;
+                le.scaleFa = rFa ? [(rFa.w / rFa.h) * H, H] : [H, H];
+                le.scaleEn = rEn ? [(rEn.w / rEn.h) * H, H] : [H, H];
+                const useFa = langRef.current !== 'en';
+                const tex   = useFa ? (le.texFa ?? le.texEn) : (le.texEn ?? le.texFa);
+                const scale = useFa ? le.scaleFa : le.scaleEn;
+                if (tex) { le.mat.map = tex; le.mat.needsUpdate = true; }
+                le.sprite.scale.set(scale[0], scale[1], 1);
+                le.texLoaded = true;
+              }
+              le.sprite.visible = inRange && le.texLoaded;
             }
           } else {
             for (const le of (t.labelEntries ?? [])) le.sprite.visible = false;
@@ -1024,6 +1060,21 @@ export default function Map3DView({
     // Waze-style glowing navigation ribbon with animated directional flow.
     // stripeColor: color of the animated core tube + flow-texture dash pattern.
     // haloColor:   color of the wide soft glow surrounding the tube.
+    // In dark scenes, additive blending adds the route color to the near-black background,
+    // producing a bloom-like glow.  On light scenes the background is already near-white,
+    // so additive blending saturates to white and the tube becomes invisible.  Normal
+    // blending is used instead so the color remains visible against any background.
+    const _bgLum = (() => {
+      try {
+        const h = (bgColor ?? '#021f20').replace('#', '');
+        const r = parseInt(h.slice(0, 2), 16);
+        const g = parseInt(h.slice(2, 4), 16);
+        const b = parseInt(h.slice(4, 6), 16);
+        return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      } catch { return 0; }
+    })();
+    const _lightBg = _bgLum > 0.5;
+
     function addRouteTube(path2D, floorY, stripeColor, haloColor) {
       if (!path2D || path2D.length < 2) return;
       const stripe = stripeColor || '#00ffb3';
@@ -1044,27 +1095,27 @@ export default function Map3DView({
         flowTex.repeat.set(Math.max(3, Math.round(len / 55)), 1);
         t.routeTextures.push(flowTex);
 
-        // Glowing core tube (uses additive blending for bloom-like glow)
+        // Core tube — additive on dark bg (bloom glow), normal on light bg (color-accurate)
         const coreGeo = new THREE.TubeGeometry(curve, tubeSeg, 2.5, 8, false);
         const coreMat = new THREE.MeshBasicMaterial({
           color: new THREE.Color(stripe),
           map: flowTex,
           transparent: true,
-          opacity: 1.0,
-          blending: THREE.AdditiveBlending,
+          opacity: _lightBg ? 0.85 : 1.0,
+          blending: _lightBg ? THREE.NormalBlending : THREE.AdditiveBlending,
           depthWrite: false,
         });
         const coreMesh = new THREE.Mesh(coreGeo, coreMat);
         t.scene.add(coreMesh);
         t.routeObjects.push(coreMesh);
 
-        // Wide soft halo (gives the "thick glowing route" feel)
+        // Wide soft halo — same blending switch; higher opacity for light bg so it's visible
         const haloGeo = new THREE.TubeGeometry(curve, tubeSeg, 7, 8, false);
         const haloMat = new THREE.MeshBasicMaterial({
           color: new THREE.Color(halo),
           transparent: true,
-          opacity: 0.12,
-          blending: THREE.AdditiveBlending,
+          opacity: _lightBg ? 0.28 : 0.12,
+          blending: _lightBg ? THREE.NormalBlending : THREE.AdditiveBlending,
           depthWrite: false,
         });
         const haloMesh = new THREE.Mesh(haloGeo, haloMat);
@@ -1144,7 +1195,7 @@ export default function Map3DView({
         t.walkthroughStairRange = null;
       }
     }
-  }, [navRoute, navStart, navDest, navMarkerIcons, routeColors]);
+  }, [navRoute, navStart, navDest, navMarkerIcons, routeColors, bgColor]);
 
   // ── Selection highlight — update booth material color when selected ───────────
   useEffect(() => {
@@ -1204,6 +1255,9 @@ export default function Map3DView({
     if (!t) return;
     const useFa = lang !== 'en';
     for (const le of (t.labelEntries ?? [])) {
+      // Skip entries whose textures haven't been created yet — the RAF loop uses
+      // langRef.current (kept in sync) when it creates the texture on first enter-range.
+      if (!le.texLoaded) continue;
       const tex   = useFa ? (le.texFa ?? le.texEn) : (le.texEn ?? le.texFa);
       const scale = useFa ? le.scaleFa : le.scaleEn;
       if (tex) {
@@ -1214,6 +1268,7 @@ export default function Map3DView({
       le.sprite.scale.set(scale[0], scale[1], 1);
     }
     for (const le of (t.zoneLabelEntries ?? [])) {
+      if (!le.texLoaded) continue;
       const tex   = useFa ? (le.texFa ?? le.texEn) : (le.texEn ?? le.texFa);
       const scale = useFa ? le.scaleFa : le.scaleEn;
       if (tex) {
