@@ -349,7 +349,7 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
             {dNum(mission.title, langProp)}
           </span>
           <span className="text-xs font-bold flex-shrink-0 mr-2" style={{ color: "var(--accent)" }}>
-            +{dNum(mission.xpReward, langProp)} {xpUnit || "XP"}
+            +{dNum(isFeaturedBooth ? (mission.featuredBoothBonusXp ?? mission.xpReward) : mission.xpReward, langProp)} {xpUnit || "XP"}
           </span>
         </div>
         <p className="leading-6 mb-1.5 truncate" style={{ fontSize: "var(--quest-subtitle-size)", color: "var(--quest-subtitle-color)" }}>
@@ -936,7 +936,7 @@ function repeatRuleLabel(booth, lang) {
   return `🔄 Every ${hours}h (${startH}:00–${endH}:00)`;
 }
 
-function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedIds, boothsLoading, logoBaseUrl, xpUnit }) {
+function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedIds, boothsLoading, logoBaseUrl, xpUnit, featuredBoothPoolIds }) {
   const [visible, setVisible] = useState(false);
   const now = useCooldownTick();
 
@@ -1059,10 +1059,12 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
                   )}
                 </div>
 
-                {/* XP */}
-                <span className="text-xs font-bold flex-shrink-0" style={{ color: "var(--accent)" }}>
-                  +{dNum(booth.xp, lang)} {xpUnit || "XP"}
-                </span>
+                {/* XP — hidden for featured_booth pool booths to avoid spoiling the treasure hunt */}
+                {!featuredBoothPoolIds?.has(booth.id) && (
+                  <span className="text-xs font-bold flex-shrink-0" style={{ color: "var(--accent)" }}>
+                    +{dNum(booth.xp, lang)} {xpUnit || "XP"}
+                  </span>
+                )}
 
                 {/* Scanned indicator */}
                 <div
@@ -1951,6 +1953,22 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
 
   const levelColors = useMemo(() => levelThresholds.map(l => l.color), [levelThresholds]);
 
+  // Set of company IDs that are in any active featured_booth mission's pool.
+  // Used to suppress XP display for these booths in the general booth list.
+  const featuredBoothPoolIds = useMemo(() => {
+    const ids = new Set();
+    if (liveMissions) {
+      for (const m of liveMissions) {
+        if (m.mission_type === 'featured_booth' && Array.isArray(m.featured_booth_pool_companies)) {
+          for (const c of m.featured_booth_pool_companies) {
+            ids.add(c.company_id);
+          }
+        }
+      }
+    }
+    return ids;
+  }, [liveMissions]);
+
   const missions = useMemo(() => {
     // Prefer live missions from /api/quest (real DB + real progress)
     if (liveMissions && liveMissions.length > 0) {
@@ -2273,6 +2291,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         boothsLoading={boothsLoading}
         logoBaseUrl={logoBaseUrl}
         xpUnit={labels.xpUnit}
+        featuredBoothPoolIds={featuredBoothPoolIds}
       />
 
       <FeaturedBoothPoolSheet

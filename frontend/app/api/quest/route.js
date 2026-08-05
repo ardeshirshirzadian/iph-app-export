@@ -208,6 +208,7 @@ export async function GET() {
           icon: m.icon_value,
           icon_size: m.icon_size ?? 36,
           xpReward: m.xp_reward,
+          featuredBoothBonusXp: m.mission_type === 'featured_booth' ? (m.featured_booth_bonus_xp ?? 500) : undefined,
           mission_type: m.mission_type,
           total: m.total,
           progress: Math.min(progress, m.total),
