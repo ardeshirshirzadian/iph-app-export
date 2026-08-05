@@ -17,7 +17,8 @@ const BOOTH_GAP = 4;
 
 // ── First-person walkthrough constants ────────────────────────────────────────
 const EYE_H        = 14;   // camera height above floor during walkthrough (≈1.9m at 15 units/m scale)
-const WALK_SPEED   = 75;   // map units per second (≈5 m/s — snappy but not disorienting)
+const WALK_SPEED       = 75;   // map units per second (≈5 m/s — snappy but not disorienting)
+const STAIR_TARGET_DUR = 0.8;  // seconds — stair transition always takes this long regardless of arc length
 const LOOK_AHEAD   = 35;   // units ahead on path for near look-at sample
 const LOOK_LAG     = 2.5;  // look-direction lerp rate per second (reduced from 3.0 for smoother turns)
 // Destination arrival retreat — camera backs up along reverse approach direction
@@ -614,6 +615,20 @@ export default function Map3DView({
           const wptArcLengths = [0];
           for (let i = 1; i < wpts.length; i++)
             wptArcLengths.push(wptArcLengths[i - 1] + wpts[i - 1].distanceTo(wpts[i]));
+          // Resolve stair arc-length range from the waypoint-index range stored during
+          // route building.  Both are -1 when there is no stair segment (single-floor routes).
+          const _sr = t.walkthroughStairRange;
+          const stairArcStart = (_sr && wptArcLengths[_sr.start] != null) ? wptArcLengths[_sr.start] : -1;
+          const stairArcEnd   = (_sr && wptArcLengths[_sr.end]   != null) ? wptArcLengths[_sr.end]   : -1;
+          // Duration-based stair speed: the stair 3D arc may be much longer than the
+          // pure-vertical 200-unit estimate if stairsFrom/stairsTo have significant XZ
+          // displacement.  Dividing the actual arc length by the target duration gives the
+          // correct speed regardless of staircase geometry.
+          const walkSpeed      = t.walkSpeed      ?? WALK_SPEED;
+          const stairTargetDur = t.stairTargetDur ?? STAIR_TARGET_DUR;
+          const stairSegLen = (stairArcStart >= 0 && stairArcEnd > stairArcStart)
+            ? stairArcEnd - stairArcStart : 0;
+          const stairSpeed  = stairSegLen > 0 ? stairSegLen / stairTargetDur : walkSpeed;
           // Cancel any in-flight overview tween and disable user orbit input
           t.tween = null;
           t.controls.enabled = false;
@@ -636,6 +651,10 @@ export default function Map3DView({
             smoothLook:     new THREE.Vector3(startPt.x, startPt.y - 3, startPt.z),
             paused:         false,
             wptArcLengths,
+            stairArcStart,
+            stairArcEnd,
+            stairSpeed,
+            walkSpeed,
             onComplete:     onComplete ?? null,
             // Reusable scratch vectors — avoids per-frame GC allocation in the RAF loop
             _pos:      new THREE.Vector3(),
@@ -775,7 +794,15 @@ export default function Map3DView({
         } else {
           // ── Normal path-following (drone camera) ─────────────────────────
           if (!ws.paused) {
-            ws.progress = Math.min(ws.progress + delta * WALK_SPEED, ws.curveLen);
+            const inStair = ws.stairArcStart >= 0
+              && ws.progress >= ws.stairArcStart
+              && ws.progress <  ws.stairArcEnd;
+            // ws.stairSpeed = stairArcLen / stairTargetDur, so the transition always takes the
+            // configured target duration regardless of stairsFrom/stairsTo XZ displacement.
+            ws.progress = Math.min(
+              ws.progress + delta * (inStair ? ws.stairSpeed : ws.walkSpeed),
+              ws.curveLen,
+            );
           }
           const tParam = ws.progress / ws.curveLen;
           const pos    = ws.curve.getPointAt(tParam, ws._pos);
@@ -929,8 +956,10 @@ export default function Map3DView({
   useEffect(() => {
     const t = tRef.current;
     if (!t) return;
-    t.camDist = navCameraConfig?.distance ?? DRONE_DIST;
-    t.camH    = navCameraConfig?.height   ?? DRONE_H;
+    t.camDist       = navCameraConfig?.distance              ?? DRONE_DIST;
+    t.camH          = navCameraConfig?.height                ?? DRONE_H;
+    t.walkSpeed     = navCameraConfig?.walk_speed            ?? WALK_SPEED;
+    t.stairTargetDur = navCameraConfig?.stair_transition_duration ?? STAIR_TARGET_DUR;
   }, [navCameraConfig]);
 
   // ── Sync scene background color when theme or admin config changes ──────────
@@ -962,6 +991,7 @@ export default function Map3DView({
     // Stop any in-progress first-person walkthrough whenever the route changes
     if (t.walk) { t.walk = null; t.controls.enabled = true; }
     t.walkthroughPath = null;
+    t.walkthroughStairRange = null;
 
     if (!navRoute || navRoute.type === "computing" || navRoute.type === "no_connection") return;
 
@@ -1074,19 +1104,25 @@ export default function Map3DView({
       // Build walkthrough path at eye-level height
       const wpts = (navRoute.path ?? []).map(p => new THREE.Vector3(p.x, floorY + EYE_H, p.y));
       t.walkthroughPath = wpts.length >= 2 ? wpts : null;
+      t.walkthroughStairRange = null;
     } else if (navRoute.type === "multi_floor") {
       const { pathA, pathB, stairsFrom, stairsTo } = navRoute;
-      const floorAY = (navStart?.floor ?? 0) * FLOOR_GAP;
-      const floorBY = (navDest?.floor  ?? 0) * FLOOR_GAP;
+      // Use the floor values carried on the route object — navStart has no .floor property,
+      // so navStart?.floor is always undefined and would silently force floorAY=0 for every
+      // downward route (origin on upper floor), keeping ptsA at ground height and making
+      // the stair height-change a no-op.  navRoute.startFloor/destFloor are set correctly
+      // by findMultiFloorRoute for both upward and downward cross-floor paths.
+      const floorAY = (navRoute.startFloor ?? 0) * FLOOR_GAP;
+      const floorBY = (navRoute.destFloor  ?? 0) * FLOOR_GAP;
       addRouteTube(pathA, floorAY, rStripe, rHalo);
       addRouteTube(pathB, floorBY, '#f59e0b', '#f59e0b'); // secondary floor keeps amber
       if (navStart)    addMarker(navStart.x,    navStart.y,    floorAY, navMarkerIcons?.route_start ?? "🏁");
       if (stairsFrom)  addMarker(stairsFrom.x,  stairsFrom.y,  floorAY, "🪜");
       if (stairsTo)    addMarker(stairsTo.x,    stairsTo.y,    floorBY, "🪜");
       if (navDest)     addMarker(navDest.x,     navDest.y,     floorBY, navMarkerIcons?.route_end   ?? "📍");
-      // Build walkthrough path: floor-A segment + 3 interpolated transition
-      // waypoints across the staircase + floor-B segment. CatmullRomCurve3
-      // smooths the vertical ramp, creating a natural "going upstairs" feel.
+      // Build walkthrough path: floor-A segment + 3 linearly-interpolated
+      // transition waypoints across the staircase + floor-B segment.
+      // Y (height) naturally increases or decreases depending on direction.
       const ptsA = (pathA ?? []).map(p => new THREE.Vector3(p.x, floorAY + EYE_H, p.y));
       const ptsB = (pathB ?? []).map(p => new THREE.Vector3(p.x, floorBY + EYE_H, p.y));
       if (ptsA.length >= 2 && ptsB.length >= 2) {
@@ -1100,6 +1136,12 @@ export default function Map3DView({
           );
         });
         t.walkthroughPath = [...ptsA, ...mid, ...ptsB];
+        // Stair segment spans lastA → mid[0..2] → firstB (waypoint indices ptsA.length-1
+        // through ptsA.length+3).  startWalkthrough converts these to arc-lengths so the
+        // RAF loop can apply STAIR_WALK_SPEED only during that portion.
+        t.walkthroughStairRange = { start: ptsA.length - 1, end: ptsA.length + 3 };
+      } else {
+        t.walkthroughStairRange = null;
       }
     }
   }, [navRoute, navStart, navDest, navMarkerIcons, routeColors]);

@@ -966,7 +966,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const { lang, isRTL } = useLang();
   const isEN = lang === "en";
 
-  const [navCameraConfig, setNavCameraConfig] = useState({ distance: 220, height: 90 });
+  const [navCameraConfig, setNavCameraConfig] = useState({ distance: 220, height: 90, walk_speed: 75, stair_transition_duration: 0.8 });
   const [mapAppearanceConfig, setMapAppearanceConfig] = useState(null);
   const [mapTheme, setMapTheme] = useState('dark'); // tracks 'dark'|'light' for bg color
   const [gestureHintConfig, setGestureHintConfig] = useState(null);

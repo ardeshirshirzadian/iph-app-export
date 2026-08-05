@@ -131,7 +131,7 @@ export async function GET() {
     }
 
     const navCamResult = await query("SELECT value FROM app_settings WHERE key = 'nav_camera_config'");
-    const navCameraConfig = { distance: 220, height: 90, ...(navCamResult.rows[0]?.value ?? {}) };
+    const navCameraConfig = { distance: 220, height: 90, walk_speed: 75, stair_transition_duration: 0.8, ...(navCamResult.rows[0]?.value ?? {}) };
 
     const navMarkersResult = await query("SELECT value FROM app_settings WHERE key = 'nav_marker_icons_config'");
     const navMarkerIconsDefaults = {
