@@ -36,15 +36,11 @@ async function calcEarned(badge, userUuid) {
         return parseInt(r.rows[0].count, 10) > 0;
       }
       case 'chat': {
-        const tableCheck = await query(
-          `SELECT 1 FROM information_schema.tables WHERE table_name = 'chatbot_logs'`
-        );
-        if (tableCheck.rows.length === 0) return false;
         const r = await query(
-          'SELECT COUNT(*) FROM chatbot_logs WHERE user_uuid = $1',
-          [userUuid]
+          'SELECT 1 FROM quest_badge_progress WHERE badge_id = $1 AND user_uuid = $2 AND earned = true',
+          [badge.id, userUuid]
         );
-        return parseInt(r.rows[0].count, 10) > 0;
+        return r.rows.length > 0;
       }
       case 'booth_scan_single_day': {
         const r = await query(
