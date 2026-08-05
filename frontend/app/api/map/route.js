@@ -161,15 +161,38 @@ export async function GET() {
     const gestureHintConfig = { ...GESTURE_HINT_DEFAULTS, ...(gestureHintResult.rows[0]?.value ?? {}) };
 
     const ROUTE_APPEARANCE_DEFAULTS = {
-      dark:  { routeLine: '#00ffb3', routeArrow: '#00ffb3', walkthroughHalo: '#00ffb3', walkthroughStripe: '#00ffb3' },
-      light: { routeLine: '#007755', routeArrow: '#007755', walkthroughHalo: '#007755', walkthroughStripe: '#007755' },
+      dark: {
+        primary:   { routeLine: '#00ffb3', routeArrow: '#00ffb3', walkthroughHalo: '#00ffb3', walkthroughStripe: '#00ffb3' },
+        secondary: { routeLine: '#f59e0b', routeArrow: '#f59e0b', walkthroughHalo: '#f59e0b', walkthroughStripe: '#f59e0b' },
+      },
+      light: {
+        primary:   { routeLine: '#007755', routeArrow: '#007755', walkthroughHalo: '#007755', walkthroughStripe: '#007755' },
+        secondary: { routeLine: '#d97706', routeArrow: '#d97706', walkthroughHalo: '#d97706', walkthroughStripe: '#d97706' },
+      },
     };
     const routeAppearanceResult = await query("SELECT value FROM app_settings WHERE key = 'route_appearance_config'");
     const routeAppearanceStored = routeAppearanceResult.rows[0]?.value ?? {};
-    const routeAppearanceConfig = {
-      dark:  { ...ROUTE_APPEARANCE_DEFAULTS.dark,  ...(routeAppearanceStored.dark  ?? {}) },
-      light: { ...ROUTE_APPEARANCE_DEFAULTS.light, ...(routeAppearanceStored.light ?? {}) },
-    };
+    // Migrate old flat format { dark: { routeLine, ... } } → new nested { dark: { primary: {...}, secondary: {...} } }
+    const routeAppearanceConfig = {};
+    for (const theme of ['dark', 'light']) {
+      const s = routeAppearanceStored[theme] ?? {};
+      if (s.primary || s.secondary) {
+        routeAppearanceConfig[theme] = {
+          primary:   { ...ROUTE_APPEARANCE_DEFAULTS[theme].primary,   ...(s.primary   ?? {}) },
+          secondary: { ...ROUTE_APPEARANCE_DEFAULTS[theme].secondary, ...(s.secondary ?? {}) },
+        };
+      } else {
+        // Old flat format — promote to primary, defaults for secondary
+        const promoted = {};
+        for (const f of ['routeLine', 'routeArrow', 'walkthroughHalo', 'walkthroughStripe']) {
+          if (s[f]) promoted[f] = s[f];
+        }
+        routeAppearanceConfig[theme] = {
+          primary:   { ...ROUTE_APPEARANCE_DEFAULTS[theme].primary,   ...promoted },
+          secondary: { ...ROUTE_APPEARANCE_DEFAULTS[theme].secondary },
+        };
+      }
+    }
 
     const mapLabelsResult = await query("SELECT value FROM app_settings WHERE key = 'map_labels_config'");
     const mapLabelsConfig = mapLabelsResult.rows[0]?.value ?? null;

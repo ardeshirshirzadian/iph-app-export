@@ -1811,10 +1811,19 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   // render would spuriously re-trigger Map3DView's route effect (which stops any
   // in-progress walkthrough) whenever MapClient re-renders (e.g. setWalkActive).
   const routeColors = useMemo(() => {
+    const themeConfig = routeAppearanceConfig?.[mapTheme];
     const defaults = mapTheme === 'light'
       ? { routeLine: '#007755', routeArrow: '#007755', walkthroughHalo: '#007755', walkthroughStripe: '#007755' }
       : { routeLine: '#00ffb3', routeArrow: '#00ffb3', walkthroughHalo: '#00ffb3', walkthroughStripe: '#00ffb3' };
-    return { ...defaults, ...(routeAppearanceConfig?.[mapTheme] ?? {}) };
+    return { ...defaults, ...(themeConfig?.primary ?? {}) };
+  }, [mapTheme, routeAppearanceConfig]);
+
+  const routeColorsSecondary = useMemo(() => {
+    const themeConfig = routeAppearanceConfig?.[mapTheme];
+    const defaults = mapTheme === 'light'
+      ? { routeLine: '#d97706', routeArrow: '#d97706', walkthroughHalo: '#d97706', walkthroughStripe: '#d97706' }
+      : { routeLine: '#f59e0b', routeArrow: '#f59e0b', walkthroughHalo: '#f59e0b', walkthroughStripe: '#f59e0b' };
+    return { ...defaults, ...(themeConfig?.secondary ?? {}) };
   }, [mapTheme, routeAppearanceConfig]);
 
   const { w: mapW, h: mapH } = dimRef.current;
@@ -2028,6 +2037,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
               onGestureStart={onGestureStart}
               onGestureEnd={onGestureSettle}
               routeColors={routeColors}
+              routeColorsSecondary={routeColorsSecondary}
               tapStartMode={false}
               onBoothTap={onBooth3DTap}
               onZoneTap={onZone3DTap}
@@ -2441,9 +2451,9 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                       {/* Ground-floor segment + its arrows */}
                       <polyline points={pathA.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke={routeColors.routeLine} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash} strokeOpacity={0.9} />
                       {arrowPolygons(pathA, routeColors.routeArrow, "aa")}
-                      {/* Upper-floor segment (amber secondary, intentionally hardcoded) */}
-                      <polyline points={pathB.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="#f59e0b" strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash} strokeOpacity={0.85} />
-                      {arrowPolygons(pathB, "#f59e0b", "ab")}
+                      {/* Upper-floor segment — secondary (cross-floor) colors from admin config */}
+                      <polyline points={pathB.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke={routeColorsSecondary.routeLine} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash} strokeOpacity={0.85} />
+                      {arrowPolygons(pathB, routeColorsSecondary.routeArrow, "ab")}
                       {/* Start pin */}
                       {svgNavPin(startPt.x, startPt.y, navMarkerIcons.route_start, signFs * 1.3, "pin-start-mf")}
                       {/* Staircase on start floor */}

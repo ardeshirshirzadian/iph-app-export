@@ -196,7 +196,8 @@ export default function Map3DView({
   navMarkerIcons,       // { route_start, route_end, … } — icon config from DB
   idleCameraConfig,     // { default_camera: { pitch, distance, heading } } — idle overview camera from DB
   bgColor,              // string hex — map background color (theme-specific, from DB)
-  routeColors,          // { routeLine, routeArrow, walkthroughHalo, walkthroughStripe } — from DB, theme-resolved
+  routeColors,          // { routeLine, routeArrow, walkthroughHalo, walkthroughStripe } — primary (same-floor) colors
+  routeColorsSecondary, // same shape — cross-floor/destination-floor colors (pathB in multi_floor routes)
   tapStartMode,         // bool — next tap sets route start
   onBoothTap,           // (booth, hall, { cx, cy, mergedLabel }) → void
   onZoneTap,            // (zone, { cx, cy }) → void
@@ -1143,9 +1144,12 @@ export default function Map3DView({
       }
     }
 
-    // Theme-resolved colors from admin config (fallback to accent defaults)
+    // Primary (same-floor) colors
     const rStripe = routeColors?.walkthroughStripe ?? '#00ffb3';
     const rHalo   = routeColors?.walkthroughHalo   ?? '#00ffb3';
+    // Secondary (cross-floor destination segment) colors
+    const sStripe = routeColorsSecondary?.walkthroughStripe ?? '#f59e0b';
+    const sHalo   = routeColorsSecondary?.walkthroughHalo   ?? '#f59e0b';
 
     if (navRoute.type === "single") {
       const floorY = (navStart?.floor ?? 0) * FLOOR_GAP;
@@ -1166,7 +1170,7 @@ export default function Map3DView({
       const floorAY = (navRoute.startFloor ?? 0) * FLOOR_GAP;
       const floorBY = (navRoute.destFloor  ?? 0) * FLOOR_GAP;
       addRouteTube(pathA, floorAY, rStripe, rHalo);
-      addRouteTube(pathB, floorBY, '#f59e0b', '#f59e0b'); // secondary floor keeps amber
+      addRouteTube(pathB, floorBY, sStripe, sHalo);
       if (navStart)    addMarker(navStart.x,    navStart.y,    floorAY, navMarkerIcons?.route_start ?? "🏁");
       if (stairsFrom)  addMarker(stairsFrom.x,  stairsFrom.y,  floorAY, "🪜");
       if (stairsTo)    addMarker(stairsTo.x,    stairsTo.y,    floorBY, "🪜");
@@ -1195,7 +1199,7 @@ export default function Map3DView({
         t.walkthroughStairRange = null;
       }
     }
-  }, [navRoute, navStart, navDest, navMarkerIcons, routeColors, bgColor]);
+  }, [navRoute, navStart, navDest, navMarkerIcons, routeColors, routeColorsSecondary, bgColor]);
 
   // ── Selection highlight — update booth material color when selected ───────────
   useEffect(() => {
