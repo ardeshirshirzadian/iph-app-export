@@ -154,11 +154,34 @@ export async function GET() {
 
     const GESTURE_HINT_DEFAULTS = {
       enabled: true,
+      display_mode: 'once',
       fa: '☝️ یک انگشت: جابجایی نقشه\n✌️ دو انگشت: چرخش و زوم',
       en: '☝️ One finger: move map\n✌️ Two fingers: rotate + zoom',
     };
     const gestureHintResult = await query("SELECT value FROM app_settings WHERE key = 'map_gesture_hint_config'");
     const gestureHintConfig = { ...GESTURE_HINT_DEFAULTS, ...(gestureHintResult.rows[0]?.value ?? {}) };
+
+    const CONTROL_ICONS_DEFAULTS = {
+      light: { zoomIn: null, zoomOut: null, compass: null },
+      dark:  { zoomIn: null, zoomOut: null, compass: null },
+    };
+    const controlIconsResult = await query("SELECT value FROM app_settings WHERE key = 'map_control_icons_config'");
+    const controlIconsStored = controlIconsResult.rows[0]?.value ?? {};
+    const controlIconsConfig = {
+      light: { ...CONTROL_ICONS_DEFAULTS.light, ...(controlIconsStored.light ?? {}) },
+      dark:  { ...CONTROL_ICONS_DEFAULTS.dark,  ...(controlIconsStored.dark  ?? {}) },
+    };
+
+    const GESTURE_HINT_IMAGES_DEFAULTS = {
+      light: { oneFinger: null, twoFinger: null },
+      dark:  { oneFinger: null, twoFinger: null },
+    };
+    const gestureHintImagesResult = await query("SELECT value FROM app_settings WHERE key = 'map_gesture_hint_images_config'");
+    const gestureHintImagesStored = gestureHintImagesResult.rows[0]?.value ?? {};
+    const gestureHintImagesConfig = {
+      light: { ...GESTURE_HINT_IMAGES_DEFAULTS.light, ...(gestureHintImagesStored.light ?? {}) },
+      dark:  { ...GESTURE_HINT_IMAGES_DEFAULTS.dark,  ...(gestureHintImagesStored.dark  ?? {}) },
+    };
 
     const ROUTE_APPEARANCE_DEFAULTS = {
       dark: {
@@ -209,6 +232,8 @@ export async function GET() {
       navMarkerIcons,
       mapAppearanceConfig,
       gestureHintConfig,
+      controlIconsConfig,
+      gestureHintImagesConfig,
       routeAppearanceConfig,
       mapLabelsConfig,
     });

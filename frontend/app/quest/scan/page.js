@@ -361,6 +361,7 @@ export default function QRScanPage() {
             ) : scanResult?.bonus ? (
               <>
                 <p
+                  dir="ltr"
                   className="font-black text-3xl mb-1"
                   style={{ color: "#ffd700", textShadow: "0 0 24px rgba(255,215,0,0.7)" }}
                 >
@@ -368,12 +369,13 @@ export default function QRScanPage() {
                 </p>
                 <p className="font-bold text-base mb-1" style={{ color: "#ffd700" }}>
                   {lang === "fa"
-                    ? `🎉 تبریک! +${toPersianDigits(scanResult.bonus_xp)} امتیاز غرفه برتر گرفتید`
+                    ? <>🎉 تبریک! <span dir="ltr">+{toPersianDigits(scanResult.bonus_xp)}</span> امتیاز غرفه برتر گرفتید</>
                     : `🎉 Golden Booth! +${scanResult.bonus_xp} bonus XP`}
                 </p>
               </>
             ) : (
               <p
+                dir="ltr"
                 className="text-[#00ffb3] font-black text-3xl mb-2"
                 style={{ textShadow: "0 0 20px rgba(0,255,179,0.5)" }}
               >

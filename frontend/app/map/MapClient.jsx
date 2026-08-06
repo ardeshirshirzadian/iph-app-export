@@ -970,6 +970,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const [mapAppearanceConfig, setMapAppearanceConfig] = useState(null);
   const [mapTheme, setMapTheme] = useState('dark'); // tracks 'dark'|'light' for bg color
   const [gestureHintConfig, setGestureHintConfig] = useState(null);
+  const [controlIconsConfig, setControlIconsConfig] = useState(null);
+  const [gestureHintImagesConfig, setGestureHintImagesConfig] = useState(null);
   const [showGestureHint, setShowGestureHint] = useState(false);
   const [routeAppearanceConfig, setRouteAppearanceConfig] = useState(null);
   const [mapLabelsConfig, setMapLabelsConfig] = useState(null);
@@ -1266,6 +1268,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
         if (d.navMarkerIcons) setNavMarkerIcons(prev => ({ ...prev, ...d.navMarkerIcons }));
         if (d.mapAppearanceConfig) setMapAppearanceConfig(d.mapAppearanceConfig);
         if (d.gestureHintConfig)      setGestureHintConfig(d.gestureHintConfig);
+        if (d.controlIconsConfig)     setControlIconsConfig(d.controlIconsConfig);
+        if (d.gestureHintImagesConfig) setGestureHintImagesConfig(d.gestureHintImagesConfig);
         if (d.routeAppearanceConfig)  setRouteAppearanceConfig(d.routeAppearanceConfig);
         if (d.mapLabelsConfig)        setMapLabelsConfig(d.mapLabelsConfig);
       })
@@ -1295,20 +1299,31 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   // Keep view3DRef in sync so closures/timeouts always read the current mode.
   useEffect(() => { view3DRef.current = view3D; }, [view3D]);
 
-  // One-time gesture hint: show the first time 3D mode is active (or default-on).
-  // Reads gestureHintConfig from admin; persists "seen" flag in localStorage.
+  // Gesture hint: show on 3D mode entry. display_mode controls frequency:
+  //   'once' (default) — only on first ever visit, persisted in localStorage.
+  //   'always' — every time the user enters 3D mode.
   const hintTimerRef = useRef(null);
-  const hintShownRef = useRef(false); // prevents double-show within session
+  const hintShownRef = useRef(false); // prevents double-show within a single 3D session
   function dismissGestureHint() {
     setShowGestureHint(false);
     if (hintTimerRef.current) { clearTimeout(hintTimerRef.current); hintTimerRef.current = null; }
     try { localStorage.setItem('iph_map3d_hint_seen', '1'); } catch {}
   }
   useEffect(() => {
-    if (!view3D) return;
+    if (!view3D) {
+      // Allow hint to show again next time 3D mode is entered (for 'always' mode).
+      if ((gestureHintConfig?.display_mode ?? 'once') === 'always') {
+        hintShownRef.current = false;
+        setShowGestureHint(false);
+      }
+      return;
+    }
     if (hintShownRef.current) return;
     if (!(gestureHintConfig?.enabled ?? true)) return;
-    try { if (localStorage.getItem('iph_map3d_hint_seen')) return; } catch {}
+    const mode = gestureHintConfig?.display_mode ?? 'once';
+    if (mode === 'once') {
+      try { if (localStorage.getItem('iph_map3d_hint_seen')) return; } catch {}
+    }
     hintShownRef.current = true;
     setShowGestureHint(true);
     hintTimerRef.current = setTimeout(dismissGestureHint, 5000);
@@ -1977,7 +1992,11 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                 backdropFilter: "blur(8px)",
                 pointerEvents: "auto",
               }}
-            >+</button>
+            >
+              {controlIconsConfig?.[mapTheme]?.zoomIn
+                ? <img src={controlIconsConfig[mapTheme].zoomIn} alt="+" style={{ width: 22, height: 22, objectFit: "contain" }} />
+                : "+"}
+            </button>
             <button
               onClick={(e) => { e.stopPropagation(); view3D ? map3DViewRef.current?.zoom(0.74) : zoomBy(0.74); }}
               aria-label="Zoom out"
@@ -1991,7 +2010,11 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                 backdropFilter: "blur(8px)",
                 pointerEvents: "auto",
               }}
-            >−</button>
+            >
+              {controlIconsConfig?.[mapTheme]?.zoomOut
+                ? <img src={controlIconsConfig[mapTheme].zoomOut} alt="−" style={{ width: 22, height: 22, objectFit: "contain" }} />
+                : "−"}
+            </button>
             {/* Compass: reset idle 3D camera angle — 3D-only, hidden in 2D mode */}
             {view3D && (
               <button
@@ -2008,7 +2031,11 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                   pointerEvents: "auto",
                 }}
                 title={isEN ? "Reset view angle" : "بازگشت به زاویه پیش‌فرض"}
-              >🧭</button>
+              >
+                {controlIconsConfig?.[mapTheme]?.compass
+                  ? <img src={controlIconsConfig[mapTheme].compass} alt="compass" style={{ width: 22, height: 22, objectFit: "contain" }} />
+                  : "🧭"}
+              </button>
             )}
           </div>
         )}
@@ -2082,8 +2109,6 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                 borderRadius: 16,
                 padding: '14px 22px',
                 zIndex: 35,
-                textAlign: 'center',
-                whiteSpace: 'pre-line',
                 cursor: 'pointer',
                 pointerEvents: 'auto',
                 userSelect: 'none',
@@ -2094,14 +2119,29 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
               dir={isEN ? 'ltr' : 'rtl'}
               aria-label={isEN ? 'Gesture guide — tap to dismiss' : 'راهنمای اشاره‌گر — لمس کنید تا بسته شود'}
             >
-              <div style={{ fontSize: 13, color: '#ffffff', lineHeight: 1.9 }}>
-                {gestureHintConfig
+              {(() => {
+                const text = gestureHintConfig
                   ? (isEN ? gestureHintConfig.en : gestureHintConfig.fa)
                   : (isEN
                     ? '☝️ One finger: move map\n✌️ Two fingers: rotate + zoom'
-                    : '☝️ یک انگشت: جابجایی نقشه\n✌️ دو انگشت: چرخش و زوم')}
-              </div>
-              <div style={{ fontSize: 11, color: 'rgba(0,255,179,0.55)', marginTop: 8 }}>
+                    : '☝️ یک انگشت: جابجایی نقشه\n✌️ دو انگشت: چرخش و زوم');
+                const lines = text.split('\n').filter(Boolean);
+                const hintImgs = gestureHintImagesConfig?.[mapTheme];
+                const imgKeys = ['oneFinger', 'twoFinger'];
+                return lines.map((line, i) => {
+                  const imgUrl = hintImgs?.[imgKeys[i]];
+                  return (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: i < lines.length - 1 ? 8 : 0 }}>
+                      {imgUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={imgUrl} alt="" style={{ width: 36, height: 36, objectFit: 'contain', flexShrink: 0, borderRadius: 6 }} />
+                      )}
+                      <span style={{ fontSize: 13, color: '#ffffff', lineHeight: 1.9 }}>{line}</span>
+                    </div>
+                  );
+                });
+              })()}
+              <div style={{ fontSize: 11, color: 'rgba(0,255,179,0.55)', marginTop: 8, textAlign: 'center' }}>
                 {isEN ? 'Tap to dismiss' : 'برای بستن لمس کنید'}
               </div>
             </div>
