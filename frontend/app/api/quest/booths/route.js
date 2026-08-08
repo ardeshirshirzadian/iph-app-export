@@ -12,21 +12,21 @@ export async function GET() {
   } catch {}
 
   try {
-    const [companiesResult, settingsResult] = await Promise.all([
-      query(
-        `SELECT id, brand_name_fa, brand_name_en, hall_name, booth_no,
-                booth_uuid, logo, is_sponsor, booth_xp,
-                repeatable_scan, repeatable_scan_hours,
-                repeatable_start_hour, repeatable_end_hour
-         FROM companies
-         WHERE hall_name IS NOT NULL AND booth_uuid IS NOT NULL
-         ORDER BY repeatable_scan DESC, hall_name ASC, booth_no ASC`
-      ),
-      query("SELECT value FROM app_settings WHERE key = 'companies_config'"),
-    ]);
-
+    const settingsResult = await query("SELECT value FROM app_settings WHERE key = 'companies_config'");
     const config = settingsResult.rows[0]?.value || {};
     const logoBaseUrl = config.logo_base_url || 'https://api.rasayesh.com/';
+    const eventId = config.event_id;
+
+    const companiesResult = await query(
+      `SELECT id, brand_name_fa, brand_name_en, hall_name, booth_no,
+              booth_uuid, logo, is_sponsor, booth_xp,
+              repeatable_scan, repeatable_scan_hours,
+              repeatable_start_hour, repeatable_end_hour
+       FROM companies
+       WHERE hall_name IS NOT NULL AND booth_uuid IS NOT NULL AND event_id = $1
+       ORDER BY repeatable_scan DESC, hall_name ASC, booth_no ASC`,
+      [Number(eventId)]
+    );
 
     const booths = companiesResult.rows.map(c => ({ ...c, xp: c.booth_xp ?? 10 }));
 

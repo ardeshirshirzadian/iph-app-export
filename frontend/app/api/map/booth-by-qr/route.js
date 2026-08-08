@@ -11,9 +11,14 @@ export async function GET(request) {
     return NextResponse.json({ error: 'invalid_uuid' }, { status: 400 });
   }
   try {
+    const settingsResult = await query(
+      "SELECT value FROM app_settings WHERE key = 'companies_config'"
+    );
+    const eventId = settingsResult.rows[0]?.value?.event_id;
+
     const r = await query(
-      'SELECT id, brand_name_fa, brand_name_en FROM companies WHERE booth_uuid = $1',
-      [uuid]
+      'SELECT id, brand_name_fa, brand_name_en FROM companies WHERE booth_uuid = $1 AND event_id = $2',
+      [uuid, Number(eventId)]
     );
     if (!r.rows.length) return NextResponse.json({ error: 'not_found' }, { status: 404 });
     return NextResponse.json({ company: r.rows[0] });

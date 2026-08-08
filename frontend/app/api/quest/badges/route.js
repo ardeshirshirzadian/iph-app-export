@@ -16,7 +16,7 @@ async function getUserUuid() {
   }
 }
 
-async function calcEarned(badge, userUuid) {
+async function calcEarned(badge, userUuid, eventId) {
   if (!userUuid) return false;
   try {
     switch (badge.badge_type) {
@@ -84,8 +84,8 @@ async function calcEarned(badge, userUuid) {
           `SELECT COUNT(DISTINCT qs.company_id) AS cnt
            FROM quest_scans qs
            JOIN companies c ON c.id = qs.company_id
-           WHERE qs.user_uuid = $1 AND c.hall_name = $2`,
-          [userUuid, badge.target_hall_name]
+           WHERE qs.user_uuid = $1 AND c.hall_name = $2 AND c.event_id = $3`,
+          [userUuid, badge.target_hall_name, Number(eventId)]
         );
         const scanned = parseInt(r.rows[0].cnt, 10);
         return scanned >= badge.threshold;
@@ -136,13 +136,16 @@ export async function GET() {
 
     const userUuid = await getUserUuid();
 
+    const settingsResult = await query("SELECT value FROM app_settings WHERE key = 'companies_config'");
+    const eventId = settingsResult.rows[0]?.value?.event_id;
+
     const { rows } = await query(
       `SELECT * FROM quest_badges WHERE is_active = true ORDER BY sort_order ASC, id ASC`
     );
 
     const badges = await Promise.all(
       rows.map(async (b) => {
-        const earned = await calcEarned(b, userUuid);
+        const earned = await calcEarned(b, userUuid, eventId);
         let quiz_attempted = false;
         if (b.badge_type === 'quiz' && userUuid) {
           const aR = await query(
@@ -193,9 +196,9 @@ export async function GET() {
           if (Array.isArray(pool) && pool.length > 0) {
             const { rows: poolRows } = await query(
               `SELECT id AS company_id, brand_name_fa, brand_name_en, logo, hall_name, booth_no
-               FROM companies WHERE id = ANY($1::int[])
+               FROM companies WHERE id = ANY($1::int[]) AND event_id = $2
                ORDER BY hall_name ASC NULLS LAST, booth_no ASC NULLS LAST`,
-              [pool]
+              [pool, Number(eventId)]
             ).catch(() => ({ rows: [] }));
             // Per-company scan status for the authenticated user.
             let scanMap = {};

@@ -15,7 +15,7 @@ async function getUserUuid() {
   }
 }
 
-async function calcProgress(mission, userUuid) {
+async function calcProgress(mission, userUuid, eventId) {
   if (!userUuid) return 0;
   try {
     switch (mission.mission_type) {
@@ -61,8 +61,8 @@ async function calcProgress(mission, userUuid) {
           `SELECT COUNT(DISTINCT qs.company_id) AS cnt
            FROM quest_scans qs
            JOIN companies c ON c.id = qs.company_id
-           WHERE qs.user_uuid = $1 AND c.hall_name = $2`,
-          [userUuid, mission.target_hall_name]
+           WHERE qs.user_uuid = $1 AND c.hall_name = $2 AND c.event_id = $3`,
+          [userUuid, mission.target_hall_name, Number(eventId)]
         );
         const scanned = parseInt(r.rows[0].cnt, 10);
         return mission.hall_match_mode === 'any' ? (scanned >= 1 ? 1 : 0) : scanned;
@@ -109,13 +109,16 @@ export async function GET() {
   try {
     const userUuid = await getUserUuid();
 
+    const settingsResult = await query("SELECT value FROM app_settings WHERE key = 'companies_config'");
+    const eventId = settingsResult.rows[0]?.value?.event_id;
+
     const { rows } = await query(
       `SELECT * FROM quest_content WHERE is_active = true ORDER BY sort_order ASC, id ASC`
     );
 
     const missions = await Promise.all(
       rows.map(async (m) => {
-        const progress = await calcProgress(m, userUuid);
+        const progress = await calcProgress(m, userUuid, eventId);
         let quiz_attempted = false;
         if (m.mission_type === 'quiz' && userUuid) {
           const aR = await query(
@@ -170,9 +173,9 @@ export async function GET() {
           if (Array.isArray(pool) && pool.length > 0) {
             const { rows: poolRows } = await query(
               `SELECT id AS company_id, brand_name_fa, brand_name_en, logo, hall_name, booth_no
-               FROM companies WHERE id = ANY($1::int[])
+               FROM companies WHERE id = ANY($1::int[]) AND event_id = $2
                ORDER BY hall_name ASC NULLS LAST, booth_no ASC NULLS LAST`,
-              [pool]
+              [pool, Number(eventId)]
             ).catch(() => ({ rows: [] }));
             // Per-company scan status for the authenticated user.
             let scanMap = {};

@@ -9,11 +9,16 @@ export async function GET(request, { params }) {
   }
 
   try {
+    const settingsResult = await query(
+      "SELECT value FROM app_settings WHERE key = 'companies_config'"
+    );
+    const eventId = settingsResult.rows[0]?.value?.event_id;
+
     const result = await query(
       `SELECT id, slug, brand_name_fa, brand_name_en, logo,
               hall_name, booth_no, is_sponsor, website, booth_uuid
-       FROM companies WHERE booth_uuid = $1`,
-      [uuid]
+       FROM companies WHERE booth_uuid = $1 AND event_id = $2`,
+      [uuid, Number(eventId)]
     );
 
     if (result.rows.length === 0) {

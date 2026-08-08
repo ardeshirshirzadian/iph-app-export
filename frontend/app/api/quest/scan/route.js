@@ -97,14 +97,17 @@ export async function POST(request) {
       ALTER TABLE quest_scans ADD COLUMN IF NOT EXISTS is_featured_booth_bonus BOOLEAN DEFAULT false
     `);
 
+    const settingsResult = await query("SELECT value FROM app_settings WHERE key = 'companies_config'");
+    const eventId = settingsResult.rows[0]?.value?.event_id;
+
     const companyResult = await query(
       `SELECT id, brand_name_fa, brand_name_en, logo, hall_name, booth_no,
               is_sponsor, website, booth_uuid, booth_xp,
               is_manual, linked_mission_id, linked_badge_id,
               repeatable_scan, repeatable_scan_hours,
               repeatable_start_hour, repeatable_end_hour
-       FROM companies WHERE booth_uuid = $1`,
-      [uuid]
+       FROM companies WHERE booth_uuid = $1 AND event_id = $2`,
+      [uuid, Number(eventId)]
     );
 
     if (companyResult.rows.length === 0) {
@@ -245,8 +248,8 @@ export async function POST(request) {
             `SELECT COUNT(DISTINCT qs.company_id) AS cnt
              FROM quest_scans qs
              JOIN companies c ON c.id = qs.company_id
-             WHERE qs.user_uuid = $1 AND c.hall_name = $2`,
-            [userUuid, m.target_hall_name]
+             WHERE qs.user_uuid = $1 AND c.hall_name = $2 AND c.event_id = $3`,
+            [userUuid, m.target_hall_name, Number(eventId)]
           );
           const scanned = parseInt(rows[0].cnt, 10);
           completed = m.hall_match_mode === 'any' ? scanned >= 1 : scanned >= m.total;
