@@ -113,7 +113,7 @@ export default function ChatClient({ title, subtitle, title_en, subtitle_en, isH
       const res = await fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: question, history }),
+        body: JSON.stringify({ message: question, history, lang }),
         signal: controller.signal,
       });
 
