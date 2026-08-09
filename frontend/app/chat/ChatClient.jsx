@@ -15,6 +15,13 @@ const DEFAULT_GREETING_EN = "Hello 👋 I'm the IranPharma exhibition AI assista
 
 const INITIAL_GREETING = [{ role: "bot", text: DEFAULT_GREETING_FA }];
 
+const DISALLOWED_FA_CHARS = /[^\u0600-\u06FF\u200C0-9\s.,?!:;()\-"]/g;
+const DISALLOWED_EN_CHARS = /[^a-zA-Z0-9\s.,?!:;()\-"]/g;
+
+function filterInputByLang(value, lang) {
+  return value.replace(lang === "en" ? DISALLOWED_EN_CHARS : DISALLOWED_FA_CHARS, "");
+}
+
 function loadHistory() {
   try {
     const saved = sessionStorage.getItem(STORAGE_KEY);
@@ -284,7 +291,7 @@ export default function ChatClient({ title, subtitle, title_en, subtitle_en, isH
             >
               <input
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => setInput(filterInputByLang(e.target.value, lang))}
                 onKeyDown={(e) => e.key === "Enter" && sendMessage()}
                 placeholder={placeholder}
                 className="flex-1 bg-transparent outline-none text-sm py-2 placeholder:text-[var(--text-faint)]"
