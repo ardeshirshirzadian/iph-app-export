@@ -10,12 +10,10 @@ import Button from "@/components/Button";
 
 const STORAGE_KEY = "iph_chat_history";
 
-const INITIAL_GREETING = [
-  {
-    role: "bot",
-    text: "سلام 👋 من دستیار هوش مصنوعی نمایشگاه ایران فارما هستم. چطور می‌تونم کمکتون کنم؟",
-  },
-];
+const DEFAULT_GREETING_FA = "سلام 👋 من دستیار هوش مصنوعی نمایشگاه ایران فارما هستم. چطور می‌تونم کمکتون کنم؟";
+const DEFAULT_GREETING_EN = "Hello 👋 I'm the IranPharma exhibition AI assistant. How can I help you?";
+
+const INITIAL_GREETING = [{ role: "bot", text: DEFAULT_GREETING_FA }];
 
 function loadHistory() {
   try {
@@ -44,6 +42,7 @@ export default function ChatClient({ title, subtitle, title_en, subtitle_en, isH
   const [messages, setMessages] = useState(loadHistory);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [chatConfig, setChatConfig] = useState(null);
   const bottomRef = useRef(null);
   const { lang, isRTL } = useLang();
 
@@ -55,6 +54,37 @@ export default function ChatClient({ title, subtitle, title_en, subtitle_en, isH
   useEffect(() => {
     saveHistory(messages);
   }, [messages]);
+
+  useEffect(() => {
+    fetch("/api/chat/config")
+      .then((res) => res.json())
+      .then((data) => setChatConfig(data))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!chatConfig) return;
+    const defaultGreeting = lang === "en" ? DEFAULT_GREETING_EN : DEFAULT_GREETING_FA;
+    const greeting = lang === "en" ? chatConfig.greeting_en : chatConfig.greeting_fa;
+    if (!greeting || greeting === defaultGreeting) return;
+    setMessages((prev) => {
+      if (prev.length !== 1 || prev[0].role !== "bot" || prev[0].text === greeting) return prev;
+      return [{ role: "bot", text: greeting }];
+    });
+  }, [chatConfig, lang]);
+
+  const chatSubtitle = chatConfig
+    ? (lang === "en" ? chatConfig.subtitle_en : chatConfig.subtitle_fa)
+    : t(lang, "chat_powered_by");
+  const badge = chatConfig
+    ? (lang === "en" ? chatConfig.badge_en : chatConfig.badge_fa)
+    : t(lang, "chat_version");
+  const placeholder = chatConfig
+    ? (lang === "en" ? chatConfig.placeholder_en : chatConfig.placeholder_fa)
+    : t(lang, "chat_placeholder");
+  const footer = chatConfig
+    ? (lang === "en" ? chatConfig.footer_en : chatConfig.footer_fa)
+    : t(lang, "chat_disclaimer");
 
   const sendMessage = async () => {
     const question = input.trim();
@@ -158,14 +188,14 @@ export default function ChatClient({ title, subtitle, title_en, subtitle_en, isH
               </div>
               <div>
                 <h2 className="font-bold text-base leading-tight" style={{ color: "var(--text)" }}>IPH Chatbot</h2>
-                <p className="text-[11px]" style={{ color: "var(--text-faint)" }}>{t(lang, "chat_powered_by")}</p>
+                <p className="text-[11px]" style={{ color: "var(--text-faint)" }}>{chatSubtitle}</p>
               </div>
             </div>
             <span
               className="text-[11px] px-3 py-1 rounded-full"
               style={{ color: "color-mix(in srgb, var(--accent) 70%, transparent)", border: "1px solid var(--border-accent)", background: "color-mix(in srgb, var(--accent) 5%, transparent)" }}
             >
-              {t(lang, "chat_version")}
+              {badge}
             </span>
           </header>
 
@@ -256,7 +286,7 @@ export default function ChatClient({ title, subtitle, title_en, subtitle_en, isH
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                placeholder={t(lang, "chat_placeholder")}
+                placeholder={placeholder}
                 className="flex-1 bg-transparent outline-none text-sm py-2 placeholder:text-[var(--text-faint)]"
                 style={{ color: "var(--text)" }}
               />
@@ -270,7 +300,7 @@ export default function ChatClient({ title, subtitle, title_en, subtitle_en, isH
               </Button>
             </div>
             <p className="text-[10px] text-center mt-2" style={{ color: "var(--text-faint)" }}>
-              {t(lang, "chat_disclaimer")}
+              {footer}
             </p>
           </footer>
         </div>
