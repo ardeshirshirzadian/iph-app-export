@@ -209,6 +209,11 @@ export async function proxy(request) {
     return NextResponse.next()
   }
 
+  // TWA/Android app verification (Digital Asset Links) — must be publicly accessible, no auth
+  if (pathname.startsWith('/.well-known/')) {
+    return NextResponse.next()
+  }
+
   // ── App pages enforcement ─────────────────────────────────────────────────
   // Runs before auth so disabled pages 404 regardless of login state.
   // Table may not exist yet (before migration) — fail-open in that case.
