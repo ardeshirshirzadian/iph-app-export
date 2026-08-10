@@ -6,6 +6,7 @@ import PageHeader from "@/components/PageHeader";
 import BottomNav from "@/app/components/BottomNav";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
+import { toPersianDigits } from "@/lib/utils";
 import Button from "@/components/Button";
 
 const STORAGE_KEY = "iph_chat_history";
@@ -20,6 +21,20 @@ const DISALLOWED_EN_CHARS = /[^a-zA-Z0-9\s.,?!:;()\-"]/g;
 
 function filterInputByLang(value, lang) {
   return value.replace(lang === "en" ? DISALLOWED_EN_CHARS : DISALLOWED_FA_CHARS, "");
+}
+
+const QUEUE_POLL_INTERVAL_MS = 1800;
+const QUEUE_POLL_MAX_FAILURES = 5;
+
+function queuedStatusText(queueInfo, lang) {
+  const { position, estimatedWaitSeconds } = queueInfo;
+  const posDigits = lang === "fa" ? toPersianDigits(position) : position;
+  let text = t(lang, "chat_queued_position").replace("{position}", posDigits);
+  if (estimatedWaitSeconds != null) {
+    const waitDigits = lang === "fa" ? toPersianDigits(estimatedWaitSeconds) : estimatedWaitSeconds;
+    text += t(lang, "chat_queued_wait").replace("{seconds}", waitDigits);
+  }
+  return text;
 }
 
 function loadHistory() {
@@ -49,14 +64,28 @@ export default function ChatClient({ title, subtitle, title_en, subtitle_en, isH
   const [messages, setMessages] = useState(loadHistory);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [queueInfo, setQueueInfo] = useState(null);
   const [chatConfig, setChatConfig] = useState(null);
   const bottomRef = useRef(null);
+  const pollIntervalRef = useRef(null);
+  const mountedRef = useRef(true);
   const { lang, isRTL } = useLang();
 
   useEffect(() => {
     document.title = "IPH Chatbot";
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+  }, [messages, loading, queueInfo]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     saveHistory(messages);
@@ -93,6 +122,60 @@ export default function ChatClient({ title, subtitle, title_en, subtitle_en, isH
     ? null
     : (lang === "en" ? chatConfig.footer_en : chatConfig.footer_fa) || t(lang, "chat_disclaimer");
 
+  const appendBotMessage = (text) => {
+    setMessages((prev) => [...prev, { role: "bot", text }]);
+  };
+
+  const stopQueuePolling = () => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+  };
+
+  const startQueuePolling = (queueId) => {
+    stopQueuePolling();
+    let failures = 0;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/chat/status/${queueId}`);
+        const data = await res.json();
+        if (!mountedRef.current) return;
+
+        if (data.status === "done") {
+          stopQueuePolling();
+          appendBotMessage(data.answer || t(lang, "chat_no_answer"));
+          setQueueInfo(null);
+          setLoading(false);
+        } else if (data.status === "busy") {
+          stopQueuePolling();
+          appendBotMessage(t(lang, "chat_busy"));
+          setQueueInfo(null);
+          setLoading(false);
+        } else if (data.status === "queued") {
+          failures = 0;
+          setQueueInfo((prev) => ({
+            position: data.position,
+            estimatedWaitSeconds: prev?.estimatedWaitSeconds,
+          }));
+        } else {
+          throw new Error("unexpected status shape");
+        }
+      } catch {
+        failures += 1;
+        if (failures >= QUEUE_POLL_MAX_FAILURES && mountedRef.current) {
+          stopQueuePolling();
+          appendBotMessage(t(lang, "chat_error"));
+          setQueueInfo(null);
+          setLoading(false);
+        }
+      }
+    };
+
+    pollIntervalRef.current = setInterval(poll, QUEUE_POLL_INTERVAL_MS);
+  };
+
   const sendMessage = async () => {
     const question = input.trim();
     if (!question || loading) return;
@@ -101,6 +184,7 @@ export default function ChatClient({ title, subtitle, title_en, subtitle_en, isH
     setMessages(updatedMessages);
     setInput("");
     setLoading(true);
+    setQueueInfo(null);
 
     const controller = new AbortController();
     // 95s client timeout — slightly longer than the server's 90s so the server
@@ -126,30 +210,33 @@ export default function ChatClient({ title, subtitle, title_en, subtitle_en, isH
 
       const data = await res.json();
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "bot",
-          text:
-            res.status === 504
-              ? t(lang, "chat_timeout")
-              : data.answer || t(lang, "chat_no_answer"),
-        },
-      ]);
+      if (data?.status === "queued" && data?.queue_id) {
+        setQueueInfo({
+          position: data.position,
+          estimatedWaitSeconds: data.estimated_wait_seconds,
+        });
+        startQueuePolling(data.queue_id);
+        // loading stays true — the queue poller owns it from here on.
+        return;
+      }
+
+      appendBotMessage(
+        data.source === "busy"
+          ? t(lang, "chat_busy")
+          : res.status === 504
+          ? t(lang, "chat_timeout")
+          : data.answer || t(lang, "chat_no_answer")
+      );
+      setLoading(false);
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "bot",
-          text:
-            err.name === "AbortError"
-              ? t(lang, "chat_timeout")
-              : t(lang, "chat_error"),
-        },
-      ]);
+      appendBotMessage(
+        err.name === "AbortError"
+          ? t(lang, "chat_timeout")
+          : t(lang, "chat_error")
+      );
+      setLoading(false);
     } finally {
       clearTimeout(clientTimeout);
-      setLoading(false);
     }
   };
 
@@ -268,6 +355,16 @@ export default function ChatClient({ title, subtitle, title_en, subtitle_en, isH
                   className="rounded-3xl rounded-tl-sm px-5 py-4"
                   style={{ background: "var(--surface)", border: "1px solid var(--border-accent)" }}
                 >
+                  {queueInfo && (
+                    <div className="mb-2 space-y-0.5">
+                      <p className="text-[11px] font-medium" style={{ color: "var(--text-muted)" }}>
+                        {t(lang, "chat_queued")}
+                      </p>
+                      <p className="text-[11px]" style={{ color: "var(--text-faint)" }}>
+                        {queuedStatusText(queueInfo, lang)}
+                      </p>
+                    </div>
+                  )}
                   <div className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full animate-bounce" style={{ background: "var(--accent)" }} />
                     <span className="w-2 h-2 rounded-full animate-bounce [animation-delay:150ms]" style={{ background: "var(--accent)" }} />
