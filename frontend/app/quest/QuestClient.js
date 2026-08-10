@@ -188,14 +188,15 @@ function UserCard({ user, thresholds, levelColors, labels, lang }) {
       <div className="flex items-center justify-between text-sm mb-2">
         <span style={{ color: "var(--text-muted)" }}>{labels.xpLabel}</span>
         <span
-          dir="ltr"
           className="font-bold transition-all duration-500"
           style={{
             color: "var(--accent)",
             textShadow: xpFlash ? '0 0 16px var(--accent), 0 0 32px rgba(0,255,179,0.4)' : undefined,
           }}
         >
-          +{dNum(animatedXp, lang)} {labels.xpUnit}
+          {lang === 'fa'
+            ? `${dNum(animatedXp, lang)}+ ${labels.xpUnit}`
+            : (<>+{dNum(animatedXp, lang)} {labels.xpUnit}</>)}
         </span>
       </div>
 
@@ -349,8 +350,10 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
           >
             {dNum(mission.title, langProp)}
           </span>
-          <span dir="ltr" className="text-xs font-bold flex-shrink-0 mr-2" style={{ color: "var(--accent)" }}>
-            +{dNum(isFeaturedBooth ? (mission.featuredBoothBonusXp ?? mission.xpReward) : mission.xpReward, langProp)} {xpUnit || "XP"}
+          <span className="text-xs font-bold flex-shrink-0 mr-2" style={{ color: "var(--accent)" }}>
+            {langProp === 'fa'
+              ? `${dNum(isFeaturedBooth ? (mission.featuredBoothBonusXp ?? mission.xpReward) : mission.xpReward, langProp)}+ ${xpUnit || "XP"}`
+              : (<>+{dNum(isFeaturedBooth ? (mission.featuredBoothBonusXp ?? mission.xpReward) : mission.xpReward, langProp)} {xpUnit || "XP"}</>)}
           </span>
         </div>
         <p className="leading-6 mb-1.5 truncate" style={{ fontSize: "var(--quest-subtitle-size)", color: "var(--quest-subtitle-color)" }}>
@@ -1062,8 +1065,10 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
 
                 {/* XP — hidden for featured_booth pool booths to avoid spoiling the treasure hunt */}
                 {!featuredBoothPoolIds?.has(booth.id) && (
-                  <span dir="ltr" className="text-xs font-bold flex-shrink-0" style={{ color: "var(--accent)" }}>
-                    +{dNum(booth.xp, lang)} {xpUnit || "XP"}
+                  <span className="text-xs font-bold flex-shrink-0" style={{ color: "var(--accent)" }}>
+                    {lang === 'fa'
+                      ? `${dNum(booth.xp, lang)}+ ${xpUnit || "XP"}`
+                      : (<>+{dNum(booth.xp, lang)} {xpUnit || "XP"}</>)}
                   </span>
                 )}
 
