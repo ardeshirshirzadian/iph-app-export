@@ -251,6 +251,35 @@ function UserCard({ user, thresholds, levelColors, labels, lang }) {
   );
 }
 
+// Shown instead of UserCard while questStats/levels are still loading — never
+// render FALLBACK_LEVELS' placeholder icon/name as if it were the real user.
+function UserCardSkeleton() {
+  return (
+    <div
+      className="backdrop-blur-xl border border-[#00ffb3]/20 rounded-3xl p-5 animate-pulse"
+      style={{ background: "var(--surface)" }}
+    >
+      <div className="flex items-center justify-between mb-4">
+        <div className="space-y-2">
+          <div className="h-2.5 w-16 rounded-full" style={{ background: "var(--border)" }} />
+          <div className="h-4 w-28 rounded-full" style={{ background: "var(--border)" }} />
+        </div>
+        <div className="h-6 w-20 rounded-full" style={{ background: "var(--border)" }} />
+      </div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="h-2.5 w-10 rounded-full" style={{ background: "var(--border)" }} />
+        <div className="h-2.5 w-16 rounded-full" style={{ background: "var(--border)" }} />
+      </div>
+      <div className="h-2.5 rounded-full" style={{ background: "var(--border)" }} />
+      <div className="mt-4 flex items-center gap-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="rounded-full flex-shrink-0" style={{ width: 32, height: 32, background: "var(--border)" }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ScanButton({ isDark, label }) {
   return (
     <Link href="/quest/scan" className="flex flex-col items-center gap-3 group">
@@ -717,6 +746,22 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
   );
 }
 
+// Shown instead of MissionCard while missions are still loading.
+function MissionCardSkeleton() {
+  return (
+    <div
+      className="rounded-2xl p-4 flex items-center gap-4 animate-pulse"
+      style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
+    >
+      <div className="rounded-xl flex-shrink-0" style={{ width: 44, height: 44, background: "var(--border)" }} />
+      <div className="flex-1 space-y-2">
+        <div className="h-3.5 rounded-full w-2/3" style={{ background: "var(--border)" }} />
+        <div className="h-2.5 rounded-full w-1/2" style={{ background: "var(--border)" }} />
+      </div>
+    </div>
+  );
+}
+
 function BadgeCard({ badge, onQuizClick, onFeaturedClick, onSurveyClick, onSocialShareClick, lang }) {
   const isQuiz = badge.badge_type === 'quiz';
   const isFeaturedBooth = badge.badge_type === 'featured_booth';
@@ -836,7 +881,28 @@ function BadgeCard({ badge, onQuizClick, onFeaturedClick, onSurveyClick, onSocia
   );
 }
 
+// Shown instead of BadgeCard while badges are still loading.
+function BadgeCardSkeleton() {
+  return (
+    <div
+      className="rounded-2xl p-4 border text-center animate-pulse"
+      style={{ background: "var(--surface-2)", borderColor: "var(--border)" }}
+    >
+      <div className="w-14 h-14 rounded-2xl mx-auto mb-3" style={{ background: "var(--border)" }} />
+      <div className="h-3 rounded-full w-3/4 mx-auto mb-1.5" style={{ background: "var(--border)" }} />
+      <div className="h-2.5 rounded-full w-full" style={{ background: "var(--border)" }} />
+    </div>
+  );
+}
+
 function BadgesTab({ badges, onQuizClick, onFeaturedClick, onSurveyClick, onSocialShareClick, lang }) {
+  if (badges === null) {
+    return (
+      <div className="grid grid-cols-2 gap-3">
+        {Array.from({ length: 6 }).map((_, i) => <BadgeCardSkeleton key={i} />)}
+      </div>
+    );
+  }
   return (
     <div className="grid grid-cols-2 gap-3">
       {badges.map((badge, idx) => (
@@ -1908,13 +1974,22 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
   const [boothsLoading, setBoothsLoading] = useState(true);
   const [logoBaseUrl, setLogoBaseUrl] = useState('');
 
-  const [questStats, setQuestStats] = useState({ name_fa: '', name_en: '', xp: 0, total_scans: 0, today_scans: 0 });
+  const [questStats, setQuestStats] = useState(null);
   const [liveMissions, setLiveMissions] = useState(null);
   const [liveBadges, setLiveBadges] = useState(null);
   const [liveLeaderboard, setLiveLeaderboard] = useState(null);
   const [currentUserUuid, setCurrentUserUuid] = useState(null);
   const [currentUserRank, setCurrentUserRank] = useState(null);
   const [liveLevels, setLiveLevels] = useState(null);
+
+  // Each flips true once its fetch SETTLES (success or failure) — distinct
+  // from the live-data state being null, which also covers "still loading".
+  // Without this, the FALLBACK_* constants below render as real content
+  // during the loading window instead of only on genuine fetch failure.
+  const [statsReady, setStatsReady] = useState(false);
+  const [missionsReady, setMissionsReady] = useState(false);
+  const [badgesReady, setBadgesReady] = useState(false);
+  const [levelsReady, setLevelsReady] = useState(false);
 
   useEffect(() => {
     fetch('/api/quest/booths')
@@ -1932,21 +2007,24 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     fetch('/api/quest/stats')
       .then(r => r.json())
       .then(d => setQuestStats(d))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setStatsReady(true));
   }, []);
 
   useEffect(() => {
     fetch('/api/quest')
       .then(r => r.json())
       .then(d => { if (Array.isArray(d.missions)) setLiveMissions(d.missions); })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setMissionsReady(true));
   }, []);
 
   useEffect(() => {
     fetch('/api/quest/badges')
       .then(r => r.json())
       .then(d => { if (Array.isArray(d.badges)) setLiveBadges(d.badges); })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setBadgesReady(true));
   }, []);
 
   useEffect(() => {
@@ -1966,7 +2044,8 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     fetch('/api/quest/levels')
       .then(r => r.json())
       .then(d => { if (Array.isArray(d.levels) && d.levels.length > 0) setLiveLevels(d.levels); })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLevelsReady(true));
   }, []);
 
   const c = useMemo(() => ({
@@ -1974,7 +2053,10 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     ...(lang === 'en' ? (content?.main_en || {}) : {}),
   }), [content?.main, content?.main_en, lang]);
 
+  // null = levels fetch hasn't settled yet (loading) — callers must show a
+  // skeleton, not FALLBACK_LEVELS, during this window.
   const levelThresholds = useMemo(() => {
+    if (!levelsReady) return null;
     const source = liveLevels && liveLevels.length > 0 ? liveLevels : FALLBACK_LEVELS;
     return source.map(l => ({
       name: lang === 'en' ? (l.name_en || l.name_fa) : l.name_fa,
@@ -1984,9 +2066,9 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
       max: l.max_xp !== null && l.max_xp !== undefined ? l.max_xp : Infinity,
       color: l.color || '#64748b',
     }));
-  }, [liveLevels, lang]);
+  }, [levelsReady, liveLevels, lang]);
 
-  const levelColors = useMemo(() => levelThresholds.map(l => l.color), [levelThresholds]);
+  const levelColors = useMemo(() => levelThresholds?.map(l => l.color) ?? [], [levelThresholds]);
 
   // Set of company IDs that are in any active featured_booth mission's pool.
   // Used to suppress XP display for these booths in the general booth list.
@@ -2004,6 +2086,9 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     return ids;
   }, [liveMissions]);
 
+  // null = missions fetch hasn't settled yet AND no SSR-provided CMS content
+  // exists to show immediately — callers must show a skeleton, not
+  // FALLBACK_MISSIONS, during this window.
   const missions = useMemo(() => {
     // Prefer live missions from /api/quest (real DB + real progress)
     if (liveMissions && liveMissions.length > 0) {
@@ -2013,12 +2098,15 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         description: lang === 'en' ? (m.description_en || m.description) : m.description,
       }));
     }
-    // Fall back to static CMS blocks if present
+    // Fall back to static CMS blocks if present (SSR-provided, no flash)
     if (content?.missions?.length > 0) return content.missions;
+    if (!missionsReady) return null;
     return FALLBACK_MISSIONS;
-  }, [liveMissions, content?.missions, lang]);
+  }, [liveMissions, content?.missions, missionsReady, lang]);
 
   const leaderboard = useMemo(() => {
+    // Needs levelThresholds to compute each user's level name — wait for it too.
+    if (!levelThresholds) return null;
     if (liveLeaderboard && liveLeaderboard.length > 0) {
       return liveLeaderboard.map((item) => {
         const { current } = getXpProgress(item.total_xp, levelThresholds);
@@ -2039,6 +2127,9 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     // null = fetch not yet complete; [] = fetched, no users yet
     return liveLeaderboard === null ? null : [];
   }, [liveLeaderboard, lang, levelThresholds]);
+  // null = badges fetch hasn't settled yet AND no SSR-provided CMS content
+  // exists to show immediately — callers must show a skeleton, not
+  // FALLBACK_BADGES, during this window.
   const badges = useMemo(() => {
     if (liveBadges && liveBadges.length > 0) {
       return liveBadges.map(b => ({
@@ -2048,8 +2139,9 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
       }));
     }
     if (content?.badges?.length > 0) return content.badges;
+    if (!badgesReady) return null;
     return FALLBACK_BADGES;
-  }, [liveBadges, content?.badges, lang]);
+  }, [liveBadges, content?.badges, badgesReady, lang]);
 
   const tabs = useMemo(() => [
     { id: "missions",    icon: iconOf(c.icon_tab_missions)    || "🎯", iconSize: iconSizeOf(c.icon_tab_missions,    18), text: c.tab_missions    || "مأموریت‌ها" },
@@ -2111,6 +2203,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         if (!mounted) return;
         // Update XP/stats; compare against current to decide if missions need refresh.
         setQuestStats(prev => {
+          if (!prev) return data;
           const xpChanged = data.xp !== prev.xp;
           const scansChanged = data.total_scans !== prev.total_scans;
           if (xpChanged || scansChanged) {
@@ -2151,7 +2244,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
   }, [refreshQuest]);
 
   const missionList = useMemo(
-    () => missions.map((m, i) => (
+    () => (missions ?? []).map((m, i) => (
       <MissionCard
         key={m.id ?? i}
         mission={m}
@@ -2201,16 +2294,20 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
 
         <PageHeader title={title || c.title || "Booth Quest"} subtitle={subtitle || c.subtitle || ""} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={isHomeContext} />
 
-        <UserCard
-          user={{
-            name: lang === 'en' ? (questStats.name_en || questStats.name_fa) : questStats.name_fa,
-            xp: questStats.xp,
-          }}
-          thresholds={levelThresholds}
-          levelColors={levelColors}
-          labels={labels}
-          lang={lang}
-        />
+        {questStats && levelThresholds ? (
+          <UserCard
+            user={{
+              name: lang === 'en' ? (questStats.name_en || questStats.name_fa) : questStats.name_fa,
+              xp: questStats.xp,
+            }}
+            thresholds={levelThresholds}
+            levelColors={levelColors}
+            labels={labels}
+            lang={lang}
+          />
+        ) : (
+          <UserCardSkeleton />
+        )}
 
         <div className="flex justify-center my-8">
           <ScanButton isDark={isDark} label={labels.scanButtonLabel} />
@@ -2248,8 +2345,8 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
             <div className="grid grid-cols-3 gap-3 mb-6">
               {(() => {
                 return [
-                  { label: labels.statXpLabel,      value: dNum(questStats.xp, lang),          unit: labels.xpUnit, icon: "⚡", onClick: null,                      highlight: false },
-                  { label: labels.statScannedLabel, value: dNum(questStats.total_scans, lang), unit: "غرفه", icon: "📍", onClick: () => setBoothsOpen(true), highlight: true  },
+                  { label: labels.statXpLabel,      value: questStats ? dNum(questStats.xp, lang) : "—",          unit: labels.xpUnit, icon: "⚡", onClick: null,                      highlight: false },
+                  { label: labels.statScannedLabel, value: questStats ? dNum(questStats.total_scans, lang) : "—", unit: "غرفه", icon: "📍", onClick: () => setBoothsOpen(true), highlight: true  },
                   { label: labels.statRankLabel,    value: currentUserRank ? dNum(currentUserRank, lang) : "—", unit: "", icon: "🏅", onClick: null, highlight: false },
                 ];
               })().map((stat) => (
@@ -2287,20 +2384,36 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
             <p className="text-xs px-1 mb-3" style={{ color: "var(--text-dim)" }}>
               {labels.missionsTodayLabel}
             </p>
-            <div className="space-y-3">{missionList}</div>
+            <div className="space-y-3">
+              {missions === null
+                ? Array.from({ length: 4 }).map((_, i) => <MissionCardSkeleton key={i} />)
+                : missionList}
+            </div>
           </>
         )}
 
         {activeTab === "leaderboard" && (
-          <LeaderboardTab
-            users={leaderboard}
-            levelColors={levelColors}
-            thresholds={levelThresholds}
-            currentUserUuid={currentUserUuid}
-            xpUnit={labels.xpUnit}
-            lang={lang}
-            levels={liveLevels || []}
-          />
+          levelThresholds ? (
+            <LeaderboardTab
+              users={leaderboard}
+              levelColors={levelColors}
+              thresholds={levelThresholds}
+              currentUserUuid={currentUserUuid}
+              xpUnit={labels.xpUnit}
+              lang={lang}
+              levels={liveLevels || []}
+            />
+          ) : (
+            <div className="space-y-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 rounded-2xl px-4 py-3 border animate-pulse"
+                  style={{ background: "var(--surface-2)", borderColor: "var(--border)" }}>
+                  <div className="w-8 h-8 rounded-full flex-shrink-0" style={{ background: "var(--border)" }} />
+                  <div className="flex-1 h-3 rounded-full" style={{ background: "var(--border)" }} />
+                </div>
+              ))}
+            </div>
+          )
         )}
 
         {activeTab === "badges" && (
