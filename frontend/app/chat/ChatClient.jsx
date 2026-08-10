@@ -80,18 +80,18 @@ export default function ChatClient({ title, subtitle, title_en, subtitle_en, isH
     });
   }, [chatConfig, lang]);
 
-  const chatSubtitle = chatConfig
-    ? (lang === "en" ? chatConfig.subtitle_en : chatConfig.subtitle_fa)
-    : t(lang, "chat_powered_by");
-  const badge = chatConfig
-    ? (lang === "en" ? chatConfig.badge_en : chatConfig.badge_fa)
-    : t(lang, "chat_version");
-  const placeholder = chatConfig
-    ? (lang === "en" ? chatConfig.placeholder_en : chatConfig.placeholder_fa)
-    : t(lang, "chat_placeholder");
-  const footer = chatConfig
-    ? (lang === "en" ? chatConfig.footer_en : chatConfig.footer_fa)
-    : t(lang, "chat_disclaimer");
+  const chatSubtitle = !chatConfig
+    ? null
+    : (lang === "en" ? chatConfig.subtitle_en : chatConfig.subtitle_fa) || t(lang, "chat_powered_by");
+  const badge = !chatConfig
+    ? null
+    : (lang === "en" ? chatConfig.badge_en : chatConfig.badge_fa) || t(lang, "chat_version");
+  const placeholder = !chatConfig
+    ? ""
+    : (lang === "en" ? chatConfig.placeholder_en : chatConfig.placeholder_fa) || t(lang, "chat_placeholder");
+  const footer = !chatConfig
+    ? null
+    : (lang === "en" ? chatConfig.footer_en : chatConfig.footer_fa) || t(lang, "chat_disclaimer");
 
   const sendMessage = async () => {
     const question = input.trim();
@@ -195,14 +195,20 @@ export default function ChatClient({ title, subtitle, title_en, subtitle_en, isH
               </div>
               <div>
                 <h2 className="font-bold text-base leading-tight" style={{ color: "var(--text)" }}>IPH Chatbot</h2>
-                <p className="text-[11px]" style={{ color: "var(--text-faint)" }}>{chatSubtitle}</p>
+                <p className="text-[11px]" style={{ color: "var(--text-faint)" }}>
+                  {chatSubtitle ?? (
+                    <span className="inline-block h-2.5 w-20 rounded-full animate-pulse" style={{ background: "var(--border)" }} />
+                  )}
+                </p>
               </div>
             </div>
             <span
               className="text-[11px] px-3 py-1 rounded-full"
               style={{ color: "color-mix(in srgb, var(--accent) 70%, transparent)", border: "1px solid var(--border-accent)", background: "color-mix(in srgb, var(--accent) 5%, transparent)" }}
             >
-              {badge}
+              {badge ?? (
+                <span className="inline-block h-2.5 w-8 rounded-full animate-pulse" style={{ background: "var(--border-accent)" }} />
+              )}
             </span>
           </header>
 
@@ -307,7 +313,9 @@ export default function ChatClient({ title, subtitle, title_en, subtitle_en, isH
               </Button>
             </div>
             <p className="text-[10px] text-center mt-2" style={{ color: "var(--text-faint)" }}>
-              {footer}
+              {footer ?? (
+                <span className="inline-block h-2 w-32 rounded-full animate-pulse mx-auto" style={{ background: "var(--border)" }} />
+              )}
             </p>
           </footer>
         </div>

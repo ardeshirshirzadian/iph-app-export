@@ -16,6 +16,17 @@ const WALL_BUF = CELL;
 const MERGE_GAP = CELL * 4;
 // Half-width (in cells) of the walkable gap carved at each entrance marker.
 const GAP_HALF = 2;
+// Minimum SVG-unit gap between two booth footprints for the space between
+// them to count as a real walkable aisle rather than a cosmetic seam.
+// Measured against the live map data across all 6 halls: the widest
+// cosmetic seam between visually-adjacent booths was 18.42 units, while the
+// narrowest genuine inter-row aisle gap was 29.00 units (and real aisle
+// gaps continue upward from there with many repeated systematic values,
+// e.g. 41.42/42.88/43.84, confirming intentional row spacing). MIN_BOOTH_GAP
+// sits in the empty valley between those two clusters with margin on both
+// sides, so it closes real seams without narrowing any real aisle found in
+// the data.
+const MIN_BOOTH_GAP = 24;
 
 // ── Outer-wall helpers ─────────────────────────────────────────────────────────
 
@@ -123,7 +134,22 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
   const rows = Math.ceil(mapH / cellSize) + 2;
   const blocked = new Uint8Array(cols * rows); // 0 = walkable, 1 = blocked
 
+  // Blocks every grid cell whose CENTER lies within SVG-unit rect [x0,y0,x1,y1].
+  // Shared by booth-interior blocking and inter-booth seam closing below.
+  function blockRect(x0, y0, x1, y1) {
+    const c0 = Math.max(0, Math.floor(x0 / cellSize - 0.5) + 1);
+    const c1 = Math.min(cols - 1, Math.ceil(x1 / cellSize - 0.5) - 1);
+    const r0 = Math.max(0, Math.floor(y0 / cellSize - 0.5) + 1);
+    const r1 = Math.min(rows - 1, Math.ceil(y1 / cellSize - 0.5) - 1);
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        blocked[r * cols + c] = 1;
+      }
+    }
+  }
+
   // ── Step 1: mark booth interiors as blocked ───────────────────────────────
+  const boothBboxes = [];
   for (const booth of allBooths) {
     const pts = booth.bounds ?? [];
     if (pts.length < 2) continue;
@@ -134,13 +160,66 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
       if (p.y < minY) minY = p.y;
       if (p.y > maxY) maxY = p.y;
     }
-    const c0 = Math.max(0, Math.floor(minX / cellSize - 0.5) + 1);
-    const c1 = Math.min(cols - 1, Math.ceil(maxX / cellSize - 0.5) - 1);
-    const r0 = Math.max(0, Math.floor(minY / cellSize - 0.5) + 1);
-    const r1 = Math.min(rows - 1, Math.ceil(maxY / cellSize - 0.5) - 1);
-    for (let r = r0; r <= r1; r++) {
-      for (let c = c0; c <= c1; c++) {
-        blocked[r * cols + c] = 1;
+    boothBboxes.push({ x0: minX, y0: minY, x1: maxX, y1: maxY });
+    blockRect(minX, minY, maxX, maxY);
+  }
+
+  // ── Step 1c: close cosmetic seams between near-adjacent booths ───────────
+  // A booth-blocking pass with zero padding (above) leaves the thin visual
+  // gap between two neighbouring booths walkable once gridded, if that gap
+  // is wide enough to contain a cell center — A* then threads a route
+  // through it as though it were a real aisle. For every pair of booths
+  // separated by less than MIN_BOOTH_GAP, block the connecting strip
+  // between them. This only touches the specific narrow gap between that
+  // pair — every other edge of both booths (which may legitimately face a
+  // real, wider aisle) is untouched.
+  //
+  // Three adjacency shapes are handled:
+  //  - side-by-side (y-ranges overlap, separated in x)
+  //  - stacked (x-ranges overlap, separated in y)
+  //  - diagonal (neither range overlaps — near a shared corner). A*'s
+  //    corner-cut guard only stops a single diagonal step between two
+  //    blocked cells; it does NOT stop a route walking around through a
+  //    wider open pocket in the corner gap, so this case needs the same
+  //    explicit closing as the other two.
+  //
+  // A raw gap can be narrower than one grid cell in a dimension where no
+  // cell center could ever fall (e.g. a 2-3 SVG-unit sliver against a
+  // 20-unit cell) — blocking exactly that sliver blocks nothing at all.
+  // padThinAxis widens any such axis to at least one full cell, centered on
+  // the true gap, so the seam always catches at least one row/column.
+  function padThinAxis(s0, s1) {
+    if (s1 - s0 >= cellSize) return [s0, s1];
+    const mid = (s0 + s1) / 2;
+    return [mid - cellSize / 2, mid + cellSize / 2];
+  }
+
+  for (let i = 0; i < boothBboxes.length; i++) {
+    const a = boothBboxes[i];
+    for (let j = i + 1; j < boothBboxes.length; j++) {
+      const b = boothBboxes[j];
+      const xGap = Math.max(a.x0 - b.x1, b.x0 - a.x1); // > 0 if x-ranges don't overlap
+      const yGap = Math.max(a.y0 - b.y1, b.y0 - a.y1); // > 0 if y-ranges don't overlap
+      if (xGap > 0 && yGap < 0) {
+        // Side-by-side: y-ranges overlap, thin horizontal seam of width xGap.
+        if (xGap >= MIN_BOOTH_GAP) continue;
+        const leftIsA = a.x1 <= b.x0;
+        const [sx0, sx1] = padThinAxis(leftIsA ? a.x1 : b.x1, leftIsA ? b.x0 : a.x0);
+        blockRect(sx0, Math.max(a.y0, b.y0), sx1, Math.min(a.y1, b.y1));
+      } else if (yGap > 0 && xGap < 0) {
+        // Stacked: x-ranges overlap, thin vertical seam of height yGap.
+        if (yGap >= MIN_BOOTH_GAP) continue;
+        const topIsA = a.y1 <= b.y0;
+        const [sy0, sy1] = padThinAxis(topIsA ? a.y1 : b.y1, topIsA ? b.y0 : a.y0);
+        blockRect(Math.max(a.x0, b.x0), sy0, Math.min(a.x1, b.x1), sy1);
+      } else if (xGap > 0 && yGap > 0) {
+        // Diagonal: neither range overlaps — bridge the corner pocket.
+        if (Math.hypot(xGap, yGap) >= MIN_BOOTH_GAP) continue;
+        const leftIsA = a.x0 > b.x1;
+        const topIsA = a.y0 > b.y1;
+        const [sx0, sx1] = padThinAxis(leftIsA ? b.x1 : a.x1, leftIsA ? a.x0 : b.x0);
+        const [sy0, sy1] = padThinAxis(topIsA ? b.y1 : a.y1, topIsA ? a.y0 : b.y0);
+        blockRect(sx0, sy0, sx1, sy1);
       }
     }
   }

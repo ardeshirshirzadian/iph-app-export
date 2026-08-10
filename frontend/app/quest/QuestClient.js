@@ -86,50 +86,69 @@ function getXpProgress(xp, thresholds) {
 
 // ── Sub-components ─────────────────────────────────────────────────────────
 
+// A circular badge's visible area is only the circle inscribed in its
+// bounding square (~78.5% of it) — content sized to nearly fill the square
+// pokes past the round border at its corners. Scale the diameter by √2 (the
+// side-of-square-inscribed-in-circle ratio) so a square-ish icon of size N
+// is fully contained by the circle, not just by its bounding box.
+function levelBadgeSize(iconSize) {
+  const size = iconSize ?? 14;
+  return Math.max(32, Math.ceil(size * Math.SQRT2) + 12);
+}
+
 function LevelTimeline({ currentLevel, thresholds, levelColors }) {
   const currentIdx = thresholds.findIndex((l) => l.name === currentLevel);
   return (
     <div className="mt-4">
-      <div className="flex items-center">
-        {thresholds.map((level, idx) => (
-          <Fragment key={level.name}>
-            <div
-              className="w-7 h-7 rounded-full flex items-center justify-center border-2 flex-shrink-0 transition-colors"
-              style={{
-                borderColor: idx <= currentIdx ? "var(--accent)" : "var(--border)",
-                opacity: idx <= currentIdx ? 1 : 0.3,
-              }}
-            >
-              {level.icon && level.icon.startsWith('/') ? (
-                <img src={level.icon} alt="" style={{ width: level.iconSize ?? 16, height: level.iconSize ?? 16, objectFit: 'contain' }} />
-              ) : (
-                <span style={{ fontSize: level.iconSize ?? 14, lineHeight: 1 }}>{level.icon}</span>
-              )}
-            </div>
-            {idx < thresholds.length - 1 && (
+      <div className="flex items-center overflow-x-auto pb-1">
+        {thresholds.map((level, idx) => {
+          const badgeSize = levelBadgeSize(level.iconSize);
+          return (
+            <Fragment key={level.name}>
               <div
-                className="flex-1 h-px transition-colors"
-                style={{ background: idx < currentIdx ? "var(--accent)" : "var(--border)" }}
-              />
-            )}
-          </Fragment>
-        ))}
+                className="rounded-full flex items-center justify-center border-2 flex-shrink-0 transition-colors"
+                style={{
+                  width: badgeSize,
+                  height: badgeSize,
+                  borderColor: idx <= currentIdx ? "var(--accent)" : "var(--border)",
+                  opacity: idx <= currentIdx ? 1 : 0.3,
+                }}
+              >
+                {level.icon && level.icon.startsWith('/') ? (
+                  <img src={level.icon} alt="" style={{ width: level.iconSize ?? 16, height: level.iconSize ?? 16, objectFit: 'contain' }} />
+                ) : (
+                  <span style={{ fontSize: level.iconSize ?? 14, lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{level.icon}</span>
+                )}
+              </div>
+              {idx < thresholds.length - 1 && (
+                <div
+                  className="flex-1 h-px transition-colors"
+                  style={{ background: idx < currentIdx ? "var(--accent)" : "var(--border)", minWidth: 16 }}
+                />
+              )}
+            </Fragment>
+          );
+        })}
       </div>
-      <div className="flex mt-1.5">
-        {thresholds.map((level, idx) => (
-          <Fragment key={level.name}>
-            <span
-              className="text-[9px] font-bold w-7 text-center flex-shrink-0 leading-4"
-              style={{
-                color: idx <= currentIdx ? "var(--accent)" : "var(--text-dim)",
-                opacity: idx <= currentIdx ? 1 : 0.3,
-              }}
-            >
-              {level.name}
-            </span>
-            {idx < thresholds.length - 1 && <div className="flex-1" />}
-          </Fragment>
-        ))}
+      <div className="flex mt-1.5 overflow-x-auto">
+        {thresholds.map((level, idx) => {
+          const badgeSize = levelBadgeSize(level.iconSize);
+          return (
+            <Fragment key={level.name}>
+              <span
+                className="text-[9px] font-bold text-center flex-shrink-0 leading-4"
+                style={{
+                  width: badgeSize,
+                  color: idx <= currentIdx ? "var(--accent)" : "var(--text-dim)",
+                  opacity: idx <= currentIdx ? 1 : 0.3,
+                }}
+              >
+                {level.name}
+              </span>
+              {idx < thresholds.length - 1 && <div className="flex-1" style={{ minWidth: 16 }} />}
+            </Fragment>
+          );
+        })}
       </div>
     </div>
   );
@@ -174,14 +193,19 @@ function UserCard({ user, thresholds, levelColors, labels, lang }) {
           <h2 className="font-bold text-lg leading-7" style={{ color: "var(--text)" }}>{user.name}</h2>
         </div>
         <div
-          className="px-3 py-1 rounded-full text-xs font-bold border"
+          className="px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5"
           style={{
             color,
             borderColor: color + "40",
             backgroundColor: color + "15",
           }}
         >
-          {current.icon} {current.name}
+          {current.icon && current.icon.startsWith('/') ? (
+            <img src={current.icon} alt="" style={{ width: current.iconSize ?? 14, height: current.iconSize ?? 14, objectFit: 'contain', flexShrink: 0 }} />
+          ) : (
+            <span style={{ fontSize: current.iconSize ?? 14, lineHeight: 1 }}>{current.icon}</span>
+          )}
+          <span>{current.name}</span>
         </div>
       </div>
 
@@ -320,6 +344,11 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
     : featuredClickable ? onFeaturedClick
     : undefined;
 
+  // 44px (the old fixed w-11/h-11) already matched the 36px default icon plus
+  // 8px padding — keep that same padding so the container scales with a
+  // per-mission icon_size instead of clipping it at a fixed size.
+  const iconBoxSize = Math.max(44, (mission.icon_size ?? 36) + 8);
+
   return (
     <div
       onClick={handleClick}
@@ -332,8 +361,8 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
       }
     >
       <div
-        className="w-11 h-11 rounded-xl flex-shrink-0 flex items-center justify-center"
-        style={{ background: done ? "var(--quest-active-icon-bg)" : "var(--surface-2)" }}
+        className="rounded-xl flex-shrink-0 flex items-center justify-center"
+        style={{ width: iconBoxSize, height: iconBoxSize, background: done ? "var(--quest-active-icon-bg)" : "var(--surface-2)" }}
       >
         {mission.icon && mission.icon.startsWith('/') ? (
           <img src={mission.icon} alt="" style={{ width: mission.icon_size ?? 36, height: mission.icon_size ?? 36, objectFit: 'contain' }} />
