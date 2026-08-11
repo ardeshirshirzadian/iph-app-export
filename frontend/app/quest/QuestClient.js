@@ -203,20 +203,18 @@ function UserCard({ user, thresholds, levelColors, labels, lang, showLevelCircle
           <h2 className="font-bold text-lg leading-7" style={{ color: "var(--text)" }}>{user.name}</h2>
         </div>
         <div
-          className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5${showLevelCircle ? ' border' : ''}`}
+          className="px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5"
           style={{
             color,
-            ...(showLevelCircle ? { borderColor: color + "40", backgroundColor: color + "15" } : {}),
+            borderColor: color + "40",
+            backgroundColor: color + "15",
           }}
         >
-          {(() => {
-            const badgeIconSize = levelIconDisplaySize(current.iconSize, showLevelCircle);
-            return current.icon && current.icon.startsWith('/') ? (
-              <img src={current.icon} alt="" style={{ width: badgeIconSize, height: badgeIconSize, objectFit: 'contain', flexShrink: 0 }} />
-            ) : (
-              <span style={{ fontSize: badgeIconSize, lineHeight: 1 }}>{current.icon}</span>
-            );
-          })()}
+          {current.icon && current.icon.startsWith('/') ? (
+            <img src={current.icon} alt="" style={{ width: current.iconSize ?? 14, height: current.iconSize ?? 14, objectFit: 'contain', flexShrink: 0 }} />
+          ) : (
+            <span style={{ fontSize: current.iconSize ?? 14, lineHeight: 1 }}>{current.icon}</span>
+          )}
           <span>{current.name}</span>
         </div>
       </div>
@@ -265,10 +263,7 @@ function UserCard({ user, thresholds, levelColors, labels, lang, showLevelCircle
 
 // Shown instead of UserCard while questStats/levels are still loading — never
 // render FALLBACK_LEVELS' placeholder icon/name as if it were the real user.
-// showLevelCircle comes from the SSR-provided appearanceConfig prop (never
-// loading-gated), so this always matches the real UserCard's circle/no-circle
-// state — no flash between the two once real content arrives.
-function UserCardSkeleton({ showLevelCircle = true }) {
+function UserCardSkeleton() {
   return (
     <div
       className="backdrop-blur-xl border border-[#00ffb3]/20 rounded-3xl p-5 animate-pulse"
@@ -288,11 +283,7 @@ function UserCardSkeleton({ showLevelCircle = true }) {
       <div className="h-2.5 rounded-full" style={{ background: "var(--border)" }} />
       <div className="mt-4 flex items-center gap-3">
         {Array.from({ length: 3 }).map((_, i) => (
-          <div
-            key={i}
-            className={showLevelCircle ? "rounded-full flex-shrink-0" : "rounded-lg flex-shrink-0"}
-            style={{ width: showLevelCircle ? 32 : 40, height: showLevelCircle ? 32 : 40, background: "var(--border)" }}
-          />
+          <div key={i} className="rounded-full flex-shrink-0" style={{ width: 32, height: 32, background: "var(--border)" }} />
         ))}
       </div>
     </div>
@@ -2331,7 +2322,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
             showLevelCircle={showLevelCircle}
           />
         ) : (
-          <UserCardSkeleton showLevelCircle={showLevelCircle} />
+          <UserCardSkeleton />
         )}
 
         <div className="flex justify-center my-8">
