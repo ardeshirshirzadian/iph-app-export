@@ -20,7 +20,8 @@ async function ensureQuestUserNamesTable() {
   globalThis._questUserNamesReady = true;
 }
 
-function resolvePhotoUrl(profilePhotoUrl, profileImage) {
+function resolvePhotoUrl(profilePhotoUrl, profileImage, hideLeaderboardPhoto) {
+  if (hideLeaderboardPhoto) return null;
   if (profilePhotoUrl) {
     return profilePhotoUrl.startsWith('http') ? profilePhotoUrl : RASAYESH_BASE + profilePhotoUrl;
   }
@@ -123,7 +124,8 @@ export async function GET(request) {
             NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), '')
           ) AS display_name_en,
           qn.profile_photo_url,
-          au.profile_image
+          au.profile_image,
+          au.hide_leaderboard_photo
         FROM ranked r
         LEFT JOIN quest_user_names qn ON r.user_uuid = qn.user_uuid
         LEFT JOIN app_users        au ON r.user_uuid = au.uuid
@@ -138,7 +140,7 @@ export async function GET(request) {
         display_name_en:   row.display_name_en || null,
         total_xp:          row.total_xp,
         scan_count:        row.scan_count,
-        profile_photo_url: resolvePhotoUrl(row.profile_photo_url, row.profile_image),
+        profile_photo_url: resolvePhotoUrl(row.profile_photo_url, row.profile_image, row.hide_leaderboard_photo),
       }));
 
       // Current user's rank within this level
@@ -167,7 +169,7 @@ export async function GET(request) {
                    qn.display_name_en,
                    NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), '')
                  ) AS display_name_en,
-                 qn.profile_photo_url, au.profile_image
+                 qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo
           FROM ranked r
           LEFT JOIN quest_user_names qn ON r.user_uuid = qn.user_uuid
           LEFT JOIN app_users        au ON r.user_uuid = au.uuid
@@ -181,7 +183,7 @@ export async function GET(request) {
             total_xp:          rankRows[0].total_xp,
             display_name_fa:   rankRows[0].display_name_fa,
             display_name_en:   rankRows[0].display_name_en || null,
-            profile_photo_url: resolvePhotoUrl(rankRows[0].profile_photo_url, rankRows[0].profile_image),
+            profile_photo_url: resolvePhotoUrl(rankRows[0].profile_photo_url, rankRows[0].profile_image, rankRows[0].hide_leaderboard_photo),
           };
         }
       }
@@ -207,6 +209,7 @@ export async function GET(request) {
         ) AS display_name_en,
         qn.profile_photo_url,
         au.profile_image,
+        au.hide_leaderboard_photo,
         c.total_xp,
         c.scan_count
       FROM combined c
@@ -223,7 +226,7 @@ export async function GET(request) {
       display_name_en:   row.display_name_en || null,
       total_xp:          row.total_xp,
       scan_count:        row.scan_count,
-      profile_photo_url: resolvePhotoUrl(row.profile_photo_url, row.profile_image),
+      profile_photo_url: resolvePhotoUrl(row.profile_photo_url, row.profile_image, row.hide_leaderboard_photo),
     }));
 
     // Current user's overall rank (may be outside top-N)
@@ -243,7 +246,7 @@ export async function GET(request) {
           FROM combined
           GROUP BY user_uuid
         )
-        SELECT r.rank, r.total_xp, qn.profile_photo_url, au.profile_image
+        SELECT r.rank, r.total_xp, qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo
         FROM ranked r
         LEFT JOIN quest_user_names qn ON r.user_uuid = qn.user_uuid
         LEFT JOIN app_users        au ON r.user_uuid = au.uuid
@@ -255,7 +258,7 @@ export async function GET(request) {
           user_uuid:         currentUuid,
           rank:              rankRows[0].rank,
           total_xp:          rankRows[0].total_xp,
-          profile_photo_url: resolvePhotoUrl(rankRows[0].profile_photo_url, rankRows[0].profile_image),
+          profile_photo_url: resolvePhotoUrl(rankRows[0].profile_photo_url, rankRows[0].profile_image, rankRows[0].hide_leaderboard_photo),
         };
       }
     }

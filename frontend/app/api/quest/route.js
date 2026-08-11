@@ -35,16 +35,12 @@ async function calcProgress(mission, userUuid, eventId) {
         return parseInt(r.rows[0].count, 10) > 0 ? 1 : 0;
       }
       case 'chat': {
-        // Check chatbot_logs if exists; table may not be present yet
-        const tableCheck = await query(
-          `SELECT 1 FROM information_schema.tables WHERE table_name = 'chatbot_logs'`
-        );
-        if (tableCheck.rows.length === 0) return 0;
         const r = await query(
-          'SELECT COUNT(*) FROM chatbot_logs WHERE user_uuid = $1',
-          [userUuid]
+          `SELECT completed FROM quest_user_progress
+           WHERE mission_id = $1 AND user_uuid = $2`,
+          [mission.id, userUuid]
         );
-        return parseInt(r.rows[0].count, 10) > 0 ? 1 : 0;
+        return r.rows.length > 0 && r.rows[0].completed ? 1 : 0;
       }
       case 'attendance':
       case 'manual': {
