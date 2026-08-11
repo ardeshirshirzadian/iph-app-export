@@ -133,8 +133,17 @@ export default async function Home() {
       } catch (err) {
         console.error('[home→quest] failed to load content blocks:', err.message);
       }
+      let appearanceConfig = {};
+      try {
+        const appResult = await query(
+          "SELECT value FROM app_settings WHERE key = 'quest_appearance_config'"
+        );
+        appearanceConfig = appResult.rows[0]?.value ?? {};
+      } catch {
+        // Fall back to defaults in QuestClient
+      }
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('quest');
-      return <QuestClient content={content} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
+      return <QuestClient content={content} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} appearanceConfig={appearanceConfig} isHomeContext={true} />;
     }
 
     case '/companies': {
