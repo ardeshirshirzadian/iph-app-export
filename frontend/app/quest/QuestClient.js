@@ -96,28 +96,38 @@ function levelBadgeSize(iconSize) {
   return Math.max(32, Math.ceil(size * Math.SQRT2) + 12);
 }
 
-function LevelTimeline({ currentLevel, thresholds, levelColors }) {
+// With the circle hidden, the icon has no clipping/inscribing constraint to
+// respect — let it grow to fill the box the circle used to occupy (minus a
+// small margin) instead of staying pinned at its circle-inscribed size.
+function levelIconDisplaySize(iconSize, showCircle) {
+  const size = iconSize ?? 14;
+  if (showCircle) return size;
+  return levelBadgeSize(iconSize) - 8;
+}
+
+function LevelTimeline({ currentLevel, thresholds, levelColors, showCircle = true }) {
   const currentIdx = thresholds.findIndex((l) => l.name === currentLevel);
   return (
     <div className="mt-4">
       <div className="flex items-center overflow-x-auto pb-1">
         {thresholds.map((level, idx) => {
           const badgeSize = levelBadgeSize(level.iconSize);
+          const iconSize = levelIconDisplaySize(level.iconSize, showCircle);
           return (
             <Fragment key={level.name}>
               <div
-                className="rounded-full flex items-center justify-center border-2 flex-shrink-0 transition-colors"
+                className="rounded-full flex items-center justify-center flex-shrink-0 transition-colors"
                 style={{
                   width: badgeSize,
                   height: badgeSize,
-                  borderColor: idx <= currentIdx ? "var(--accent)" : "var(--border)",
+                  border: showCircle ? `2px solid ${idx <= currentIdx ? "var(--accent)" : "var(--border)"}` : "none",
                   opacity: idx <= currentIdx ? 1 : 0.3,
                 }}
               >
                 {level.icon && level.icon.startsWith('/') ? (
-                  <img src={level.icon} alt="" style={{ width: level.iconSize ?? 16, height: level.iconSize ?? 16, objectFit: 'contain' }} />
+                  <img src={level.icon} alt="" style={{ width: iconSize, height: iconSize, objectFit: 'contain' }} />
                 ) : (
-                  <span style={{ fontSize: level.iconSize ?? 14, lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{level.icon}</span>
+                  <span style={{ fontSize: iconSize, lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{level.icon}</span>
                 )}
               </div>
               {idx < thresholds.length - 1 && (
@@ -154,7 +164,7 @@ function LevelTimeline({ currentLevel, thresholds, levelColors }) {
   );
 }
 
-function UserCard({ user, thresholds, levelColors, labels, lang }) {
+function UserCard({ user, thresholds, levelColors, labels, lang, showLevelCircle = true }) {
   const { pct, current, currentIdx, next } = useMemo(
     () => getXpProgress(user.xp, thresholds),
     [user.xp, thresholds]
@@ -193,18 +203,20 @@ function UserCard({ user, thresholds, levelColors, labels, lang }) {
           <h2 className="font-bold text-lg leading-7" style={{ color: "var(--text)" }}>{user.name}</h2>
         </div>
         <div
-          className="px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5"
+          className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5${showLevelCircle ? ' border' : ''}`}
           style={{
             color,
-            borderColor: color + "40",
-            backgroundColor: color + "15",
+            ...(showLevelCircle ? { borderColor: color + "40", backgroundColor: color + "15" } : {}),
           }}
         >
-          {current.icon && current.icon.startsWith('/') ? (
-            <img src={current.icon} alt="" style={{ width: current.iconSize ?? 14, height: current.iconSize ?? 14, objectFit: 'contain', flexShrink: 0 }} />
-          ) : (
-            <span style={{ fontSize: current.iconSize ?? 14, lineHeight: 1 }}>{current.icon}</span>
-          )}
+          {(() => {
+            const badgeIconSize = levelIconDisplaySize(current.iconSize, showLevelCircle);
+            return current.icon && current.icon.startsWith('/') ? (
+              <img src={current.icon} alt="" style={{ width: badgeIconSize, height: badgeIconSize, objectFit: 'contain', flexShrink: 0 }} />
+            ) : (
+              <span style={{ fontSize: badgeIconSize, lineHeight: 1 }}>{current.icon}</span>
+            );
+          })()}
           <span>{current.name}</span>
         </div>
       </div>
@@ -246,14 +258,17 @@ function UserCard({ user, thresholds, levelColors, labels, lang }) {
         </div>
       )}
 
-      <LevelTimeline currentLevel={current.name} thresholds={thresholds} levelColors={levelColors} />
+      <LevelTimeline currentLevel={current.name} thresholds={thresholds} levelColors={levelColors} showCircle={showLevelCircle} />
     </div>
   );
 }
 
 // Shown instead of UserCard while questStats/levels are still loading — never
 // render FALLBACK_LEVELS' placeholder icon/name as if it were the real user.
-function UserCardSkeleton() {
+// showLevelCircle comes from the SSR-provided appearanceConfig prop (never
+// loading-gated), so this always matches the real UserCard's circle/no-circle
+// state — no flash between the two once real content arrives.
+function UserCardSkeleton({ showLevelCircle = true }) {
   return (
     <div
       className="backdrop-blur-xl border border-[#00ffb3]/20 rounded-3xl p-5 animate-pulse"
@@ -273,7 +288,11 @@ function UserCardSkeleton() {
       <div className="h-2.5 rounded-full" style={{ background: "var(--border)" }} />
       <div className="mt-4 flex items-center gap-3">
         {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="rounded-full flex-shrink-0" style={{ width: 32, height: 32, background: "var(--border)" }} />
+          <div
+            key={i}
+            className={showLevelCircle ? "rounded-full flex-shrink-0" : "rounded-lg flex-shrink-0"}
+            style={{ width: showLevelCircle ? 32 : 40, height: showLevelCircle ? 32 : 40, background: "var(--border)" }}
+          />
         ))}
       </div>
     </div>
@@ -2180,6 +2199,11 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     return { ...defaults, ...saved };
   }, [isDark, appearanceConfig]);
 
+  // Global, theme-independent — read straight off the SSR-provided
+  // appearanceConfig prop (page.js), so it's available on first render with
+  // no loading window and therefore no circle/no-circle flash.
+  const showLevelCircle = appearanceConfig?.show_level_circle !== false;
+
   const refreshQuest = useCallback(() => {
     fetch('/api/quest').then(r => r.json()).then(d => { if (Array.isArray(d.missions)) setLiveMissions(d.missions); }).catch(() => {});
     fetch('/api/quest/badges').then(r => r.json()).then(d => { if (Array.isArray(d.badges)) setLiveBadges(d.badges); }).catch(() => {});
@@ -2304,9 +2328,10 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
             levelColors={levelColors}
             labels={labels}
             lang={lang}
+            showLevelCircle={showLevelCircle}
           />
         ) : (
-          <UserCardSkeleton />
+          <UserCardSkeleton showLevelCircle={showLevelCircle} />
         )}
 
         <div className="flex justify-center my-8">
