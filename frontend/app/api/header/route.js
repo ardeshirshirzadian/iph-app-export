@@ -8,7 +8,7 @@ export async function GET() {
   try {
     await ensureHeaderItemsTable();
     const { rows } = await query(
-      `SELECT id, item_type, title_fa, title_en, icon_path, href, is_active, sort_order
+      `SELECT id, item_type, title_fa, title_en, icon_path, icon_size, href, is_active, sort_order
        FROM header_items
        ORDER BY sort_order ASC, id ASC`
     );

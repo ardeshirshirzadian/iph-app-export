@@ -67,17 +67,72 @@ function SkeletonBlock({ className }) {
   );
 }
 
+// Admin-configurable via header_items (item_type: 'settings') — same table
+// AppHeader.js reads for bell/cart/logo/profile_pic, fetched here separately
+// since this icon renders standalone on the profile page, outside AppHeader.
+const GEAR_BUTTON_CLASS = "w-9 h-9 rounded-xl flex items-center justify-center transition-transform active:scale-90 duration-150";
+const GEAR_BUTTON_STYLE = { background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-muted)" };
+
 function GearIcon({ lang }) {
+  const [settingsItem, setSettingsItem] = useState(null);
+  // Distinct from settingsItem === null (which also means "no row found" or
+  // "fetch failed") — tracks only whether the /api/header fetch has settled,
+  // so loading vs. settled-with-no-override can be told apart below.
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/header")
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d.items)) {
+          setSettingsItem(d.items.find((i) => i.item_type === "settings") || null);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setReady(true));
+  }, []);
+
+  // Admin explicitly disabled the entry point — hide it, matching how bell/
+  // cart/profile_pic respect is_active in AppHeader.js. settingsItem is only
+  // ever populated once the fetch resolves, so this is naturally false
+  // throughout the loading window below.
+  if (settingsItem?.is_active === false) return null;
+
+  // Still loading — never flash the default SVG (or a stale render) before
+  // we actually know whether the admin configured a custom icon. Render a
+  // neutral pulsing placeholder, matching this button's own dimensions,
+  // until the fetch settles — same skeleton-over-flash approach used for
+  // the chat widget's subtitle/badge/placeholder/footer text.
+  if (!ready) {
+    return (
+      <div className={`${GEAR_BUTTON_CLASS} animate-pulse`} style={GEAR_BUTTON_STYLE} aria-hidden="true">
+        <span className="block rounded-full" style={{ width: 20, height: 20, background: "var(--border)" }} />
+      </div>
+    );
+  }
+
+  // Settled: either a real admin-uploaded icon_path, or genuinely none —
+  // in which case the hardcoded gear SVG is the final state, not a flash.
+  const iconSize = settingsItem?.icon_size ?? 20;
+
   return (
     <Link
       href="/settings"
       aria-label={t(lang, "settings_aria")}
-      className="w-9 h-9 rounded-xl flex items-center justify-center transition-transform active:scale-90 duration-150"
-      style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-muted)" }}
+      className={GEAR_BUTTON_CLASS}
+      style={GEAR_BUTTON_STYLE}
     >
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-        <path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7.01 7.01 0 0 0-1.62-.94l-.36-2.54A.484.484 0 0 0 14 2h-3.84a.47.47 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.47a.472.472 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.37 1.04.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.57 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.47.47 0 0 0-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
-      </svg>
+      {settingsItem?.icon_path ? (
+        <img
+          src={settingsItem.icon_path}
+          alt=""
+          style={{ width: iconSize, height: iconSize, objectFit: "contain" }}
+        />
+      ) : (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7.01 7.01 0 0 0-1.62-.94l-.36-2.54A.484.484 0 0 0 14 2h-3.84a.47.47 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.47a.472.472 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.37 1.04.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.57 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.47.47 0 0 0-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
+        </svg>
+      )}
     </Link>
   );
 }
