@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { getRasayeshEventInfo } from '@/lib/publicRasayeshClient';
 
 export async function GET() {
   let eventSlug = 'iph';
@@ -13,9 +14,15 @@ export async function GET() {
     ]);
     const s = badgeRes.rows[0]?.value ?? {};
     badgeEventId = Number(s.badge_event_id) || 18;
-    eventSlug = s.event_slug || 'iph';
     cardTemplateId = Number(s.card_template_id) || 0;
     eventOrigin = originRes.rows[0]?.value?.event_origin || 'https://2025.iphexpo.com';
+
+    try {
+      const eventInfo = await getRasayeshEventInfo(badgeEventId);
+      eventSlug = eventInfo.slug || 'iph';
+    } catch {
+      eventSlug = 'iph';
+    }
   } catch {
     // Fail-open: use defaults
   }
