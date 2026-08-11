@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { gql } from "@apollo/client";
 import { getApolloClient } from "@/lib/apolloClient";
 import BottomNav from "../components/BottomNav";
+import { linkMask } from "../components/AppHeader";
 import PageHeader from "@/components/PageHeader";
 import ProfileCompletionBar from "../components/ProfileCompletionBar";
 import Button from "@/components/Button";
@@ -123,11 +124,7 @@ function GearIcon({ lang }) {
       style={GEAR_BUTTON_STYLE}
     >
       {settingsItem?.icon_path ? (
-        <img
-          src={settingsItem.icon_path}
-          alt=""
-          style={{ width: iconSize, height: iconSize, objectFit: "contain" }}
-        />
+        <span style={{ ...linkMask(settingsItem.icon_path), width: iconSize, height: iconSize }} />
       ) : (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7.01 7.01 0 0 0-1.62-.94l-.36-2.54A.484.484 0 0 0 14 2h-3.84a.47.47 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.47a.472.472 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.37 1.04.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.57 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.47.47 0 0 0-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />

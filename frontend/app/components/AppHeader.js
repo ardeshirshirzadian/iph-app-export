@@ -83,7 +83,9 @@ function readUserCookie() {
 }
 
 // Custom-link icon uses the same mask technique as bell/cart.
-function linkMask(iconPath) {
+// Exported so other standalone icon buttons (e.g. ProfileClient's GearIcon)
+// can reuse the same theming technique instead of duplicating it.
+export function linkMask(iconPath) {
   return {
     display: "block",
     width: "20px",
