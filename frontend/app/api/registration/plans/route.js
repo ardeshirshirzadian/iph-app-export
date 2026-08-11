@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { getRasayeshEventInfo } from '@/lib/publicRasayeshClient';
 
 export async function GET() {
   try {
@@ -11,12 +12,16 @@ export async function GET() {
       return NextResponse.json({ enabled: false });
     }
 
+    const eventId = Number(config.event_id);
+    const eventInfo = await getRasayeshEventInfo(eventId);
+
     return NextResponse.json({
       enabled: true,
-      event_id: Number(config.event_id),
-      eventOrigin: config.event_origin ?? 'https://2025.iphexpo.com',
+      event_id: eventId,
+      eventOrigin: eventInfo.website,
     });
-  } catch {
+  } catch (err) {
+    console.error('[GET /api/registration/plans] event lookup failed:', err.message);
     return NextResponse.json({ enabled: false });
   }
 }
