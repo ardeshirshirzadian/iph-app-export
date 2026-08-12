@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { gql } from "@apollo/client";
 import { getApolloClient } from "@/lib/apolloClient";
 import { toPersianDigits, toEnglishDigits, toLocalMobile } from "@/lib/utils";
@@ -24,6 +23,46 @@ const VERIFY_OTP = gql`
   }
 `;
 
+const FORM_OPTIONS_QUERY = gql`
+  {
+    occupations(industryId: 1) { id title_fa title_en }
+    fieldOfActivities(industryId: 1) { id title_fa title_en }
+  }
+`;
+
+const REGISTER_MUTATION = gql`
+  mutation Register(
+    $firstnameFa: String!, $lastnameFa: String!,
+    $firstnameEn: String, $lastnameEn: String,
+    $mobile: String, $email: String,
+    $mobileSignature: String, $emailSignature: String,
+    $occupationId: Int, $fieldOfActivities: [Int!]!,
+    $industryId: Int
+  ) {
+    attendeeRegister(
+      firstnameFa: $firstnameFa, lastnameFa: $lastnameFa,
+      firstnameEn: $firstnameEn, lastnameEn: $lastnameEn,
+      mobile: $mobile, email: $email,
+      mobileSignature: $mobileSignature, emailSignature: $emailSignature,
+      occupationId: $occupationId, fieldOfActivities: $fieldOfActivities,
+      industryId: $industryId
+    )
+  }
+`;
+
+const FIELD_STYLE = {
+  background: "var(--surface-2)",
+  color: "var(--text)",
+  borderColor: "var(--border)",
+};
+
+const SELECT_STYLE = {
+  ...FIELD_STYLE,
+  appearance: "none",
+  WebkitAppearance: "none",
+  cursor: "pointer",
+};
+
 export default function LoginForm({ settings, initialVerify, initialContact, initialIsEmail, quickMode = false, fromPath = '/' }) {
   const router = useRouter();
   const { lang, isRTL } = useLang();
@@ -37,6 +76,17 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
   const [error, setError] = useState("");
   const [resendCooldown, setResendCooldown] = useState(0);
   const [isLight, setIsLight] = useState(false);
+
+  // Step 3: no Rasayesh account exists for `contact` yet — collect the rest
+  // of the profile, then call attendeeRegister with the real signature we
+  // got back from attendeeLoginValidateOTP for this exact contact.
+  const [pendingSignature, setPendingSignature] = useState("");
+  const [profileForm, setProfileForm] = useState({
+    firstnameFa: "", lastnameFa: "", firstnameEn: "", lastnameEn: "",
+    otherContact: "", occupationId: "", fieldOfActivities: [],
+  });
+  const [formOptions, setFormOptions] = useState({ occupations: [], fieldOfActivities: [] });
+  const [optionsLoading, setOptionsLoading] = useState(true);
   const otpRefs = useRef([]);
   const quickAutoSent = useRef(false);
   const sendOtpCoreRef = useRef(null);
@@ -72,7 +122,25 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
     setStep(1);
     setError("");
     setOtpDigits(["", "", "", "", ""]);
+    setPendingSignature("");
+    setProfileForm({
+      firstnameFa: "", lastnameFa: "", firstnameEn: "", lastnameEn: "",
+      otherContact: "", occupationId: "", fieldOfActivities: [],
+    });
   }, [lang, quickMode]);
+
+  // Lazily load occupation/field-of-activity options once we know contact is a new attendee
+  useEffect(() => {
+    if (step !== 3) return;
+    const client = getApolloClient();
+    client.query({ query: FORM_OPTIONS_QUERY })
+      .then(({ data }) => setFormOptions({
+        occupations: data?.occupations ?? [],
+        fieldOfActivities: data?.fieldOfActivities ?? [],
+      }))
+      .catch(() => {})
+      .finally(() => setOptionsLoading(false));
+  }, [step]);
 
   const otpValue = otpDigits.join("");
   const logoSrc = isLight ? settings.logo_path_light_theme : settings.logo_path;
@@ -130,6 +198,57 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
     await sendOtpCore();
   }
 
+  // Shared by both the existing-user login success path and the
+  // new-attendee-then-register success path — attendeeRegister returns the
+  // same { user, accessToken, refreshToken } shape attendeeLoginValidateOTP
+  // does, so a freshly registered user is logged in immediately, no separate
+  // login call needed.
+  const finalizeSession = useCallback(
+    async (result) => {
+      // Store tokens in localStorage
+      localStorage.setItem('access_token', result.accessToken);
+      localStorage.setItem('refresh_token', result.refreshToken);
+
+      // Set iph_user cookie + upsert DB (fire-and-forget for the upsert)
+      const u = result.user || {};
+      await fetch('/api/auth/finalize-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user: u }),
+      });
+
+      // Auto-enroll in free plan if admin has enabled it and user has no plan.
+      // Fire-and-forget: a failure here MUST NOT block login.
+      if (result.accessToken && u.uuid) {
+        fetch('/api/auth/auto-enroll', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accessToken: result.accessToken, uuid: u.uuid }),
+        }).catch(() => {});
+      }
+
+      if (
+        !localStorage.getItem('push_banner_dismissed') &&
+        'Notification' in window &&
+        Notification.permission === 'default'
+      ) {
+        localStorage.setItem('show_push_popup', '1');
+      }
+
+      if (!quickMode) {
+        sessionStorage.setItem(
+          "iph_show_welcome",
+          JSON.stringify({
+            firstname_fa: u.firstname_fa || "",
+            lastname_fa: u.lastname_fa || "",
+          })
+        );
+      }
+      router.push(quickMode ? fromPath : "/");
+    },
+    [quickMode, fromPath, router]
+  );
+
   const submitOtp = useCallback(
     async (code) => {
       if (submittingRef.current) return;
@@ -152,52 +271,23 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
         const raw = data?.attendeeLoginValidateOTP;
         const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
 
+        if (result?.status === 'new-attendee') {
+          // No Rasayesh account exists for this contact yet. Hold onto the
+          // real signature returned here — this is what proves ownership of
+          // this exact mobile/email to attendeeRegister. Never substitute a
+          // fabricated value for it.
+          setPendingSignature(result.signature || "");
+          setStep(3);
+          return;
+        }
+
         if (result?.status !== 'success') {
           hapticError();
           setError(result?.message || (isEmail ? "Incorrect code" : "کد وارد شده اشتباه است"));
           return;
         }
 
-        // Store tokens in localStorage
-        localStorage.setItem('access_token', result.accessToken);
-        localStorage.setItem('refresh_token', result.refreshToken);
-
-        // Set iph_user cookie + upsert DB (fire-and-forget for the upsert)
-        const u = result.user || {};
-        await fetch('/api/auth/finalize-login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ user: u }),
-        });
-
-        // Auto-enroll in free plan if admin has enabled it and user has no plan.
-        // Fire-and-forget: a failure here MUST NOT block login.
-        if (result.accessToken && u.uuid) {
-          fetch('/api/auth/auto-enroll', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ accessToken: result.accessToken, uuid: u.uuid }),
-          }).catch(() => {});
-        }
-
-        if (
-          !localStorage.getItem('push_banner_dismissed') &&
-          'Notification' in window &&
-          Notification.permission === 'default'
-        ) {
-          localStorage.setItem('show_push_popup', '1');
-        }
-
-        if (!quickMode) {
-          sessionStorage.setItem(
-            "iph_show_welcome",
-            JSON.stringify({
-              firstname_fa: u.firstname_fa || "",
-              lastname_fa: u.lastname_fa || "",
-            })
-          );
-        }
-        router.push(quickMode ? fromPath : "/");
+        await finalizeSession(result);
       } catch {
         hapticError();
         setError(t(lang, "server_error"));
@@ -206,12 +296,86 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
         submittingRef.current = false;
       }
     },
-    [contact, isEmail, lang, router, quickMode, fromPath]
+    [contact, isEmail, lang, finalizeSession]
   );
 
   async function handleVerifyOtp(e) {
     e.preventDefault();
     await submitOtp(otpValue);
+  }
+
+  function setProfileField(field, value) {
+    setProfileForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function toggleActivity(id) {
+    setProfileForm((prev) => {
+      const next = prev.fieldOfActivities.includes(id)
+        ? prev.fieldOfActivities.filter((x) => x !== id)
+        : [...prev.fieldOfActivities, id];
+      return { ...prev, fieldOfActivities: next };
+    });
+  }
+
+  function isProfileValid() {
+    const nameOk = isEmail
+      ? profileForm.firstnameEn.trim() && profileForm.lastnameEn.trim()
+      : profileForm.firstnameFa.trim() && profileForm.lastnameFa.trim();
+    const otherOk = isEmail
+      ? profileForm.otherContact.length === 11
+      : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profileForm.otherContact);
+    return Boolean(nameOk && otherOk && profileForm.occupationId && profileForm.fieldOfActivities.length > 0);
+  }
+
+  async function handleRegisterSubmit(e) {
+    e.preventDefault();
+    if (!isProfileValid()) return;
+    setError("");
+    setLoading(true);
+    try {
+      const client = getApolloClient();
+      const variables = {
+        // Rasayesh expects both FA and EN names; fall back to the other
+        // language's value when one side was left blank.
+        firstnameFa: profileForm.firstnameFa || profileForm.firstnameEn,
+        lastnameFa: profileForm.lastnameFa || profileForm.lastnameEn,
+        firstnameEn: profileForm.firstnameEn || profileForm.firstnameFa,
+        lastnameEn: profileForm.lastnameEn || profileForm.lastnameFa,
+        mobile: isEmail ? profileForm.otherContact : contact,
+        email: isEmail ? contact : profileForm.otherContact,
+        occupationId: profileForm.occupationId ? parseInt(profileForm.occupationId, 10) : undefined,
+        fieldOfActivities: profileForm.fieldOfActivities.map(Number).filter(Boolean),
+        industryId: 1,
+        // Only the channel actually OTP-verified in step 2 gets a signature;
+        // the other side is sent as a plain unverified string (confirmed
+        // accepted live) — never a fabricated signature.
+        ...(isEmail ? { emailSignature: pendingSignature } : { mobileSignature: pendingSignature }),
+      };
+
+      const { data, errors } = await client.mutate({ mutation: REGISTER_MUTATION, variables });
+
+      if (errors?.length) {
+        hapticError();
+        setError(errors[0].message || (isEmail ? "Failed to create account" : "خطا در ایجاد حساب"));
+        return;
+      }
+
+      const raw = data?.attendeeRegister;
+      const result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+
+      if (result?.status !== 'success') {
+        hapticError();
+        setError(result?.message || (isEmail ? "Failed to create account" : "خطا در ایجاد حساب"));
+        return;
+      }
+
+      await finalizeSession(result);
+    } catch {
+      hapticError();
+      setError(t(lang, "server_error"));
+    } finally {
+      setLoading(false);
+    }
   }
 
   function handleOtpChange(index, value) {
@@ -402,7 +566,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                 {loading ? t(lang, "sending") : (isEmail ? (settings.submit_button_text_en || t(lang, "submit_button")) : settings.submit_button_text)}
               </Button>
             </form>
-          ) : (
+          ) : step === 2 ? (
             <form onSubmit={handleVerifyOtp}>
               <p className="text-sm font-bold mb-4" style={{ color: "var(--text)" }}>
                 {isEmail ? (settings.otp_title_en || t(lang, "otp_title")) : settings.otp_title}
@@ -497,18 +661,212 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                 </button>
               </div>
             </form>
+          ) : (
+            <form onSubmit={handleRegisterSubmit}>
+              <p className="text-sm font-bold mb-1" style={{ color: "var(--text)" }}>
+                {isEmail ? "Complete your profile" : "تکمیل اطلاعات حساب"}
+              </p>
+              <p className="text-xs mb-4" style={{ color: "var(--text-dim)" }}>
+                {isEmail
+                  ? "No account found for this email yet — fill in a few details to create one."
+                  : "حساب کاربری برای این شماره یافت نشد. برای ساخت حساب اطلاعات زیر را تکمیل کنید."}
+              </p>
+
+              <div className="space-y-3">
+                {isEmail ? (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
+                        First Name
+                      </label>
+                      <input
+                        dir="ltr"
+                        type="text"
+                        value={profileForm.firstnameEn}
+                        onChange={(e) => setProfileField("firstnameEn", e.target.value)}
+                        className="w-full rounded-xl px-4 py-3 text-base outline-none border"
+                        style={FIELD_STYLE}
+                        placeholder="First name"
+                        autoComplete="given-name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
+                        Last Name
+                      </label>
+                      <input
+                        dir="ltr"
+                        type="text"
+                        value={profileForm.lastnameEn}
+                        onChange={(e) => setProfileField("lastnameEn", e.target.value)}
+                        className="w-full rounded-xl px-4 py-3 text-base outline-none border"
+                        style={FIELD_STYLE}
+                        placeholder="Last name"
+                        autoComplete="family-name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
+                        Mobile
+                      </label>
+                      <input
+                        dir="ltr"
+                        type="tel"
+                        inputMode="numeric"
+                        value={profileForm.otherContact}
+                        onChange={(e) =>
+                          setProfileField("otherContact", toEnglishDigits(e.target.value).replace(/\D/g, "").slice(0, 11))
+                        }
+                        className="w-full rounded-xl px-4 py-3 text-base outline-none border"
+                        style={FIELD_STYLE}
+                        placeholder="09xxxxxxxxx"
+                        maxLength={11}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
+                        نام
+                      </label>
+                      <input
+                        dir="rtl"
+                        type="text"
+                        value={profileForm.firstnameFa}
+                        onChange={(e) => setProfileField("firstnameFa", e.target.value)}
+                        className="w-full rounded-xl px-4 py-3 text-base outline-none border"
+                        style={FIELD_STYLE}
+                        placeholder="نام"
+                        autoComplete="given-name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
+                        نام خانوادگی
+                      </label>
+                      <input
+                        dir="rtl"
+                        type="text"
+                        value={profileForm.lastnameFa}
+                        onChange={(e) => setProfileField("lastnameFa", e.target.value)}
+                        className="w-full rounded-xl px-4 py-3 text-base outline-none border"
+                        style={FIELD_STYLE}
+                        placeholder="نام خانوادگی"
+                        autoComplete="family-name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
+                        ایمیل
+                      </label>
+                      <input
+                        dir="ltr"
+                        type="email"
+                        inputMode="email"
+                        value={profileForm.otherContact}
+                        onChange={(e) => setProfileField("otherContact", e.target.value.trim())}
+                        className="w-full rounded-xl px-4 py-3 text-base outline-none border"
+                        style={FIELD_STYLE}
+                        placeholder="you@example.com"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {optionsLoading ? (
+                  <p className="text-xs text-center py-2" style={{ color: "var(--text-dim)" }}>
+                    {isEmail ? "Loading..." : "در حال بارگذاری..."}
+                  </p>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
+                        {isEmail ? "Occupation" : "شغل"}
+                      </label>
+                      <select
+                        value={profileForm.occupationId}
+                        onChange={(e) => setProfileField("occupationId", e.target.value)}
+                        className="w-full rounded-xl px-4 py-3 text-base outline-none border"
+                        style={{ ...SELECT_STYLE, direction: dir }}
+                      >
+                        <option value="">{isEmail ? "Select occupation..." : "انتخاب کنید..."}</option>
+                        {formOptions.occupations.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {isEmail ? (o.title_en || o.title_fa) : (o.title_fa || o.title_en)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {formOptions.fieldOfActivities.length > 0 && (
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
+                          {isEmail ? "Field of Activity" : "حوزه فعالیت"}
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          {formOptions.fieldOfActivities.map((f) => {
+                            const isActive = profileForm.fieldOfActivities.includes(f.id);
+                            return (
+                              <button
+                                key={f.id}
+                                type="button"
+                                onClick={() => toggleActivity(f.id)}
+                                className="text-xs px-3 py-1.5 rounded-full transition-all border"
+                                style={{
+                                  background: isActive ? "var(--accent)" : "var(--surface-2)",
+                                  color: isActive ? "var(--bg)" : "var(--text-dim)",
+                                  borderColor: isActive ? "var(--accent)" : "var(--border)",
+                                  fontWeight: isActive ? 700 : 400,
+                                }}
+                              >
+                                {isEmail ? (f.title_en || f.title_fa) : (f.title_fa || f.title_en)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {error && (
+                <p className="mt-3 text-sm text-center" style={{ color: "#ff6b6b" }}>
+                  {error}
+                </p>
+              )}
+
+              <Button
+                type="submit"
+                disabled={loading || !isProfileValid()}
+                variant="primary"
+                className="w-full mt-4"
+                size="lg"
+              >
+                {loading
+                  ? (isEmail ? "Creating account..." : "در حال ایجاد حساب...")
+                  : (isEmail ? "Create Account" : "ایجاد حساب")}
+              </Button>
+
+              <div className="mt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep(1);
+                    setContact("");
+                    setOtpDigits(["", "", "", "", ""]);
+                    setPendingSignature("");
+                    setError("");
+                  }}
+                  className="text-xs"
+                  style={{ color: "var(--text-dim)" }}
+                >
+                  {isEmail ? "Start over" : "شروع دوباره"}
+                </button>
+              </div>
+            </form>
           )}
-        </div>
-        {/* Create account link */}
-        <div className="mt-4 text-center text-sm" style={{ color: "var(--text-dim)" }}>
-          {isRTL ? "حساب کاربری ندارید؟ " : "Don't have an account? "}
-          <Link
-            href="/signup"
-            className="font-bold"
-            style={{ color: "var(--accent)" }}
-          >
-            {isRTL ? "ایجاد حساب" : "Create Account"}
-          </Link>
         </div>
       </div>
     </main>
