@@ -63,6 +63,19 @@ const SELECT_STYLE = {
   cursor: "pointer",
 };
 
+// Translucent, theme-aware accent tint for focus/active borders — derived from
+// var(--accent) via color-mix() (same technique lib/getThemeColors.js already
+// uses for --surface-alt) instead of a color hardcoded to the dark-theme accent.
+const ACCENT_BORDER = "color-mix(in srgb, var(--accent) 40%, transparent)";
+const ACCENT_BORDER_STRONG = "color-mix(in srgb, var(--accent) 55%, transparent)";
+
+function focusAccentBorder(e) {
+  e.target.style.borderColor = ACCENT_BORDER;
+}
+function blurDefaultBorder(e) {
+  e.target.style.borderColor = "var(--border)";
+}
+
 export default function LoginForm({ settings, initialVerify, initialContact, initialIsEmail, quickMode = false, fromPath = '/' }) {
   const router = useRouter();
   const { lang, isRTL } = useLang();
@@ -524,8 +537,8 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                     borderColor: "var(--border)",
                     textAlign: "left",
                   }}
-                  onFocus={(e) => (e.target.style.borderColor = "rgba(0,255,179,0.4)")}
-                  onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
+                  onFocus={focusAccentBorder}
+                  onBlur={blurDefaultBorder}
                 />
               ) : (
                 <input
@@ -545,8 +558,8 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                     borderColor: "var(--border)",
                     textAlign: "right",
                   }}
-                  onFocus={(e) => (e.target.style.borderColor = "rgba(0,255,179,0.4)")}
-                  onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
+                  onFocus={focusAccentBorder}
+                  onBlur={blurDefaultBorder}
                 />
               )}
 
@@ -601,14 +614,15 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                     onChange={(e) => handleOtpChange(index, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(index, e)}
                     onPaste={handleOtpPaste}
-                    className="w-12 h-14 rounded-xl border text-center text-xl font-bold outline-none transition-colors backdrop-blur-xl bg-white/5"
+                    className="w-12 h-14 rounded-xl border text-center text-xl font-bold outline-none transition-colors backdrop-blur-xl"
                     style={{
+                      background: "var(--surface-2)",
                       color: "var(--text)",
-                      borderColor: digit ? "rgba(0,255,179,0.4)" : "rgba(255,255,255,0.1)",
+                      borderColor: digit ? ACCENT_BORDER : "var(--border)",
                     }}
-                    onFocus={(e) => (e.target.style.borderColor = "rgba(0,255,179,0.5)")}
+                    onFocus={(e) => (e.target.style.borderColor = ACCENT_BORDER_STRONG)}
                     onBlur={(e) =>
-                      (e.target.style.borderColor = digit ? "rgba(0,255,179,0.4)" : "rgba(255,255,255,0.1)")
+                      (e.target.style.borderColor = digit ? ACCENT_BORDER : "var(--border)")
                     }
                   />
                 ))}
@@ -686,6 +700,8 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                         onChange={(e) => setProfileField("firstnameEn", e.target.value)}
                         className="w-full rounded-xl px-4 py-3 text-base outline-none border"
                         style={FIELD_STYLE}
+                        onFocus={focusAccentBorder}
+                        onBlur={blurDefaultBorder}
                         placeholder="First name"
                         autoComplete="given-name"
                       />
@@ -701,6 +717,8 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                         onChange={(e) => setProfileField("lastnameEn", e.target.value)}
                         className="w-full rounded-xl px-4 py-3 text-base outline-none border"
                         style={FIELD_STYLE}
+                        onFocus={focusAccentBorder}
+                        onBlur={blurDefaultBorder}
                         placeholder="Last name"
                         autoComplete="family-name"
                       />
@@ -719,6 +737,8 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                         }
                         className="w-full rounded-xl px-4 py-3 text-base outline-none border"
                         style={FIELD_STYLE}
+                        onFocus={focusAccentBorder}
+                        onBlur={blurDefaultBorder}
                         placeholder="09xxxxxxxxx"
                         maxLength={11}
                       />
@@ -737,6 +757,8 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                         onChange={(e) => setProfileField("firstnameFa", e.target.value)}
                         className="w-full rounded-xl px-4 py-3 text-base outline-none border"
                         style={FIELD_STYLE}
+                        onFocus={focusAccentBorder}
+                        onBlur={blurDefaultBorder}
                         placeholder="نام"
                         autoComplete="given-name"
                       />
@@ -752,6 +774,8 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                         onChange={(e) => setProfileField("lastnameFa", e.target.value)}
                         className="w-full rounded-xl px-4 py-3 text-base outline-none border"
                         style={FIELD_STYLE}
+                        onFocus={focusAccentBorder}
+                        onBlur={blurDefaultBorder}
                         placeholder="نام خانوادگی"
                         autoComplete="family-name"
                       />
@@ -768,6 +792,8 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                         onChange={(e) => setProfileField("otherContact", e.target.value.trim())}
                         className="w-full rounded-xl px-4 py-3 text-base outline-none border"
                         style={FIELD_STYLE}
+                        onFocus={focusAccentBorder}
+                        onBlur={blurDefaultBorder}
                         placeholder="you@example.com"
                       />
                     </div>
@@ -789,6 +815,8 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                         onChange={(e) => setProfileField("occupationId", e.target.value)}
                         className="w-full rounded-xl px-4 py-3 text-base outline-none border"
                         style={{ ...SELECT_STYLE, direction: dir }}
+                        onFocus={focusAccentBorder}
+                        onBlur={blurDefaultBorder}
                       >
                         <option value="">{isEmail ? "Select occupation..." : "انتخاب کنید..."}</option>
                         {formOptions.occupations.map((o) => (
