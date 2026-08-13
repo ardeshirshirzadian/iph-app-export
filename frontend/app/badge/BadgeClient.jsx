@@ -159,11 +159,35 @@ async function downloadCard() {
     vEl.style.display = "inline-block";
   });
 
+  const scale = 3;
+
   try {
-    const canvas = await html2canvas(el, { scale: 3, useCORS: true, allowTaint: false });
+    const canvas = await html2canvas(el, { scale, useCORS: true, allowTaint: false });
+
+    // Preserve the on-screen border-radius, which html2canvas otherwise flattens to a rectangle.
+    const borderRadius = parseFloat(getComputedStyle(el).borderRadius) || 0;
+    let exportCanvas = canvas;
+    if (borderRadius > 0) {
+      const r = borderRadius * scale;
+      const rounded = document.createElement("canvas");
+      rounded.width = canvas.width;
+      rounded.height = canvas.height;
+      const ctx = rounded.getContext("2d");
+      ctx.beginPath();
+      ctx.moveTo(r, 0);
+      ctx.arcTo(rounded.width, 0, rounded.width, rounded.height, r);
+      ctx.arcTo(rounded.width, rounded.height, 0, rounded.height, r);
+      ctx.arcTo(0, rounded.height, 0, 0, r);
+      ctx.arcTo(0, 0, rounded.width, 0, r);
+      ctx.closePath();
+      ctx.clip();
+      ctx.drawImage(canvas, 0, 0);
+      exportCanvas = rounded;
+    }
+
     const link = document.createElement("a");
     link.download = "badge.png";
-    link.href = canvas.toDataURL("image/png");
+    link.href = exportCanvas.toDataURL("image/png");
     link.click();
   } catch (err) {
     console.error("[download badge]", err);
@@ -350,6 +374,7 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
             ) : (
               /* Fallback glass card */
               <div
+                id="rasayesh-badge-card"
                 className="backdrop-blur-xl border-2 border-[#00ffb3]/40 rounded-3xl overflow-hidden"
                 style={{ background: "var(--surface)" }}
               >

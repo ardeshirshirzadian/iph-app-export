@@ -256,13 +256,16 @@ export default function Map3DView({
 
     // Diagnostic: fired by iOS Safari under GPU memory pressure, often as a precursor
     // to killing the tab.  preventDefault() signals we want context restoration.
-    t.renderer.domElement.addEventListener('webglcontextlost', (e) => {
+    // Named (not inline) so cleanup below can remove them like the other listeners.
+    function onContextLost(e) {
       e.preventDefault();
       console.warn('[Map3D] webglcontextlost — GPU memory pressure');
-    }, false);
-    t.renderer.domElement.addEventListener('webglcontextrestored', () => {
+    }
+    function onContextRestored() {
       console.warn('[Map3D] webglcontextrestored');
-    }, false);
+    }
+    t.renderer.domElement.addEventListener('webglcontextlost', onContextLost, false);
+    t.renderer.domElement.addEventListener('webglcontextrestored', onContextRestored, false);
 
     // Lighting
     t.scene.add(new THREE.AmbientLight(0xffffff, 0.65));
@@ -954,6 +957,8 @@ export default function Map3DView({
       t.resizeObs?.disconnect();
       t.renderer.domElement.removeEventListener("pointerdown", onPtrDown);
       t.renderer.domElement.removeEventListener("click", onClick);
+      t.renderer.domElement.removeEventListener("webglcontextlost", onContextLost);
+      t.renderer.domElement.removeEventListener("webglcontextrestored", onContextRestored);
       t.controls.dispose();
       t.disposables.forEach((d) => { d.geometry?.dispose(); d.material?.dispose(); });
       for (const le of (t.labelEntries ?? [])) {
@@ -983,6 +988,23 @@ export default function Map3DView({
       for (const tex of (t.routeTextures ?? [])) tex?.dispose();
       t.scene.clear();
       t.renderer.dispose();
+      // renderer.dispose() only frees THREE's internal caches — it does NOT
+      // release the underlying WebGLRenderingContext (verified against the
+      // installed three.js source: dispose() never calls forceContextLoss()).
+      // Every 2D<->3D toggle fully unmounts and remounts this component,
+      // creating a brand-new canvas + GL context each time. Without forcing
+      // context loss here, the old context stays alive (held by the browser's
+      // GPU process) until the canvas is garbage-collected, which is slow and
+      // unreliable. Repeated toggling within a session accumulates these
+      // "zombie" contexts: reproduced locally, 40 rapid 2D<->3D toggles pinned
+      // live WebGL contexts at Chrome's hard ceiling (16) with forced
+      // evictions firing from toggle ~12 onward, while JS heap grew 35MB ->
+      // 123MB with no release. Chrome degrades gracefully by evicting the
+      // oldest context; mobile Safari's ceiling is lower and, critically, its
+      // response to exceeding it is reloading the entire tab — surfacing as
+      // an intermittent, seemingly gesture-random "page refresh" whenever the
+      // user happens to be zooming/panning at the moment the budget tips over.
+      t.renderer.forceContextLoss();
       if (el.contains(t.renderer.domElement)) el.removeChild(t.renderer.domElement);
       if (controlRef) controlRef.current = null;
     };
