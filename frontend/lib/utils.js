@@ -2,6 +2,15 @@ const FA = '۰۱۲۳۴۵۶۷۸۹';
 
 const RASAYESH_BASE = 'https://api.rasayesh.com/';
 
+// Same script-range logic as ChatClient.jsx's filterInputByLang, with a
+// name-appropriate punctuation allowlist (hyphen/apostrophe, no digits).
+const DISALLOWED_FA_NAME_CHARS = /[^\u0600-\u06FF\u200C\s\-]/g;
+const DISALLOWED_EN_NAME_CHARS = /[^a-zA-Z\s\-']/g;
+
+export function filterNameByLang(value, script) {
+  return value.replace(script === 'en' ? DISALLOWED_EN_NAME_CHARS : DISALLOWED_FA_NAME_CHARS, '');
+}
+
 // Mirrors the profile?.jpg?.['128'] pattern used in ProfileClient.jsx.
 // Tries jpg → webp → png, largest size first, returns absolute URL or null.
 export function extractProfilePhotoUrl(profile) {

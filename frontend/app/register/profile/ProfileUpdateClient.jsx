@@ -186,6 +186,50 @@ export default function ProfileUpdateClient() {
   async function handleSave() {
     setSubmitting(true);
     setError("");
+
+    if (!form.firstnameFa || !form.lastnameFa || !form.firstnameEn || !form.lastnameEn) {
+      setError(isEN ? "Please fill in all required fields" : "لطفا تمامی فیلدهای الزامی را تکمیل کنید");
+      setSubmitting(false);
+      return;
+    }
+
+    if (!form.email) {
+      setError(isEN ? "Email is required" : "ایمیل الزامی است");
+      setSubmitting(false);
+      return;
+    }
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(form.email)) {
+      setError(isEN ? "Please enter a valid email address" : "لطفا یک ایمیل معتبر وارد کنید");
+      setSubmitting(false);
+      return;
+    }
+
+    if (isEN ? !form.jobTitleEn : !form.jobTitleFa) {
+      setError(isEN ? "Job title is required" : "سمت شغلی الزامی است");
+      setSubmitting(false);
+      return;
+    }
+
+    if (!form.occupationId) {
+      setError(isEN ? "Occupation is required" : "شغل الزامی است");
+      setSubmitting(false);
+      return;
+    }
+
+    if (!form.fieldOfActivities.length) {
+      setError(isEN ? "Field of activity is required" : "حوزه فعالیت الزامی است");
+      setSubmitting(false);
+      return;
+    }
+
+    if (!form.educationLevelId) {
+      setError(isEN ? "Education level is required" : "مدرک تحصیلی الزامی است");
+      setSubmitting(false);
+      return;
+    }
+
     try {
       const client = getApolloClient();
 
@@ -290,7 +334,7 @@ export default function ProfileUpdateClient() {
                   <input dir="ltr" type="text" value={form.lastnameEn}
                     onChange={(e) => set("lastnameEn", e.target.value)} style={INPUT_STYLE} />
                 </Field>
-                <Field label="Job Title">
+                <Field label="Job Title" required>
                   <input dir="ltr" type="text" value={form.jobTitleEn}
                     onChange={(e) => set("jobTitleEn", e.target.value)} style={INPUT_STYLE} />
                 </Field>
@@ -305,15 +349,15 @@ export default function ProfileUpdateClient() {
                   <input dir="rtl" type="text" value={form.lastnameFa}
                     onChange={(e) => set("lastnameFa", e.target.value)} style={INPUT_STYLE} />
                 </Field>
-                <Field label="نام انگلیسی">
+                <Field label="نام انگلیسی" required>
                   <input dir="ltr" type="text" value={form.firstnameEn}
                     onChange={(e) => set("firstnameEn", e.target.value)} style={INPUT_STYLE} />
                 </Field>
-                <Field label="نام خانوادگی انگلیسی">
+                <Field label="نام خانوادگی انگلیسی" required>
                   <input dir="ltr" type="text" value={form.lastnameEn}
                     onChange={(e) => set("lastnameEn", e.target.value)} style={INPUT_STYLE} />
                 </Field>
-                <Field label="سمت شغلی">
+                <Field label="سمت شغلی" required>
                   <input dir="rtl" type="text" value={form.jobTitleFa}
                     onChange={(e) => set("jobTitleFa", e.target.value)} style={INPUT_STYLE} />
                 </Field>
@@ -332,7 +376,7 @@ export default function ProfileUpdateClient() {
 
           {/* Contact */}
           <SectionCard title={isEN ? "Contact" : "اطلاعات تماس"}>
-            <Field label={isEN ? "Email" : "ایمیل"}>
+            <Field label={isEN ? "Email" : "ایمیل"} required>
               <input dir="ltr" type="email" inputMode="email" value={form.email}
                 onChange={(e) => set("email", e.target.value.trim())} style={INPUT_STYLE} />
             </Field>
@@ -355,7 +399,7 @@ export default function ProfileUpdateClient() {
             ) : (
               <>
                 {formOptions.occupations.length > 0 && (
-                  <Field label={isEN ? "Occupation" : "شغل"}>
+                  <Field label={isEN ? "Occupation" : "شغل"} required>
                     <select
                       value={form.occupationId}
                       onChange={(e) => set("occupationId", e.target.value)}
@@ -372,7 +416,7 @@ export default function ProfileUpdateClient() {
                 )}
 
                 {formOptions.fieldOfActivities.length > 0 && (
-                  <Field label={isEN ? "Field of Activity" : "حوزه فعالیت"}>
+                  <Field label={isEN ? "Field of Activity" : "حوزه فعالیت"} required>
                     <div className="flex flex-wrap gap-2 mt-1">
                       {formOptions.fieldOfActivities.map((f) => {
                         const isActive = form.fieldOfActivities.includes(f.id);
@@ -398,7 +442,7 @@ export default function ProfileUpdateClient() {
                 )}
 
                 {formOptions.educationLevels.length > 0 && (
-                  <Field label={isEN ? "Education Level" : "مدرک تحصیلی"}>
+                  <Field label={isEN ? "Education Level" : "مدرک تحصیلی"} required>
                     <select
                       value={form.educationLevelId}
                       onChange={(e) => set("educationLevelId", e.target.value)}

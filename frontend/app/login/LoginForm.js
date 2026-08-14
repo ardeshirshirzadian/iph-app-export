@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { gql } from "@apollo/client";
 import { getApolloClient } from "@/lib/apolloClient";
-import { toPersianDigits, toEnglishDigits, toLocalMobile } from "@/lib/utils";
+import { toPersianDigits, toEnglishDigits, toLocalMobile, filterNameByLang } from "@/lib/utils";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 import LangToggle from "@/components/LangToggle";
@@ -333,11 +333,14 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
   function isProfileValid() {
     const nameOk = isEmail
       ? profileForm.firstnameEn.trim() && profileForm.lastnameEn.trim()
-      : profileForm.firstnameFa.trim() && profileForm.lastnameFa.trim();
+      : profileForm.firstnameFa.trim() && profileForm.lastnameFa.trim()
+        && profileForm.firstnameEn.trim() && profileForm.lastnameEn.trim();
     const otherOk = isEmail
       ? profileForm.otherContact.length === 11
       : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profileForm.otherContact);
-    return Boolean(nameOk && otherOk && profileForm.occupationId && profileForm.fieldOfActivities.length > 0);
+    const activitiesOk =
+      formOptions.fieldOfActivities.length === 0 || profileForm.fieldOfActivities.length > 0;
+    return Boolean(nameOk && otherOk && profileForm.occupationId && activitiesOk);
   }
 
   async function handleRegisterSubmit(e) {
@@ -691,13 +694,13 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                   <>
                     <div>
                       <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
-                        First Name
+                        First Name<span style={{ color: "var(--accent)" }}> *</span>
                       </label>
                       <input
                         dir="ltr"
                         type="text"
                         value={profileForm.firstnameEn}
-                        onChange={(e) => setProfileField("firstnameEn", e.target.value)}
+                        onChange={(e) => setProfileField("firstnameEn", filterNameByLang(e.target.value, "en"))}
                         className="w-full rounded-xl px-4 py-3 text-base outline-none border"
                         style={FIELD_STYLE}
                         onFocus={focusAccentBorder}
@@ -708,13 +711,13 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                     </div>
                     <div>
                       <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
-                        Last Name
+                        Last Name<span style={{ color: "var(--accent)" }}> *</span>
                       </label>
                       <input
                         dir="ltr"
                         type="text"
                         value={profileForm.lastnameEn}
-                        onChange={(e) => setProfileField("lastnameEn", e.target.value)}
+                        onChange={(e) => setProfileField("lastnameEn", filterNameByLang(e.target.value, "en"))}
                         className="w-full rounded-xl px-4 py-3 text-base outline-none border"
                         style={FIELD_STYLE}
                         onFocus={focusAccentBorder}
@@ -725,7 +728,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                     </div>
                     <div>
                       <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
-                        Mobile
+                        Mobile<span style={{ color: "var(--accent)" }}> *</span>
                       </label>
                       <input
                         dir="ltr"
@@ -748,13 +751,13 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                   <>
                     <div>
                       <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
-                        نام
+                        نام<span style={{ color: "var(--accent)" }}> *</span>
                       </label>
                       <input
                         dir="rtl"
                         type="text"
                         value={profileForm.firstnameFa}
-                        onChange={(e) => setProfileField("firstnameFa", e.target.value)}
+                        onChange={(e) => setProfileField("firstnameFa", filterNameByLang(e.target.value, "fa"))}
                         className="w-full rounded-xl px-4 py-3 text-base outline-none border"
                         style={FIELD_STYLE}
                         onFocus={focusAccentBorder}
@@ -765,13 +768,13 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                     </div>
                     <div>
                       <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
-                        نام خانوادگی
+                        نام خانوادگی<span style={{ color: "var(--accent)" }}> *</span>
                       </label>
                       <input
                         dir="rtl"
                         type="text"
                         value={profileForm.lastnameFa}
-                        onChange={(e) => setProfileField("lastnameFa", e.target.value)}
+                        onChange={(e) => setProfileField("lastnameFa", filterNameByLang(e.target.value, "fa"))}
                         className="w-full rounded-xl px-4 py-3 text-base outline-none border"
                         style={FIELD_STYLE}
                         onFocus={focusAccentBorder}
@@ -782,7 +785,41 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                     </div>
                     <div>
                       <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
-                        ایمیل
+                        نام انگلیسی<span style={{ color: "var(--accent)" }}> *</span>
+                      </label>
+                      <input
+                        dir="ltr"
+                        type="text"
+                        value={profileForm.firstnameEn}
+                        onChange={(e) => setProfileField("firstnameEn", filterNameByLang(e.target.value, "en"))}
+                        className="w-full rounded-xl px-4 py-3 text-base outline-none border"
+                        style={FIELD_STYLE}
+                        onFocus={focusAccentBorder}
+                        onBlur={blurDefaultBorder}
+                        placeholder="First name (Latin)"
+                        autoComplete="given-name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
+                        نام خانوادگی انگلیسی<span style={{ color: "var(--accent)" }}> *</span>
+                      </label>
+                      <input
+                        dir="ltr"
+                        type="text"
+                        value={profileForm.lastnameEn}
+                        onChange={(e) => setProfileField("lastnameEn", filterNameByLang(e.target.value, "en"))}
+                        className="w-full rounded-xl px-4 py-3 text-base outline-none border"
+                        style={FIELD_STYLE}
+                        onFocus={focusAccentBorder}
+                        onBlur={blurDefaultBorder}
+                        placeholder="Last name (Latin)"
+                        autoComplete="family-name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
+                        ایمیل<span style={{ color: "var(--accent)" }}> *</span>
                       </label>
                       <input
                         dir="ltr"
@@ -808,7 +845,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                   <>
                     <div>
                       <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
-                        {isEmail ? "Occupation" : "شغل"}
+                        {isEmail ? "Occupation" : "شغل"}<span style={{ color: "var(--accent)" }}> *</span>
                       </label>
                       <select
                         value={profileForm.occupationId}
@@ -830,7 +867,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                     {formOptions.fieldOfActivities.length > 0 && (
                       <div>
                         <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
-                          {isEmail ? "Field of Activity" : "حوزه فعالیت"}
+                          {isEmail ? "Field of Activity" : "حوزه فعالیت"}<span style={{ color: "var(--accent)" }}> *</span>
                         </label>
                         <div className="flex flex-wrap gap-2">
                           {formOptions.fieldOfActivities.map((f) => {
