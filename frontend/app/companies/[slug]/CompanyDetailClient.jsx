@@ -1,44 +1,28 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import BottomNav from "@/app/components/BottomNav";
-import AppHeader from "@/app/components/AppHeader";
+import AppHeaderRaw from "@/app/components/AppHeader";
 import { useLang } from "@/lib/useLang";
 import { toPersianDigits } from "@/lib/utils";
-import { fetchPublicGraphQL } from "@/lib/publicRasayeshClient";
 
-const EVENT_COMPANY_QUERY = `
-  query EventCompany($slug: String, $eventId: Int) {
-    eventCompany(slug: $slug, eventId: $eventId) {
-      id
-      slug
-      legal_name_fa
-      legal_name_en
-      brand_name_fa
-      brand_name_en
-      logo
-      description_fa
-      description_en
-      phones
-      emails
-      website
-      address_fa
-      address_en
-      booths(eventId: $eventId) {
-        id
-        no
-        hall { id name }
-      }
-      sponsorshipLevels {
-        icon
-        color
-        title_fa
-        title_en
-      }
-    }
-  }
-`;
+// AppHeader calls useSearchParams() internally (see components/PageHeader.jsx
+// for the full rationale) -- needs a Suspense boundary to allow this route to
+// be statically/ISR-prerendered. This file imports AppHeader directly
+// (bypassing PageHeader), so it needs its own wrapper.
+function AppHeader(props) {
+  return (
+    <Suspense fallback={null}>
+      <AppHeaderRaw {...props} />
+    </Suspense>
+  );
+}
+
+// Company detail comes live from Rasayesh (external CRM), previously
+// fetched directly from the browser via fetchPublicGraphQL(). Now proxied
+// through app/api/companies/data/route.js (type=detail), which wraps the
+// same GraphQL query in a server-side 60s unstable_cache.
 
 function getLogoUrl(logo, logoBaseUrl) {
   if (!logo) return null;
@@ -122,20 +106,17 @@ export default function CompanyDetailClient({ slug }) {
     setNotFoundState(false);
     setImgError(false);
 
-    fetch("/api/companies/config")
-      .then((r) => r.json())
-      .then(async (cfg) => {
+    // config (for logoBaseUrl) and detail (event context resolved server-side)
+    // are independent now, so fetch in parallel instead of sequentially.
+    Promise.all([
+      fetch("/api/companies/config").then((r) => r.json()),
+      fetch(`/api/companies/data?type=detail&slug=${encodeURIComponent(slug)}`).then((r) => r.json()),
+    ])
+      .then(([cfg, detailResult]) => {
         if (cancelled) return;
 
-        const eventId = cfg.eventId != null ? Number(cfg.eventId) : null;
-        const origin = cfg.eventOrigin || "https://2025.iphexpo.com";
         const base = cfg.logoBaseUrl || "https://api.rasayesh.com/";
-
-        const variables = { slug, ...(eventId != null ? { eventId } : {}) };
-        const result = await fetchPublicGraphQL(EVENT_COMPANY_QUERY, variables, origin);
-        if (cancelled) return;
-
-        const raw = result?.data?.eventCompany;
+        const raw = detailResult?.company;
         if (!raw) {
           setNotFoundState(true);
           return;

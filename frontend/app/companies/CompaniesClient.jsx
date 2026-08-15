@@ -7,44 +7,15 @@ import PageHeader from "@/components/PageHeader";
 import { toPersianDigits } from "@/lib/utils";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
-import { fetchPublicGraphQL } from "@/lib/publicRasayeshClient";
 
 const LIMIT = 10;
 
-const COMPANIES_QUERY = `
-  query EventCompanies($search: String, $orderBy: String, $eventId: Int) {
-    eventCompanies(search: $search, orderBy: $orderBy, order: "asc", all: true, eventId: $eventId) {
-      id slug legal_name_fa legal_name_en brand_name_fa brand_name_en
-      logo description_fa description_en website
-      booths(eventId: $eventId) { id no hall { id name } }
-      eventOptions { show_profile }
-    }
-    eventCompaniesCount(search: $search, eventId: $eventId)
-  }
-`;
-
-const SPONSORSHIP_LEVELS_QUERY = `
-  query SponsorshipLevels($eventId: Int) {
-    sponsorshipLevels(eventId: $eventId, orderBy: "order", order: "asc", all: true) {
-      id
-      title_fa
-      title_en
-      icon
-      color
-      sponsors { id }
-    }
-  }
-`;
-
-const FEATURE_QUERY = `
-  query EventFeatureCompanies {
-    eventFeatureCompanies {
-      company {
-        id slug legal_name_fa legal_name_en brand_name_fa brand_name_en logo
-      }
-    }
-  }
-`;
+// Company data comes live from Rasayesh (external CRM), previously fetched
+// directly from the browser via fetchPublicGraphQL(). Now proxied through
+// app/api/companies/data/route.js, which wraps the same GraphQL queries in a
+// server-side 60s unstable_cache -- eventId/eventOrigin are resolved
+// server-side from companies_config, so the client no longer needs to know
+// them before calling.
 
 function getOrderBy(sort, lang) {
   if (sort === "name_en" || (lang === "en" && !sort)) return "brand_name_en";
@@ -310,14 +281,12 @@ export default function CompaniesClient({ title, subtitle, title_en, subtitle_en
       // 2. Featured companies + sponsorship levels in parallel
       try {
         const [featResult, levelsResult] = await Promise.all([
-          fetchPublicGraphQL(FEATURE_QUERY, {}, cfg.eventOrigin),
-          cfg.eventId != null
-            ? fetchPublicGraphQL(SPONSORSHIP_LEVELS_QUERY, { eventId: Number(cfg.eventId) }, cfg.eventOrigin)
-            : Promise.resolve(null),
+          fetch("/api/companies/data?type=featured").then(r => r.json()),
+          fetch("/api/companies/data?type=sponsorship").then(r => r.json()),
         ]);
         if (!cancelled) {
-          setFeatureCompanies(featResult?.data?.eventFeatureCompanies ?? []);
-          const levels = levelsResult?.data?.sponsorshipLevels ?? [];
+          setFeatureCompanies(featResult?.featured ?? []);
+          const levels = levelsResult?.levels ?? [];
           const map = {};
           for (const level of levels) {
             for (const s of level.sponsors ?? []) {
@@ -344,16 +313,14 @@ export default function CompaniesClient({ title, subtitle, title_en, subtitle_en
     let cancelled = false;
     setCompaniesLoading(true);
 
-    const variables = {
-      orderBy: getOrderBy(sort, lang),
-      ...(debouncedSearch ? { search: debouncedSearch } : {}),
-      ...(config.eventId != null ? { eventId: Number(config.eventId) } : {}),
-    };
+    const qs = new URLSearchParams({ type: "list", orderBy: getOrderBy(sort, lang) });
+    if (debouncedSearch) qs.set("search", debouncedSearch);
 
-    fetchPublicGraphQL(COMPANIES_QUERY, variables, config.eventOrigin)
+    fetch(`/api/companies/data?${qs.toString()}`)
+      .then(r => r.json())
       .then(result => {
         if (cancelled) return;
-        const raw = result?.data?.eventCompanies ?? [];
+        const raw = result?.companies ?? [];
         setAllCompanies(raw.map(c => mapCompany(c, sponsorMapRef.current)));
       })
       .catch(err => {
