@@ -447,8 +447,8 @@ export default function EditProfileClient() {
         variables: {
           firstnameFa: form.firstnameFa,
           lastnameFa: form.lastnameFa,
-          firstnameEn: form.firstnameEn || user?.firstname_en || "",
-          lastnameEn: form.lastnameEn || user?.lastname_en || "",
+          firstnameEn: (form.firstnameEn || "").trim(),
+          lastnameEn: (form.lastnameEn || "").trim(),
           jobTitleFa: form.jobTitleFa,
           jobTitleEn: form.jobTitleEn,
           nationalCode: form.nationalCode,
@@ -487,7 +487,7 @@ export default function EditProfileClient() {
             : null,
           email: form.email,
           phone: (() => {
-            const p = form.phone || attendeeData?.phone || null;
+            const p = (form.phone || "").trim();
             if (!p) return null;
             return p.startsWith('+98') ? '0' + p.slice(3) : p;
           })(),
