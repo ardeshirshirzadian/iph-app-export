@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import { query } from '@/lib/db';
 
 export async function GET() {
@@ -19,6 +20,9 @@ export async function POST(req) {
        ON CONFLICT (key) DO UPDATE SET value = $1`,
       [JSON.stringify(config)]
     );
+    // Same-process admin route (this repo's own legacy /apn/map-labels admin
+    // page) -- unlike the iph-apn cases, no cross-container HTTP call needed.
+    revalidateTag('map-labels', { expire: 0 });
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('[api/admin/map-labels POST]', err.message);
