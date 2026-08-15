@@ -23,13 +23,30 @@ let _pagesCache = null
 let _pagesCacheTime = 0
 const PAGES_CACHE_TTL = 60_000
 
+// auth_token_version only changes when an admin explicitly force-logs-out all
+// sessions — same rarely-changes / admin-triggered-only shape as app_pages
+// above — so it's cached the same way instead of hitting the DB on every
+// single authenticated request/navigation/prefetch.
+let _tokenVersionCache = null
+let _tokenVersionCacheTime = 0
+const TOKEN_VERSION_CACHE_TTL = 60_000
+
 async function getCurrentTokenVersion() {
+  const now = Date.now()
+  if (_tokenVersionCache !== null && now - _tokenVersionCacheTime < TOKEN_VERSION_CACHE_TTL) {
+    return _tokenVersionCache
+  }
   const client = await getProxyPool().connect()
   try {
     const { rows } = await client.query(
       "SELECT value FROM app_settings WHERE key = 'auth_token_version'"
     )
-    return rows[0]?.value?.version ?? 1
+    const version = rows[0]?.value?.version ?? 1
+    _tokenVersionCache = version
+    _tokenVersionCacheTime = now
+    return version
+  } catch {
+    return _tokenVersionCache ?? 1
   } finally {
     client.release()
   }
