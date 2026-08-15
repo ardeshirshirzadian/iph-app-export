@@ -2196,6 +2196,10 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
   const showLevelCircle = appearanceConfig?.show_level_circle !== false;
 
   const refreshQuest = useCallback(() => {
+    // Stats included so XP/level (UserCard's useAnimatedCounter) update in the same
+    // pass as missions/badges — this is called right after a quiz/survey/social-share
+    // action completes, not just from the 45s poll, so it must carry XP too.
+    fetch('/api/quest/stats').then(r => r.json()).then(d => setQuestStats(prev => (prev ? { ...prev, ...d } : d))).catch(() => {});
     fetch('/api/quest').then(r => r.json()).then(d => { if (Array.isArray(d.missions)) setLiveMissions(d.missions); }).catch(() => {});
     fetch('/api/quest/badges').then(r => r.json()).then(d => { if (Array.isArray(d.badges)) setLiveBadges(d.badges); }).catch(() => {});
   }, []);
