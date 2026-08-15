@@ -1,4 +1,5 @@
 import "./globals.css";
+import { unstable_cache } from "next/cache";
 import ThemeSync from "./components/ThemeSync";
 import LangSync from "./components/LangSync";
 import ServiceWorkerRegistrar from "./components/ServiceWorkerRegistrar";
@@ -13,10 +14,55 @@ import { getAppIdentity } from "@/lib/getAppIdentity";
 import { existsSync } from "fs";
 import { join } from "path";
 
-export const dynamic = 'force-dynamic';
+// Layout-scoped cache entries, one per underlying admin setting. Each wraps
+// the SAME shared lib/*.js function other call sites already use — the
+// functions themselves are never modified, so those other call sites are
+// unaffected by this change:
+//   - getActiveFont/getActiveFontEn: no other callers in the app.
+//   - getThemeColors: also called directly (unwrapped, always-fresh) by
+//     app/api/theme.css/route.js, which is intentionally `no-store` already
+//     and stays that way — untouched here.
+//   - getThemeMode: also called by app/settings/page.js under its own
+//     'settings-theme-mode' tag (existing, pre-dates this change). Kept as a
+//     SEPARATE 'layout-theme-mode' tag rather than merged, so neither
+//     already-shipped call site has to change — the tradeoff is the admin
+//     save handler for theme_mode must revalidate both tags (documented in
+//     the iph-apn wiring), not just one.
+//   - getAppIdentity: also called by app/manifest.js, which has its own
+//     independent `force-dynamic` (manifest.js is a metadata file
+//     convention, not rendered under this layout's React tree, so it's
+//     unaffected by removing force-dynamic here) — left unwrapped/untouched.
+// 300s is a safety-net ceiling only; the primary invalidation path is the
+// explicit revalidateTag() call from iph-apn's admin save handlers via
+// app/api/internal/revalidate/route.js.
+const getCachedActiveFont = unstable_cache(
+  () => getActiveFont(),
+  ["layout-font"],
+  { tags: ["layout-font"], revalidate: 300 }
+);
+const getCachedActiveFontEn = unstable_cache(
+  () => getActiveFontEn(),
+  ["layout-font-en"],
+  { tags: ["layout-font-en"], revalidate: 300 }
+);
+const getCachedThemeColors = unstable_cache(
+  () => getThemeColors(),
+  ["layout-theme-colors"],
+  { tags: ["layout-theme-colors"], revalidate: 300 }
+);
+const getCachedThemeMode = unstable_cache(
+  () => getThemeMode(),
+  ["layout-theme-mode"],
+  { tags: ["layout-theme-mode"], revalidate: 300 }
+);
+const getCachedAppIdentity = unstable_cache(
+  () => getAppIdentity(),
+  ["layout-app-identity"],
+  { tags: ["layout-app-identity"], revalidate: 300 }
+);
 
 export async function generateMetadata() {
-  const identity = await getAppIdentity();
+  const identity = await getCachedAppIdentity();
 
   const uploadedFavicon = join(process.cwd(), 'public', 'uploads', 'icons', 'favicon.png');
   const faviconHref = existsSync(uploadedFavicon)
@@ -96,10 +142,10 @@ function buildFontEnStyle(activeFontEn) {
 
 export default async function RootLayout({ children }) {
   const [activeFont, activeFontEn, themeColors, themeMode] = await Promise.all([
-    getActiveFont(),
-    getActiveFontEn(),
-    getThemeColors(),
-    getThemeMode(),
+    getCachedActiveFont(),
+    getCachedActiveFontEn(),
+    getCachedThemeColors(),
+    getCachedThemeMode(),
   ]);
   const fontStyle = buildFontStyle(activeFont);
   const fontEnStyle = buildFontEnStyle(activeFontEn);
