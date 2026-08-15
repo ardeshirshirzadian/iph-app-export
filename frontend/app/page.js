@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache';
 import { query } from '@/lib/db';
 import { getPageTitle } from '@/lib/getPageTitles';
 import { getWelcomeToast } from '@/lib/getWelcomeToast';
@@ -93,19 +94,27 @@ const BADGE_DEFAULTS = {
 
 // ── Config reader ────────────────────────────────────────────────────────────
 
-async function getHomeContentRoute() {
-  try {
-    const result = await query("SELECT value FROM app_settings WHERE key = 'home_page_config'");
-    return result.rows[0]?.value?.redirect_path || '';
-  } catch {
-    return '';
-  }
-}
+// Which variant is "home" is a significant admin action (e.g. switching home
+// from Quest to Map during an event) and must reflect promptly — see the
+// on-demand revalidateTag() call wired into iph-apn's home-page save handler.
+// 300s is a safety-net ceiling only, same pattern as app/settings/page.js.
+const getCachedHomeContentRoute = unstable_cache(
+  async () => {
+    try {
+      const result = await query("SELECT value FROM app_settings WHERE key = 'home_page_config'");
+      return result.rows[0]?.value?.redirect_path || '';
+    } catch {
+      return '';
+    }
+  },
+  ['home-page-config'],
+  { tags: ['home-page-config'], revalidate: 300 }
+);
 
 // ── Page component ───────────────────────────────────────────────────────────
 
 export default async function Home() {
-  const route = await getHomeContentRoute();
+  const route = await getCachedHomeContentRoute();
 
   // Each case replicates the exact server-side logic from its own page.js,
   // then renders that page's Client Component directly. The URL stays "/".
