@@ -3,21 +3,10 @@ import { getPageTitle } from '@/lib/getPageTitles';
 import { getWelcomeToast } from '@/lib/getWelcomeToast';
 import { getPushPrompt } from '@/lib/getPushPrompt';
 import { ensureQuestContentTable } from '@/lib/initQuestContent';
-
-// Default home
-import HomeClient from './components/HomeClient';
-
-// Aliasable page clients
-import QuestClient from './quest/QuestClient';
-import CompaniesClient from './companies/CompaniesClient';
-import PanelsClient from './panels/PanelsClient';
-import BadgeClient from './badge/BadgeClient';
-import MapClient from './map/MapClient';
-import ChatClient from './chat/ChatClient';
-import NotificationsClient from './notifications/NotificationsClient';
-import GalleryClient from './gallery/GalleryClient';
-import NewsClient from './news/NewsClient';
-import ProfileClient from './profile/ProfileClient';
+// HomeVariantRenderer is a "use client" dispatcher that next/dynamic()-imports
+// whichever one of the 11 possible homepage variants `route` selects below —
+// see that file for why the dynamic imports live there and not here.
+import HomeVariantRenderer from './components/HomeVariantRenderer';
 
 export const dynamic = 'force-dynamic';
 
@@ -143,17 +132,17 @@ export default async function Home() {
         // Fall back to defaults in QuestClient
       }
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('quest');
-      return <QuestClient content={content} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} appearanceConfig={appearanceConfig} isHomeContext={true} />;
+      return <HomeVariantRenderer route="/quest" content={content} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} appearanceConfig={appearanceConfig} isHomeContext={true} />;
     }
 
     case '/companies': {
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('companies');
-      return <CompaniesClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
+      return <HomeVariantRenderer route="/companies" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/panels': {
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('panels');
-      return <PanelsClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
+      return <HomeVariantRenderer route="/panels" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/badge': {
@@ -165,7 +154,8 @@ export default async function Home() {
         // fall back to defaults
       }
       return (
-        <BadgeClient
+        <HomeVariantRenderer
+          route="/badge"
           title={settings.title_fa}
           subtitle={settings.subtitle_fa}
           title_en={settings.title_en}
@@ -178,32 +168,32 @@ export default async function Home() {
 
     case '/map': {
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('map');
-      return <MapClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
+      return <HomeVariantRenderer route="/map" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/chat': {
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('chat');
-      return <ChatClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
+      return <HomeVariantRenderer route="/chat" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/notifications': {
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('notifications');
-      return <NotificationsClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
+      return <HomeVariantRenderer route="/notifications" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/gallery': {
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('gallery');
-      return <GalleryClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
+      return <HomeVariantRenderer route="/gallery" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/news': {
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('news');
-      return <NewsClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
+      return <HomeVariantRenderer route="/news" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/profile': {
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('profile');
-      return <ProfileClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
+      return <HomeVariantRenderer route="/profile" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     default: {
@@ -216,7 +206,8 @@ export default async function Home() {
         getPushPrompt(),
       ]);
       return (
-        <HomeClient
+        <HomeVariantRenderer
+          route=""
           services={services}
           banners={banners}
           defaultNotifications={defaultNotifications}
