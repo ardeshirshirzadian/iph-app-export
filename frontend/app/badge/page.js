@@ -1,7 +1,6 @@
+import { unstable_cache } from 'next/cache';
 import { query } from '@/lib/db';
 import BadgeClient from './BadgeClient';
-
-export const dynamic = 'force-dynamic';
 
 const BADGE_DEFAULTS = {
   title_fa: 'کارت بازدیدکننده',
@@ -15,16 +14,28 @@ const BADGE_DEFAULTS = {
   logo_icon_size: 64,
 };
 
-export default async function BadgePage() {
-  let settings = BADGE_DEFAULTS;
-  try {
-    const result = await query("SELECT value FROM app_settings WHERE key = 'badge_page'");
-    if (result.rows[0]?.value) {
-      settings = { ...BADGE_DEFAULTS, ...result.rows[0].value };
+// Admin-editable-only (iph-apn PUT /api/admin/badge) -- tag-based on-demand
+// revalidation via app/api/internal/revalidate, 300s fallback. Same pattern
+// as app/settings/page.js.
+const getCachedBadgePageConfig = unstable_cache(
+  async () => {
+    let settings = BADGE_DEFAULTS;
+    try {
+      const result = await query("SELECT value FROM app_settings WHERE key = 'badge_page'");
+      if (result.rows[0]?.value) {
+        settings = { ...BADGE_DEFAULTS, ...result.rows[0].value };
+      }
+    } catch {
+      // fall back to defaults
     }
-  } catch {
-    // fall back to defaults
-  }
+    return settings;
+  },
+  ['badge-page-config'],
+  { tags: ['badge-page-config'], revalidate: 300 }
+);
+
+export default async function BadgePage() {
+  const settings = await getCachedBadgePageConfig();
 
   return (
     <BadgeClient

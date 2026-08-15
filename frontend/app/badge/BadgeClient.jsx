@@ -10,7 +10,6 @@ import RasayeshBadgeCard from "@/components/RasayeshBadgeCard";
 import { useAuth } from "../../hooks/useAuth";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
-import { fetchPublicGraphQL } from "@/lib/publicRasayeshClient";
 import Button from "@/components/Button";
 
 const BADGE_QUERY = gql`
@@ -26,17 +25,6 @@ const BADGE_QUERY = gql`
         registrationPlan { id }
         event { id slug }
       }
-    }
-  }
-`;
-
-const EVENT_TEMPLATE_QUERY = `
-  query EventTemplate($id: Int!) {
-    eventTemplate(id: $id) {
-      id
-      title
-      key
-      value
     }
   }
 `;
@@ -251,19 +239,14 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
       .then(async (configRes) => {
         const eventSlug = configRes.event_slug || 'iph';
         const templateId = Number(configRes.card_template_id) || 0;
-        const eventOrigin = configRes.event_origin || 'https://2025.iphexpo.com';
 
-        // Template fetch (public, no auth) and badge query run in parallel.
-        // Template failure is isolated — falls back to null without blocking the badge.
+        // Template fetch (server-side cached proxy) and badge query run in
+        // parallel. Template failure is isolated — falls back to null
+        // without blocking the badge.
         const tmplPromise = templateId > 0
-          ? fetchPublicGraphQL(EVENT_TEMPLATE_QUERY, { id: templateId }, eventOrigin)
-              .then((res) => {
-                const t = res?.data?.eventTemplate;
-                if (!t?.value) return null;
-                try {
-                  return typeof t.value === 'string' ? JSON.parse(t.value) : t.value;
-                } catch { return null; }
-              })
+          ? fetch(`/api/badge/template?templateId=${templateId}`)
+              .then((r) => r.json())
+              .then((res) => res?.template ?? null)
               .catch(() => null)
           : Promise.resolve(null);
 
