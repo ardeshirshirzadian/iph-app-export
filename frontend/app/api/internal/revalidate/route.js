@@ -28,8 +28,16 @@ export async function POST(request) {
     return NextResponse.json({ revalidated: false, error: 'missing_path_or_tag' }, { status: 400 });
   }
 
+  // { expire: 0 } (not the default/'max' profile) is required here: this
+  // endpoint's whole purpose is the "reflect within seconds" guarantee for
+  // admin saves, which needs immediate expiration + blocking revalidate on
+  // the very next request. 'max' gives stale-while-revalidate semantics
+  // instead (first request after a save would still show OLD data), which
+  // would silently violate that guarantee. Per Next's own docs, { expire: 0 }
+  // is exactly the documented pattern for "webhooks/external systems that
+  // need immediate expiration" -- which is precisely what this endpoint is.
   if (path) revalidatePath(path);
-  if (tag) revalidateTag(tag);
+  if (tag) revalidateTag(tag, { expire: 0 });
 
   return NextResponse.json({ revalidated: true, now: Date.now() });
 }

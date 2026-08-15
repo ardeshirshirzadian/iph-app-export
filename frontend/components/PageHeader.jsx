@@ -1,8 +1,24 @@
 "use client";
+import { Suspense } from "react";
 import { useRouter } from "next/navigation";
 import AppHeader from "@/app/components/AppHeader";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
+
+// AppHeader calls useSearchParams() internally (only as a useEffect
+// dependency, not rendered) -- Next requires that behind a Suspense boundary
+// to allow the page it's rendered on to be statically/ISR-prerendered.
+// Without this, every page rendering PageHeader would hard-fail the build
+// the moment it (or an ancestor layout) stops being force-dynamic. No
+// runtime behavior change post-hydration -- fallback={null} is effectively
+// invisible since AppHeader itself renders near-instantly.
+function SuspendedAppHeader(props) {
+  return (
+    <Suspense fallback={null}>
+      <AppHeader {...props} />
+    </Suspense>
+  );
+}
 
 export default function PageHeader({ title, title_en, subtitle, subtitle_en, showBack = true, leftActions, rightActions, isHomeContext = false }) {
   const router = useRouter();
@@ -11,12 +27,12 @@ export default function PageHeader({ title, title_en, subtitle, subtitle_en, sho
   const displaySubtitle = (lang === 'en' && subtitle_en) ? subtitle_en : subtitle;
 
   if (isHomeContext) {
-    return <AppHeader leftActions={leftActions} rightActions={rightActions} />;
+    return <SuspendedAppHeader leftActions={leftActions} rightActions={rightActions} />;
   }
 
   return (
     <>
-      <AppHeader leftActions={leftActions} rightActions={rightActions} />
+      <SuspendedAppHeader leftActions={leftActions} rightActions={rightActions} />
       {(title || showBack) && (
         // dir="ltr" keeps the back button always on the physical LEFT regardless of language
         <div className="flex items-center gap-3 mb-4" dir="ltr">
