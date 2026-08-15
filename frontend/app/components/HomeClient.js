@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import BottomNav from "./BottomNav";
-import AppHeader from "./AppHeader";
+import PageHeader from "@/components/PageHeader";
 import Toast from "@/components/Toast";
 import { isPushSupported, isIOS, isStandalone, requestNotificationPermission, subscribeToPush } from "@/lib/pushClient";
 import { useLang } from "@/lib/useLang";
@@ -513,7 +513,7 @@ export default function HomeClient({ services, banners = [], defaultNotification
       )}
 
       <div className="relative max-w-md mx-auto px-4">
-        <AppHeader />
+        <PageHeader isHomeContext={true} />
 
         {/* Banner carousel — hidden when no active banners */}
         {visibleBanners.length > 0 && (

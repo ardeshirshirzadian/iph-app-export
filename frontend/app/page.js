@@ -23,8 +23,6 @@ import {
 // see that file for why the dynamic imports live there and not here.
 import HomeVariantRenderer from './components/HomeVariantRenderer';
 
-export const dynamic = 'force-dynamic';
-
 // ── Default home data fetchers ───────────────────────────────────────────────
 
 async function getActiveServices() {
@@ -59,6 +57,32 @@ async function getDefaultNotifications() {
     return [];
   }
 }
+
+// All admin-curated content (services list, banner images, default-notification
+// text, welcome-toast/push-prompt config) with no per-user or live state — see
+// iph-apn's services/banners/notifications/welcome-toast/push-prompt save
+// handlers for the matching revalidateTag() wiring. Same 300s fallback TTL
+// convention as getCachedHomeContentRoute above.
+const getCachedActiveServices = unstable_cache(getActiveServices, ['home-active-services'], {
+  tags: ['home-active-services'],
+  revalidate: 300,
+});
+const getCachedActiveBanners = unstable_cache(getActiveBanners, ['home-active-banners'], {
+  tags: ['home-active-banners'],
+  revalidate: 300,
+});
+const getCachedDefaultNotifications = unstable_cache(getDefaultNotifications, ['home-default-notifications'], {
+  tags: ['home-default-notifications'],
+  revalidate: 300,
+});
+const getCachedWelcomeToast = unstable_cache(getWelcomeToast, ['home-welcome-toast'], {
+  tags: ['home-welcome-toast'],
+  revalidate: 300,
+});
+const getCachedPushPrompt = unstable_cache(getPushPrompt, ['home-push-prompt'], {
+  tags: ['home-push-prompt'],
+  revalidate: 300,
+});
 
 // ── Config reader ────────────────────────────────────────────────────────────
 
@@ -164,11 +188,11 @@ export default async function Home() {
     default: {
       // Default (empty setting): render the services grid exactly as before.
       const [services, banners, defaultNotifications, welcomeToast, pushPrompt] = await Promise.all([
-        getActiveServices(),
-        getActiveBanners(),
-        getDefaultNotifications(),
-        getWelcomeToast(),
-        getPushPrompt(),
+        getCachedActiveServices(),
+        getCachedActiveBanners(),
+        getCachedDefaultNotifications(),
+        getCachedWelcomeToast(),
+        getCachedPushPrompt(),
       ]);
       return (
         <HomeVariantRenderer
