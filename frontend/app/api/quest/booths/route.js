@@ -1,6 +1,30 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { unstable_cache } from 'next/cache';
 import { query } from '@/lib/db';
+import { getCachedCompaniesConfig } from '@/lib/getCompaniesConfig';
+
+// Booth/company DEFINITIONS only (admin/Rasayesh-sourced via the local
+// companies table -- brand name, hall, booth number, logo, booth_xp,
+// repeatable-scan config) -- cached. scanned_ids / last_scan_map below stay
+// completely live, computed fresh per request from the userUuid cookie.
+const getCachedBoothDefinitions = unstable_cache(
+  async (eventId) => {
+    const companiesResult = await query(
+      `SELECT id, brand_name_fa, brand_name_en, hall_name, booth_no,
+              booth_uuid, logo, is_sponsor, booth_xp,
+              repeatable_scan, repeatable_scan_hours,
+              repeatable_start_hour, repeatable_end_hour
+       FROM companies
+       WHERE hall_name IS NOT NULL AND booth_uuid IS NOT NULL AND event_id = $1
+       ORDER BY repeatable_scan DESC, hall_name ASC, booth_no ASC`,
+      [eventId]
+    );
+    return companiesResult.rows.map(c => ({ ...c, xp: c.booth_xp ?? 10 }));
+  },
+  ['quest-booth-definitions'],
+  { tags: ['quest-booth-definitions'], revalidate: 300 }
+);
 
 export async function GET() {
   const cookieStore = await cookies();
@@ -12,23 +36,11 @@ export async function GET() {
   } catch {}
 
   try {
-    const settingsResult = await query("SELECT value FROM app_settings WHERE key = 'companies_config'");
-    const config = settingsResult.rows[0]?.value || {};
-    const logoBaseUrl = config.logo_base_url || 'https://api.rasayesh.com/';
-    const eventId = config.event_id;
+    const config = await getCachedCompaniesConfig();
+    const logoBaseUrl = config.logoBaseUrl || 'https://api.rasayesh.com/';
+    const eventId = config.eventId;
 
-    const companiesResult = await query(
-      `SELECT id, brand_name_fa, brand_name_en, hall_name, booth_no,
-              booth_uuid, logo, is_sponsor, booth_xp,
-              repeatable_scan, repeatable_scan_hours,
-              repeatable_start_hour, repeatable_end_hour
-       FROM companies
-       WHERE hall_name IS NOT NULL AND booth_uuid IS NOT NULL AND event_id = $1
-       ORDER BY repeatable_scan DESC, hall_name ASC, booth_no ASC`,
-      [Number(eventId)]
-    );
-
-    const booths = companiesResult.rows.map(c => ({ ...c, xp: c.booth_xp ?? 10 }));
+    const booths = await getCachedBoothDefinitions(Number(eventId));
 
     let scanned_ids = [];
     let last_scan_map = {};

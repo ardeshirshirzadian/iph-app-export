@@ -1,7 +1,24 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { unstable_cache } from 'next/cache';
 import { query } from '@/lib/db';
 import { ensureFeaturedBoothState, getFeaturedBoothCountdown } from '@/lib/featuredBoothHelper';
+
+// Mission DEFINITIONS only (admin-curated: title/description/xp/icon/quiz
+// question/survey fields/etc, quest_content table) — cached. Every per-user
+// field (progress, quiz_attempted, survey_submitted, social_share_status,
+// featured-booth pool scan status) is computed below via calcProgress() and
+// friends, per request, per user, completely untouched by this change.
+const getCachedMissionDefinitions = unstable_cache(
+  async () => {
+    const { rows } = await query(
+      `SELECT * FROM quest_content WHERE is_active = true ORDER BY sort_order ASC, id ASC`
+    );
+    return rows;
+  },
+  ['quest-mission-definitions'],
+  { tags: ['quest-mission-definitions'], revalidate: 300 }
+);
 
 async function getUserUuid() {
   const cookieStore = await cookies();
@@ -108,9 +125,7 @@ export async function GET() {
     const settingsResult = await query("SELECT value FROM app_settings WHERE key = 'companies_config'");
     const eventId = settingsResult.rows[0]?.value?.event_id;
 
-    const { rows } = await query(
-      `SELECT * FROM quest_content WHERE is_active = true ORDER BY sort_order ASC, id ASC`
-    );
+    const rows = await getCachedMissionDefinitions();
 
     const missions = await Promise.all(
       rows.map(async (m) => {
