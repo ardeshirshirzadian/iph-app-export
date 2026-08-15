@@ -53,14 +53,33 @@
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import AppHeader from "@/app/components/AppHeader";
 import BottomNav from "../components/BottomNav";
 import { useLang } from "@/lib/useLang";
 import { toPersianDigits } from "@/lib/utils";
 import { buildFloorGrids, findMultiFloorRoute, pathLength } from "@/lib/mapPathfinding";
-import Map3DView from "./Map3DView";
 import { groupOuterLoops } from "./mapUtils.js";
+
+// Three.js/WebGL can't render server-side, and it's the single largest JS
+// chunk in the build (~650K) — ssr: false plus lazy-loading keeps it off
+// every route except an actual 2D->3D toggle on /map.
+const Map3DView = dynamic(() => import("./Map3DView"), {
+  ssr: false,
+  loading: () => <Map3DViewLoading />,
+});
+
+// Mirrors the MapSkeleton visual pattern below (same pulse/glass styling)
+// so the brief chunk-fetch state (first 3D toggle per session; cached after)
+// doesn't look like a different loading system.
+function Map3DViewLoading() {
+  return (
+    <div className="absolute inset-0 flex items-center justify-center" style={{ background: "var(--bg)" }}>
+      <div className="w-10 h-10 rounded-full animate-pulse" style={{ background: "rgba(0,255,179,0.15)" }} />
+    </div>
+  );
+}
 
 const RASAYESH_BASE = "https://api.rasayesh.com/";
 const DRAG_THRESHOLD = 6; // px movement before a touch is treated as a drag (not a tap)
