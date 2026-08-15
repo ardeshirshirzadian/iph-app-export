@@ -3,7 +3,21 @@ import { query } from '@/lib/db';
 import { getPageTitle } from '@/lib/getPageTitles';
 import { getWelcomeToast } from '@/lib/getWelcomeToast';
 import { getPushPrompt } from '@/lib/getPushPrompt';
-import { ensureQuestContentTable } from '@/lib/initQuestContent';
+import {
+  getCachedQuestContentBlocks,
+  getCachedQuestAppearanceConfig,
+  getCachedQuestPageTitle,
+  parseQuestBlocks,
+} from '@/lib/questPageCache';
+import { getCachedBadgePageConfig } from '@/lib/badgePageCache';
+import {
+  getCachedCompaniesPageTitle,
+  getCachedPanelsPageTitle,
+  getCachedMapPageTitle,
+  getCachedChatPageTitle,
+  getCachedGalleryPageTitle,
+  getCachedNewsPageTitle,
+} from '@/lib/pageTitleCache';
 // HomeVariantRenderer is a "use client" dispatcher that next/dynamic()-imports
 // whichever one of the 11 possible homepage variants `route` selects below —
 // see that file for why the dynamic imports live there and not here.
@@ -46,52 +60,6 @@ async function getDefaultNotifications() {
   }
 }
 
-// ── Quest content parser (mirrors quest/page.js) ─────────────────────────────
-
-function parseQuestBlocks(rows) {
-  const main = {};
-  const main_en = {};
-  const missions = [];
-  const leaderboard = [];
-  const badges = [];
-
-  for (const row of rows) {
-    if (row.section === 'main') {
-      if (row.block_key.startsWith('icon_')) {
-        try {
-          const p = JSON.parse(row.content);
-          if (typeof p === 'object' && p !== null) { main[row.block_key] = p; continue; }
-        } catch {}
-      }
-      main[row.block_key] = row.content;
-      if (row.content_en) main_en[row.block_key] = row.content_en;
-    } else {
-      let parsed;
-      try { parsed = JSON.parse(row.content); } catch { continue; }
-      const entry = { id: row.id, block_key: row.block_key, sort_order: row.sort_order, ...parsed };
-      if (row.section === 'missions')    missions.push(entry);
-      if (row.section === 'leaderboard') leaderboard.push(entry);
-      if (row.section === 'badges')      badges.push(entry);
-    }
-  }
-
-  return { main, main_en, missions, leaderboard, badges };
-}
-
-// ── Badge defaults (mirrors badge/page.js) ───────────────────────────────────
-
-const BADGE_DEFAULTS = {
-  title_fa: 'کارت بازدیدکننده',
-  title_en: 'Visitor Badge',
-  subtitle_fa: 'اطلاعات شما در نمایشگاه',
-  subtitle_en: 'Your Exhibition Information',
-  event_name_fa: 'یازدهمین نمایشگاه ایران فارما ۱۴۰۵',
-  event_name_en: '11th IranPharma Exhibition 2025',
-  logo_icon_type: 'image',
-  logo_icon_value: '/logo/logo-l.png',
-  logo_icon_size: 64,
-};
-
 // ── Config reader ────────────────────────────────────────────────────────────
 
 // Which variant is "home" is a significant admin action (e.g. switching home
@@ -123,45 +91,33 @@ export default async function Home() {
     case '/quest': {
       let content = { main: {}, main_en: {}, missions: [], leaderboard: [], badges: [] };
       try {
-        await ensureQuestContentTable();
-        const result = await query(
-          'SELECT * FROM quest_content_blocks ORDER BY section, sort_order ASC, id ASC'
-        );
-        content = parseQuestBlocks(result.rows);
+        const rows = await getCachedQuestContentBlocks();
+        content = parseQuestBlocks(rows);
       } catch (err) {
         console.error('[home→quest] failed to load content blocks:', err.message);
       }
       let appearanceConfig = {};
       try {
-        const appResult = await query(
-          "SELECT value FROM app_settings WHERE key = 'quest_appearance_config'"
-        );
-        appearanceConfig = appResult.rows[0]?.value ?? {};
+        appearanceConfig = await getCachedQuestAppearanceConfig();
       } catch {
         // Fall back to defaults in QuestClient
       }
-      const { title, subtitle, title_en, subtitle_en } = await getPageTitle('quest');
+      const { title, subtitle, title_en, subtitle_en } = await getCachedQuestPageTitle();
       return <HomeVariantRenderer route="/quest" content={content} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} appearanceConfig={appearanceConfig} isHomeContext={true} />;
     }
 
     case '/companies': {
-      const { title, subtitle, title_en, subtitle_en } = await getPageTitle('companies');
+      const { title, subtitle, title_en, subtitle_en } = await getCachedCompaniesPageTitle();
       return <HomeVariantRenderer route="/companies" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/panels': {
-      const { title, subtitle, title_en, subtitle_en } = await getPageTitle('panels');
+      const { title, subtitle, title_en, subtitle_en } = await getCachedPanelsPageTitle();
       return <HomeVariantRenderer route="/panels" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/badge': {
-      let settings = BADGE_DEFAULTS;
-      try {
-        const result = await query("SELECT value FROM app_settings WHERE key = 'badge_page'");
-        if (result.rows[0]?.value) settings = { ...BADGE_DEFAULTS, ...result.rows[0].value };
-      } catch {
-        // fall back to defaults
-      }
+      const settings = await getCachedBadgePageConfig();
       return (
         <HomeVariantRenderer
           route="/badge"
@@ -176,12 +132,12 @@ export default async function Home() {
     }
 
     case '/map': {
-      const { title, subtitle, title_en, subtitle_en } = await getPageTitle('map');
+      const { title, subtitle, title_en, subtitle_en } = await getCachedMapPageTitle();
       return <HomeVariantRenderer route="/map" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/chat': {
-      const { title, subtitle, title_en, subtitle_en } = await getPageTitle('chat');
+      const { title, subtitle, title_en, subtitle_en } = await getCachedChatPageTitle();
       return <HomeVariantRenderer route="/chat" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
@@ -191,12 +147,12 @@ export default async function Home() {
     }
 
     case '/gallery': {
-      const { title, subtitle, title_en, subtitle_en } = await getPageTitle('gallery');
+      const { title, subtitle, title_en, subtitle_en } = await getCachedGalleryPageTitle();
       return <HomeVariantRenderer route="/gallery" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/news': {
-      const { title, subtitle, title_en, subtitle_en } = await getPageTitle('news');
+      const { title, subtitle, title_en, subtitle_en } = await getCachedNewsPageTitle();
       return <HomeVariantRenderer route="/news" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
