@@ -52,10 +52,10 @@
 // ║    [ ] Does it need pathfinding? → add to buildFloorGrids once, cache it.    ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { Suspense, useState, useEffect, useRef, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import AppHeader from "@/app/components/AppHeader";
+import AppHeaderRaw from "@/app/components/AppHeader";
 import BottomNav from "../components/BottomNav";
 import { useLang } from "@/lib/useLang";
 import { toPersianDigits } from "@/lib/utils";
@@ -78,6 +78,19 @@ function Map3DViewLoading() {
     <div className="absolute inset-0 flex items-center justify-center" style={{ background: "var(--bg)" }}>
       <div className="w-10 h-10 rounded-full animate-pulse" style={{ background: "rgba(0,255,179,0.15)" }} />
     </div>
+  );
+}
+
+// AppHeader calls useSearchParams() internally (see components/PageHeader.jsx
+// for the full rationale) -- needs a Suspense boundary to allow this route to
+// be statically/ISR-prerendered. This file imports AppHeader directly
+// (bypassing PageHeader), so it needs its own wrapper. Unrelated to
+// Map3DView/WebGL -- no change to that lazy-load block above.
+function AppHeader(props) {
+  return (
+    <Suspense fallback={null}>
+      <AppHeaderRaw {...props} />
+    </Suspense>
   );
 }
 
