@@ -11,7 +11,7 @@ function getProxyPool() {
   if (!_proxyPool) {
     _proxyPool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      max: 2,
+      max: 5,
       idleTimeoutMillis: 60000,
       connectionTimeoutMillis: 2000,
     })
