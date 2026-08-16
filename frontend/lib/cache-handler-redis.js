@@ -26,6 +26,39 @@ const { createClient } = require('redis');
 const KEY_PREFIX = 'iph-app:cache:';
 const REDIS_URL = process.env.REDIS_URL;
 
+// Plain JSON.stringify/JSON.parse silently destroys the non-JSON-safe types
+// Next.js puts on APP_PAGE (and APP_ROUTE/IMAGE) cache entries:
+//   - `segmentData` is a Map<segmentPath, Buffer> (per-segment RSC prefetch
+//     payloads) — JSON.stringify(Map) serializes to "{}" (Map has no own
+//     enumerable properties), so it comes back as an empty object with no
+//     .get(). That object is only ever read on RSC/prefetch requests
+//     (_rsc=... query param), never on full HTML page loads — which is why
+//     this only broke navigation prefetching, not normal browsing.
+//   - `rscData` / APP_ROUTE's `body` / IMAGE's `buffer` are Buffers. Buffer
+//     has a toJSON() that JSON.stringify uses, so it survives stringify as
+//     {type:'Buffer', data:[...]}, but JSON.parse has no matching reviver by
+//     default, so get() returned that plain object instead of a real Buffer.
+// Confirmed directly against a live Redis entry (iph-app:cache:/badge):
+// segmentData came back as {} and rscData as {type:'Buffer', data:[...]}.
+function replacer(key, value) {
+  const original = this[key];
+  if (Buffer.isBuffer(original)) {
+    return { __type: 'Buffer', data: original.toString('base64') };
+  }
+  if (original instanceof Map) {
+    return { __type: 'Map', entries: Array.from(original.entries()) };
+  }
+  return value;
+}
+
+function reviver(key, value) {
+  if (value && typeof value === 'object') {
+    if (value.__type === 'Buffer') return Buffer.from(value.data, 'base64');
+    if (value.__type === 'Map') return new Map(value.entries);
+  }
+  return value;
+}
+
 let client = null;
 
 function getClient() {
@@ -93,7 +126,7 @@ module.exports = class RedisCacheHandler {
     try {
       const raw = await c.get(KEY_PREFIX + key);
       if (!raw) return null;
-      return JSON.parse(raw);
+      return JSON.parse(raw, reviver);
     } catch (err) {
       console.error('[cache-handler-redis] get() failed, treating as cache miss:', err.message);
       return null;
@@ -106,11 +139,14 @@ module.exports = class RedisCacheHandler {
     try {
       await c.set(
         KEY_PREFIX + key,
-        JSON.stringify({
-          value: data,
-          lastModified: Date.now(),
-          tags: (ctx && ctx.tags) || [],
-        })
+        JSON.stringify(
+          {
+            value: data,
+            lastModified: Date.now(),
+            tags: (ctx && ctx.tags) || [],
+          },
+          replacer
+        )
       );
     } catch (err) {
       console.error('[cache-handler-redis] set() failed, entry will regenerate next request:', err.message);
