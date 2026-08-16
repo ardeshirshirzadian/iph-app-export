@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { gql } from "@apollo/client";
 import { getApolloClient } from "@/lib/apolloClient";
+import { getFormOptions } from "@/lib/formOptionsCache";
 import { toPersianDigits, toEnglishDigits, toLocalMobile, filterNameByLang } from "@/lib/utils";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
@@ -23,12 +24,6 @@ const VERIFY_OTP = gql`
   }
 `;
 
-const FORM_OPTIONS_QUERY = gql`
-  {
-    occupations(industryId: 1) { id title_fa title_en }
-    fieldOfActivities(industryId: 1) { id title_fa title_en }
-  }
-`;
 
 const REGISTER_MUTATION = gql`
   mutation Register(
@@ -145,11 +140,10 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
   // Lazily load occupation/field-of-activity options once we know contact is a new attendee
   useEffect(() => {
     if (step !== 3) return;
-    const client = getApolloClient();
-    client.query({ query: FORM_OPTIONS_QUERY })
-      .then(({ data }) => setFormOptions({
-        occupations: data?.occupations ?? [],
-        fieldOfActivities: data?.fieldOfActivities ?? [],
+    getFormOptions()
+      .then((data) => setFormOptions({
+        occupations: data.occupations,
+        fieldOfActivities: data.fieldOfActivities,
       }))
       .catch(() => {})
       .finally(() => setOptionsLoading(false));

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { gql } from "@apollo/client";
 import { getApolloClient } from "@/lib/apolloClient";
+import { getFormOptions } from "@/lib/formOptionsCache";
 import BottomNav from "@/app/components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { useAuth } from "@/hooks/useAuth";
@@ -16,14 +17,6 @@ const ATTENDEE_QUERY = gql`
       firstname_en lastname_en national_code email profile phone
       occupation_id education_level_id field_of_activities { id } job_title_en
     }
-  }
-`;
-
-const FORM_OPTIONS_QUERY = gql`
-  {
-    occupations(industryId: 1) { id title_fa title_en }
-    fieldOfActivities(industryId: 1) { id title_fa title_en }
-    educationLevels { id title_fa title_en }
   }
 `;
 
@@ -135,16 +128,12 @@ export default function ProfileUpdateClient() {
     }));
   }, [user]);
 
-  // Load form options + extended profile via Apollo
+  // Load form options (shared cache) + extended profile via Apollo
   useEffect(() => {
     const client = getApolloClient();
 
-    client.query({ query: FORM_OPTIONS_QUERY })
-      .then(({ data }) => setFormOptions({
-        occupations: data?.occupations ?? [],
-        fieldOfActivities: data?.fieldOfActivities ?? [],
-        educationLevels: data?.educationLevels ?? [],
-      }))
+    getFormOptions()
+      .then(setFormOptions)
       .catch(() => {})
       .finally(() => setOptionsLoading(false));
 
