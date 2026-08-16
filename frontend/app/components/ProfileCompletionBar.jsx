@@ -1,20 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Link from "next/link";
-import { gql } from "@apollo/client";
-import { getApolloClient } from "@/lib/apolloClient";
-import { useAuth } from "@/hooks/useAuth";
+import { useAttendee } from "./AttendeeProvider";
 import { toPersianDigits } from "@/lib/utils";
-
-const PROFILE_QUERY = gql`
-  query {
-    getAttendee {
-      id firstname_fa national_code occupation_id
-      education_level_id field_of_activities { id } profile
-    }
-  }
-`;
 
 const PROFILE_FIELDS = [
   (a) => !!a.firstname_fa,
@@ -26,26 +14,14 @@ const PROFILE_FIELDS = [
 ];
 
 export default function ProfileCompletionBar({ lang }) {
-  const { user } = useAuth();
-  const [pct, setPct] = useState(null);
-  const [completed, setCompleted] = useState(0);
+  const { attendee } = useAttendee();
 
-  useEffect(() => {
-    if (!user?.id) return;
-    const client = getApolloClient();
-    if (!client) return;
-    client.query({ query: PROFILE_QUERY, fetchPolicy: 'network-only' })
-      .then(({ data }) => {
-        const a = data?.getAttendee;
-        if (!a) return;
-        const done = PROFILE_FIELDS.filter((fn) => fn(a)).length;
-        setCompleted(done);
-        setPct(Math.round((done / PROFILE_FIELDS.length) * 100));
-      })
-      .catch(() => {});
-  }, [user?.id]);
+  if (!attendee) return null;
 
-  if (pct === null || pct >= 100) return null;
+  const completed = PROFILE_FIELDS.filter((fn) => fn(attendee)).length;
+  const pct = Math.round((completed / PROFILE_FIELDS.length) * 100);
+
+  if (pct >= 100) return null;
 
   const pctLabel = lang === 'fa' ? `٪${toPersianDigits(pct)}` : `${pct}%`;
   const countLabel = lang === 'fa'

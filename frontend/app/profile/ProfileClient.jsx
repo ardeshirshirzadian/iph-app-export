@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { gql } from "@apollo/client";
-import { getApolloClient } from "@/lib/apolloClient";
 import BottomNav from "../components/BottomNav";
 import { linkMask } from "../components/AppHeader";
+import { useAttendee } from "../components/AttendeeProvider";
 import PageHeader from "@/components/PageHeader";
 import ProfileCompletionBar from "../components/ProfileCompletionBar";
 import Button from "@/components/Button";
@@ -16,36 +15,6 @@ import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 
 const RASAYESH_BASE = "https://api.rasayesh.com/";
-
-const ATTENDEE_QUERY = gql`
-  query GetAttendee {
-    getAttendee {
-      id
-      firstname_fa
-      lastname_fa
-      firstname_en
-      lastname_en
-      job_title_fa
-      job_title_en
-      national_code
-      email
-      phone
-      mobile
-      country_id
-      state_id
-      address_fa
-      address_en
-      postal_code
-      latitude
-      longitude
-      profile
-      occupation_id
-      education_level_id
-      field_of_activities { id title_fa title_en }
-      todayEventPresence(eventId: 18)
-    }
-  }
-`;
 
 function maskNationalCode(code, lang) {
   if (!code || code.length < 7) return code;
@@ -135,35 +104,20 @@ function GearIcon({ lang }) {
 }
 
 export default function ProfileClient({ title, subtitle, title_en, subtitle_en, isHomeContext = false }) {
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
   const router = useRouter();
-  const [attendeeData, setAttendeeData] = useState(null);
-  const [profileLoading, setProfileLoading] = useState(false);
+  const { attendee: attendeeData, loading: profileLoading } = useAttendee();
   const { lang, isRTL } = useLang();
 
-  const [authReady, setAuthReady] = useState(false);
-
+  // Log today's attendance once per mount when presence is confirmed —
+  // decoupled from how many times the underlying shared query itself runs.
+  const attendanceLoggedRef = useRef(false);
   useEffect(() => {
-    queueMicrotask(() => setAuthReady(true));
-  }, []);
-
-  useEffect(() => {
-    if (!authReady || !user?.id) return;
-    const client = getApolloClient();
-
-    setProfileLoading(true);
-    client.query({ query: ATTENDEE_QUERY, fetchPolicy: 'network-only' })
-      .then(({ data }) => {
-        if (data?.getAttendee) {
-          setAttendeeData(data.getAttendee);
-          if (data.getAttendee.todayEventPresence) {
-            fetch('/api/attendance/log', { method: 'POST' }).catch(() => {});
-          }
-        }
-      })
-      .catch(() => {})
-      .finally(() => setProfileLoading(false));
-  }, [authReady, user?.id]);
+    if (attendeeData?.todayEventPresence && !attendanceLoggedRef.current) {
+      attendanceLoggedRef.current = true;
+      fetch('/api/attendance/log', { method: 'POST' }).catch(() => {});
+    }
+  }, [attendeeData]);
 
   const fullNameFa = attendeeData ? `${attendeeData.firstname_fa || ""} ${attendeeData.lastname_fa || ""}`.trim() : "";
   const enName = attendeeData ? `${attendeeData.firstname_en || ""} ${attendeeData.lastname_en || ""}`.trim() : "";
