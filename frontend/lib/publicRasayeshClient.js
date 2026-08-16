@@ -63,3 +63,53 @@ export async function fetchPublicGraphQL(query, variables = {}, eventOrigin) {
   }
   return json;
 }
+
+const EVENT_REGISTRATION_PLANS_QUERY = `
+  query EventRegistrationPlans($eventId: Int, $orderBy: String, $order: String) {
+    eventRegistrationPlans(eventId: $eventId, orderBy: $orderBy, order: $order, all: true) {
+      id
+      event_id
+      title_fa
+      title_en
+      description_fa
+      description_en
+      features_fa
+      features_en
+      icon
+      color
+      price
+      discount
+      capacity
+      usage_count
+      disable_wizard
+      is_retraining
+      force_selection
+      disabled
+    }
+  }
+`;
+
+const REGISTRATION_PLANS_TTL_MS = 5 * 60 * 1000;
+const registrationPlansCache = new Map(); // eventId -> { data, expiresAt }
+
+// Shared by RegisterClient.jsx and ConfirmClient.jsx — same wizard session,
+// same event, so a fetch by either step can serve the other. Mirrors
+// getRasayeshEventInfo()'s TTL-cache pattern above; this is public
+// (unauthenticated) data fetched via fetchPublicGraphQL, not through Apollo.
+export async function getEventRegistrationPlans(eventId, eventOrigin) {
+  const id = Number(eventId);
+  const cached = registrationPlansCache.get(id);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.data;
+  }
+
+  const result = await fetchPublicGraphQL(
+    EVENT_REGISTRATION_PLANS_QUERY,
+    { eventId: id, orderBy: 'order', order: 'ASC' },
+    eventOrigin
+  );
+  const plans = result?.data?.eventRegistrationPlans ?? [];
+
+  registrationPlansCache.set(id, { data: plans, expiresAt: Date.now() + REGISTRATION_PLANS_TTL_MS });
+  return plans;
+}

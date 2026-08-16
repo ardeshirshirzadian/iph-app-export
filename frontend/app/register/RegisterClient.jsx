@@ -7,32 +7,7 @@ import PageHeader from "@/components/PageHeader";
 import { useLang } from "@/lib/useLang";
 import { toPersianDigits } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
-import { fetchPublicGraphQL } from "@/lib/publicRasayeshClient";
-
-const EVENT_REGISTRATION_PLANS_QUERY = `
-  query EventRegistrationPlans($eventId: Int, $orderBy: String, $order: String) {
-    eventRegistrationPlans(eventId: $eventId, orderBy: $orderBy, order: $order, all: true) {
-      id
-      event_id
-      title_fa
-      title_en
-      description_fa
-      description_en
-      features_fa
-      features_en
-      icon
-      color
-      price
-      discount
-      capacity
-      usage_count
-      disable_wizard
-      is_retraining
-      force_selection
-      disabled
-    }
-  }
-`;
+import { getEventRegistrationPlans } from "@/lib/publicRasayeshClient";
 
 function formatPrice(price, lang) {
   if (!price || price === 0) return lang === "fa" ? "رایگان" : "Free";
@@ -196,12 +171,7 @@ export default function RegisterClient({ title, subtitle, title_en, subtitle_en 
           setAlreadyRegistered(true);
         }
 
-        return fetchPublicGraphQL(
-          EVENT_REGISTRATION_PLANS_QUERY,
-          { eventId: plansData.event_id, orderBy: "order", order: "ASC" },
-          plansData.eventOrigin
-        ).then((result) => {
-          const fetchedPlans = result?.data?.eventRegistrationPlans ?? [];
+        return getEventRegistrationPlans(plansData.event_id, plansData.eventOrigin).then((fetchedPlans) => {
           setPlans(fetchedPlans);
           const preSelected = new Set(
             fetchedPlans

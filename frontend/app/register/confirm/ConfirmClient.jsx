@@ -9,32 +9,7 @@ import PageHeader from "@/components/PageHeader";
 import { useAuth } from "@/hooks/useAuth";
 import { useLang } from "@/lib/useLang";
 import { toPersianDigits } from "@/lib/utils";
-import { fetchPublicGraphQL } from "@/lib/publicRasayeshClient";
-
-const EVENT_REGISTRATION_PLANS_QUERY = `
-  query EventRegistrationPlans($eventId: Int, $orderBy: String, $order: String) {
-    eventRegistrationPlans(eventId: $eventId, orderBy: $orderBy, order: $order, all: true) {
-      id
-      event_id
-      title_fa
-      title_en
-      description_fa
-      description_en
-      features_fa
-      features_en
-      icon
-      color
-      price
-      discount
-      capacity
-      usage_count
-      disable_wizard
-      is_retraining
-      force_selection
-      disabled
-    }
-  }
-`;
+import { getEventRegistrationPlans } from "@/lib/publicRasayeshClient";
 
 const ADD_WIZARD_ITEMS = gql`
   mutation AddWizardItems($planIds: [Int!]!, $redirectUrl: String!) {
@@ -70,11 +45,7 @@ export default function ConfirmClient() {
       .then((r) => r.json())
       .then((config) => {
         if (!config.enabled) return [];
-        return fetchPublicGraphQL(
-          EVENT_REGISTRATION_PLANS_QUERY,
-          { eventId: config.event_id, orderBy: "order", order: "ASC" },
-          config.eventOrigin
-        ).then((result) => result?.data?.eventRegistrationPlans ?? []);
+        return getEventRegistrationPlans(config.event_id, config.eventOrigin);
       })
       .then((allPlans) => {
         setPlans(allPlans);
