@@ -1,21 +1,7 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { gql } from "@apollo/client";
-import { getApolloClient } from "@/lib/apolloClient";
-
-const LS_PHOTO_OK = "iph_photo_ok";
-
-const PROFILE_PHOTO_QUERY = gql`
-  query GetAttendeePhotoGuard { getAttendee { profile } }
-`;
-
-function readUserCookie() {
-  if (typeof document === "undefined") return null;
-  const m = document.cookie.match(/(?:^|; )iph_user=([^;]*)/);
-  if (!m) return null;
-  try { return JSON.parse(decodeURIComponent(m[1])); } catch { return null; }
-}
+import { useAttendee } from "./AttendeeProvider";
 
 // Paths where the guard must NOT redirect (to avoid infinite loops / blocking access)
 function isAllowedPath(pathname) {
@@ -33,37 +19,21 @@ function isAllowedPath(pathname) {
 export default function ProfilePhotoGuard() {
   const pathname = usePathname();
   const router = useRouter();
-  const checkingRef = useRef(false);
+  const { attendee, loading, isLoggedIn } = useAttendee();
 
   useEffect(() => {
     if (isAllowedPath(pathname)) return;
+    // `loading` stays true until AttendeeProvider has fully resolved login
+    // state (and fetched attendee data if logged in) — checking it before
+    // isLoggedIn avoids a window where isLoggedIn is already true but the
+    // fetch hasn't started, which would otherwise look like "no photo".
+    if (loading) return;
+    if (!isLoggedIn) return;
 
-    const user = readUserCookie();
-    if (!user) return;
-
-    // Session-level cache: avoid querying GraphQL on every navigation
-    if (typeof localStorage !== "undefined" && localStorage.getItem(LS_PHOTO_OK)) return;
-
-    if (checkingRef.current) return;
-    checkingRef.current = true;
-
-    const client = getApolloClient();
-    if (!client) { checkingRef.current = false; return; }
-
-    client
-      .query({ query: PROFILE_PHOTO_QUERY, fetchPolicy: "cache-first" })
-      .then(({ data }) => {
-        const jpg = data?.getAttendee?.profile?.jpg;
-        const hasPhoto = !!(jpg?.["128"] || jpg?.["256"] || jpg?.["512"]);
-        if (hasPhoto) {
-          localStorage.setItem(LS_PHOTO_OK, "1");
-        } else {
-          router.replace("/profile");
-        }
-      })
-      .catch(() => {})
-      .finally(() => { checkingRef.current = false; });
-  }, [pathname, router]);
+    const jpg = attendee?.profile?.jpg;
+    const hasPhoto = !!(jpg?.["128"] || jpg?.["256"] || jpg?.["512"]);
+    if (!hasPhoto) router.replace("/profile");
+  }, [pathname, router, isLoggedIn, loading, attendee]);
 
   return null;
 }

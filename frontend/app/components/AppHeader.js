@@ -2,23 +2,16 @@
 import Link from "next/link";
 
 import { useState, useCallback, useEffect } from "react";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { gql } from "@apollo/client";
-import { getApolloClient } from "@/lib/apolloClient";
+import { useRouter, usePathname } from "next/navigation";
+import { useAttendee } from "./AttendeeProvider";
+import { useCart } from "./CartProvider";
+import { useAuth } from "@/hooks/useAuth";
 import Logo from "@/components/Logo";
 import Toast from "@/components/Toast";
 import { toPersianDigits } from "@/lib/utils";
 import { useNotificationSocket } from "@/lib/socketClient";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
-
-const CART_HAS_ITEMS = gql`
-  query { getAttendeeCart { id status cart_items { id } } }
-`;
-
-const PROFILE_PHOTO_QUERY = gql`
-  query GetAttendeeHeaderPhoto { getAttendee { profile } }
-`;
 
 const RASAYESH_BASE = "https://api.rasayesh.com/";
 
@@ -75,13 +68,6 @@ const USER_MASK = {
   color: "var(--text)",
 };
 
-function readUserCookie() {
-  if (typeof document === "undefined") return null;
-  const m = document.cookie.match(/(?:^|; )iph_user=([^;]*)/);
-  if (!m) return null;
-  try { return JSON.parse(decodeURIComponent(m[1])); } catch { return null; }
-}
-
 // Custom-link icon uses the same mask technique as bell/cart.
 // Exported so other standalone icon buttons (e.g. ProfileClient's GearIcon)
 // can reuse the same theming technique instead of duplicating it.
@@ -111,16 +97,19 @@ let _headerCache = null;
 export default function AppHeader({ leftActions, rightActions }) {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const onNotifPage = pathname === "/notifications";
   const { lang, isRTL } = useLang();
+
+  const { isLoggedIn } = useAuth();
+  const { attendee } = useAttendee();
+  const { hasCart } = useCart();
+  const attendeeJpg = attendee?.profile?.jpg;
+  const photoPath = attendeeJpg?.["128"] || attendeeJpg?.["256"] || attendeeJpg?.["512"];
+  const profilePhotoUrl = photoPath ? `${RASAYESH_BASE}${photoPath}` : null;
 
   const [notifications, setNotifications] = useState([]);
   const [lastSeen, setLastSeen] = useState(0);
   const [liveToast, setLiveToast] = useState(null);
-  const [hasCart, setHasCart] = useState(false);
-  const [profilePhotoUrl, setProfilePhotoUrl] = useState(null);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
   // Initialise from module-level cache so remounts render instantly without refetch.
   const [headerItems, setHeaderItems] = useState(_headerCache);
 
@@ -131,35 +120,6 @@ export default function AppHeader({ leftActions, rightActions }) {
       .then(({ notifications: rows = [] }) => setNotifications(rows))
       .catch(() => {});
   }, []);
-
-  useEffect(() => {
-    const user = readUserCookie();
-    if (!user) return;
-    setIsLoggedIn(true);
-    const client = getApolloClient();
-    if (!client) return;
-    client.query({ query: PROFILE_PHOTO_QUERY, fetchPolicy: "cache-first" })
-      .then(({ data }) => {
-        const jpg = data?.getAttendee?.profile?.jpg;
-        const url = jpg?.["128"] || jpg?.["256"] || jpg?.["512"];
-        if (url) setProfilePhotoUrl(`${RASAYESH_BASE}${url}`);
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    const token = typeof window !== "undefined" && localStorage.getItem("access_token");
-    if (!token) { setHasCart(false); return; }
-    const client = getApolloClient();
-    if (!client) return;
-    client.query({ query: CART_HAS_ITEMS })
-      .then(({ data }) => {
-        const cart = data?.getAttendeeCart;
-        const items = cart?.cart_items || [];
-        setHasCart(!!(cart?.id && !["paid", "cancelled", "expired"].includes(cart.status) && items.length > 0));
-      })
-      .catch(() => setHasCart(false));
-  }, [pathname, searchParams]);
 
   useEffect(() => {
     if (onNotifPage) {
