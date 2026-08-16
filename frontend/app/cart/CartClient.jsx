@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { gql } from "@apollo/client";
 import { getApolloClient } from "@/lib/apolloClient";
+import { useCart } from "../components/CartProvider";
 import BottomNav from "../components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { useLang } from "@/lib/useLang";
@@ -102,6 +103,7 @@ function parseCartData(cartGql) {
 export default function CartClient() {
   const { lang, isRTL } = useLang();
   const router = useRouter();
+  const { refetchCart } = useCart();
 
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState(null);
@@ -139,6 +141,7 @@ export default function CartClient() {
       const client = getApolloClient();
       await client.mutate({ mutation: DELETE_ITEM, variables: { id: itemId } });
       await loadCart();
+      refetchCart();
       setCouponResult(null);
     } catch {
       // ignore
@@ -206,6 +209,7 @@ export default function CartClient() {
       const client = getApolloClient();
       const items = cart?.items ?? [];
       await Promise.all(items.map(item => client.mutate({ mutation: DELETE_ITEM, variables: { id: item.id } })));
+      refetchCart();
       router.push("/");
     } catch {
       setCancelLoading(false);
