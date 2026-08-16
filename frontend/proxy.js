@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { Pool } from 'pg'
+import { createClient } from 'redis'
 import { verifyAdminToken } from '@/lib/adminAuth'
 import { ADMIN_SECTIONS } from '@/lib/adminSections'
 
@@ -19,22 +20,60 @@ function getProxyPool() {
   return _proxyPool
 }
 
-let _pagesCache = null
-let _pagesCacheTime = 0
-const PAGES_CACHE_TTL = 60_000
+// Own Redis client, isolated from lib/cache-handler-redis.js's for the same
+// reason the pg pool above is isolated from lib/db.js's — and its own key
+// prefix so the two never collide. Same fail-open contract as that file:
+// every call checks isReady synchronously and never awaits a connection
+// attempt, so a down/unreachable Redis degrades to a per-request DB query
+// instead of blocking or throwing (see cache-handler-redis.js for the full
+// rationale). This matters more here than there: proxy.js runs on every
+// authenticated request, not just cache misses.
+const PROXY_KEY_PREFIX = 'iph-app:proxy:'
+const REDIS_URL = process.env.REDIS_URL
+
+let _redisClient = null
+function getRedisClient() {
+  if (!REDIS_URL) return null
+  if (_redisClient) return _redisClient
+  _redisClient = createClient({
+    url: REDIS_URL,
+    socket: {
+      connectTimeout: 2000,
+      reconnectStrategy: (retries) => Math.min(retries * 500, 5000),
+    },
+  })
+  _redisClient.on('error', (err) => {
+    console.error('[proxy] Redis connection error:', err.message)
+  })
+  _redisClient.connect().catch((err) => {
+    console.error('[proxy] Redis initial connect failed (fail-open, querying DB directly):', err.message)
+  })
+  return _redisClient
+}
+
+function redisReady() {
+  const c = getRedisClient()
+  return c && c.isReady ? c : null
+}
 
 // auth_token_version only changes when an admin explicitly force-logs-out all
 // sessions — same rarely-changes / admin-triggered-only shape as app_pages
-// above — so it's cached the same way instead of hitting the DB on every
-// single authenticated request/navigation/prefetch.
-let _tokenVersionCache = null
-let _tokenVersionCacheTime = 0
-const TOKEN_VERSION_CACHE_TTL = 60_000
+// below — so it's cached the same way instead of hitting the DB on every
+// single authenticated request/navigation/prefetch. Shared across all
+// container replicas via Redis instead of a per-process variable, so a
+// force-logout takes effect on every instance within the same TTL window.
+const TOKEN_VERSION_CACHE_TTL_SEC = 60
+const PAGES_CACHE_TTL_SEC = 60
 
 async function getCurrentTokenVersion() {
-  const now = Date.now()
-  if (_tokenVersionCache !== null && now - _tokenVersionCacheTime < TOKEN_VERSION_CACHE_TTL) {
-    return _tokenVersionCache
+  const c = redisReady()
+  if (c) {
+    try {
+      const cached = await c.get(PROXY_KEY_PREFIX + 'token-version')
+      if (cached !== null) return Number(cached)
+    } catch (err) {
+      console.error('[proxy] Redis get(token-version) failed, querying DB:', err.message)
+    }
   }
   const client = await getProxyPool().connect()
   try {
@@ -42,29 +81,42 @@ async function getCurrentTokenVersion() {
       "SELECT value FROM app_settings WHERE key = 'auth_token_version'"
     )
     const version = rows[0]?.value?.version ?? 1
-    _tokenVersionCache = version
-    _tokenVersionCacheTime = now
+    if (c) {
+      c.setEx(PROXY_KEY_PREFIX + 'token-version', TOKEN_VERSION_CACHE_TTL_SEC, String(version)).catch((err) => {
+        console.error('[proxy] Redis setEx(token-version) failed:', err.message)
+      })
+    }
     return version
   } catch {
-    return _tokenVersionCache ?? 1
+    return 1
   } finally {
     client.release()
   }
 }
 
 async function getAppPages() {
-  const now = Date.now()
-  if (_pagesCache && now - _pagesCacheTime < PAGES_CACHE_TTL) return _pagesCache
+  const c = redisReady()
+  if (c) {
+    try {
+      const cached = await c.get(PROXY_KEY_PREFIX + 'app-pages')
+      if (cached !== null) return JSON.parse(cached)
+    } catch (err) {
+      console.error('[proxy] Redis get(app-pages) failed, querying DB:', err.message)
+    }
+  }
   const client = await getProxyPool().connect()
   try {
     const { rows } = await client.query(
       'SELECT page_key, default_path, custom_path, is_active FROM app_pages ORDER BY id ASC'
     )
-    _pagesCache = rows
-    _pagesCacheTime = now
+    if (c) {
+      c.setEx(PROXY_KEY_PREFIX + 'app-pages', PAGES_CACHE_TTL_SEC, JSON.stringify(rows)).catch((err) => {
+        console.error('[proxy] Redis setEx(app-pages) failed:', err.message)
+      })
+    }
     return rows
   } catch {
-    return _pagesCache || []
+    return []
   } finally {
     client.release()
   }
