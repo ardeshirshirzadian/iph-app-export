@@ -4,9 +4,11 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { gql } from "@apollo/client";
 import { getApolloClient } from "@/lib/apolloClient";
+import { getFormOptions } from "@/lib/formOptionsCache";
 import Cropper from "react-easy-crop";
 import BottomNav from "@/app/components/BottomNav";
 import PageHeader from "@/components/PageHeader";
+import { useAttendee } from "@/app/components/AttendeeProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
@@ -85,44 +87,6 @@ async function uploadProfileImage(blob, fields) {
   });
   return res.json();
 }
-
-const ATTENDEE_QUERY = gql`
-  query GetAttendee {
-    getAttendee {
-      id
-      firstname_fa
-      lastname_fa
-      firstname_en
-      lastname_en
-      job_title_fa
-      job_title_en
-      national_code
-      email
-      phone
-      mobile
-      country_id
-      state_id
-      address_fa
-      address_en
-      postal_code
-      latitude
-      longitude
-      profile
-      occupation_id
-      education_level_id
-      field_of_activities { id title_fa title_en }
-      todayEventPresence(eventId: 18)
-    }
-  }
-`;
-
-const FORM_OPTIONS_QUERY = gql`
-  {
-    occupations(industryId: 1) { id title_fa title_en }
-    fieldOfActivities(industryId: 1) { id title_fa title_en }
-    educationLevels { id title_fa title_en }
-  }
-`;
 
 const UPDATE_INFO = gql`
   mutation UpdateInfo(
@@ -284,8 +248,9 @@ export default function EditProfileClient() {
   const [phoneVerifyError,   setPhoneVerifyError]   = useState("");
   const [phoneSuccess,       setPhoneSuccess]       = useState("");
 
-  // Fresh attendee data from Rasayesh (network-only fetch)
-  const [attendeeData, setAttendeeData] = useState(null);
+  // Shared attendee data — fetched once at login by AttendeeProvider, kept
+  // fresh here via refetch() after each save below.
+  const { attendee: attendeeData, refetch } = useAttendee();
 
   // Profile photo state
   const [profileUrl,       setProfileUrl]       = useState(null);
@@ -329,31 +294,23 @@ export default function EditProfileClient() {
     });
   }, [attendeeData]);
 
-  // Load profile and form options via Apollo
+  // Sync the local photo preview from shared attendee data (initial load and
+  // any later refetch). confirmCrop overrides this instantly from the upload
+  // response, ahead of the shared refetch resolving.
   useEffect(() => {
-    const client = getApolloClient();
+    const pSrc = attendeeData?.profile?.jpg?.["128"]
+      ? `${RASAYESH_BASE}${attendeeData.profile.jpg["128"]}`
+      : null;
+    setProfileUrl(pSrc);
+  }, [attendeeData]);
 
-    client.query({ query: ATTENDEE_QUERY, fetchPolicy: 'network-only' })
-      .then(({ data }) => {
-        const a = data?.getAttendee;
-        if (!a) return;
-        const pSrc = a.profile?.jpg?.["128"]
-          ? `${RASAYESH_BASE}${a.profile.jpg["128"]}`
-          : null;
-        setProfileUrl(pSrc);
-        setAttendeeData(a);
-      })
-      .catch(() => {});
-
-    client.query({ query: FORM_OPTIONS_QUERY })
-      .then(({ data }) => setFormOptions({
-        occupations: data?.occupations ?? [],
-        fieldOfActivities: data?.fieldOfActivities ?? [],
-        educationLevels: data?.educationLevels ?? [],
-      }))
+  // Load form options via the shared cache
+  useEffect(() => {
+    getFormOptions()
+      .then(setFormOptions)
       .catch(() => {})
       .finally(() => setOptionsLoading(false));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (phoneCountdown <= 0) return;
@@ -421,13 +378,14 @@ export default function EditProfileClient() {
         ? `${RASAYESH_BASE}${profileObj.jpg["128"]}`
         : null;
       if (newSrc) setProfileUrl(newSrc);
-      // Evict so ProfileClient re-fetches fresh data
+      // Evict, then refetch the shared context so header/guard/completion-bar/
+      // profile page all pick up the new photo (the guard now reads live
+      // from shared state, replacing the old iph_photo_ok localStorage flag).
       const client = getApolloClient();
       client.cache.evict({ fieldName: "getAttendee" });
       client.cache.evict({ fieldName: "attendee" });
       client.cache.gc();
-      // Unblock the mandatory-photo guard now that a photo exists
-      localStorage.setItem("iph_photo_ok", "1");
+      await refetch();
       setCropSrc(null);
     } catch (err) {
       setPhotoError(err.message || "خطا در آپلود تصویر");
@@ -465,7 +423,7 @@ export default function EditProfileClient() {
       client.cache.evict({ fieldName: 'getAttendee' });
       client.cache.evict({ fieldName: 'attendee' });
       client.cache.gc();
-      await client.query({ query: ATTENDEE_QUERY, fetchPolicy: 'network-only' });
+      await refetch();
       hapticSuccess();
       setInfoState({ saving: false, saved: true, error: "" });
       setTimeout(() => router.push("/profile"), 1500);
@@ -512,7 +470,7 @@ export default function EditProfileClient() {
       client.cache.evict({ fieldName: 'getAttendee' });
       client.cache.evict({ fieldName: 'attendee' });
       client.cache.gc();
-      await client.query({ query: ATTENDEE_QUERY, fetchPolicy: 'network-only' });
+      await refetch();
       hapticSuccess();
       setContactState({ saving: false, saved: true, error: "" });
       setTimeout(() => router.push("/profile"), 1500);
@@ -560,11 +518,11 @@ export default function EditProfileClient() {
         setPhoneVerifyError(payload.errors?.code?.[0] || "کد نادرست است");
         return;
       }
-      setAttendeeData(prev => ({ ...prev, mobile: newPhone }));
       const client2 = getApolloClient();
       client2.cache.evict({ fieldName: "getAttendee" });
       client2.cache.evict({ fieldName: "attendee" });
       client2.cache.gc();
+      await refetch();
       setPhoneStep("idle");
       setNewPhone("");
       setPhoneOtp("");
@@ -602,7 +560,7 @@ export default function EditProfileClient() {
       client.cache.evict({ fieldName: 'getAttendee' });
       client.cache.evict({ fieldName: 'attendee' });
       client.cache.gc();
-      await client.query({ query: ATTENDEE_QUERY, fetchPolicy: 'network-only' });
+      await refetch();
       hapticSuccess();
       setActivityState({ saving: false, saved: true, error: "" });
       setTimeout(() => router.push("/profile"), 1500);
