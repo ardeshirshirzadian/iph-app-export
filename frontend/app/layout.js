@@ -102,7 +102,7 @@ function buildThemeInitScript(darkBg, lightBg, themeMode) {
   } else {
     modeSnippet = `var t=localStorage.getItem("iph-theme");if(!t){t=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";}var light=t==="light";`;
   }
-  return `(function(){try{${modeSnippet}if(light)document.documentElement.classList.add("light");var c=light?"${lightBg}":"${darkBg}";var s=document.createElement("style");s.textContent="body{background-color:"+c+"}";document.head.appendChild(s);var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",c);var ab=document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');if(ab)ab.setAttribute("content",light?"default":"black-translucent");}catch(e){}})();`;
+  return `(function(){try{${modeSnippet}if(light)document.documentElement.classList.add("light");var c=light?"${lightBg}":"${darkBg}";document.documentElement.style.backgroundColor=c;var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",c);var ab=document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');if(ab)ab.setAttribute("content",light?"default":"black-translucent");}catch(e){}})();`;
 }
 
 function buildFontStyle(activeFont) {
@@ -156,7 +156,7 @@ export default async function RootLayout({ children }) {
   const themeInitScript = buildThemeInitScript(themeColors.dark.bg, themeColors.light.bg, themeMode);
 
   return (
-    <html lang="fa" dir="rtl">
+    <html lang="fa" dir="rtl" suppressHydrationWarning>
       <head>
         {/* theme-color must come before the inline scripts so the DOM nodes exist */}
         <meta name="theme-color" content={themeColors.dark.bg} />
