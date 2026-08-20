@@ -13,6 +13,7 @@ import { getActiveFont, getActiveFontEn } from "@/lib/getActiveFont";
 import { getThemeColors } from "@/lib/getThemeColors";
 import { getThemeMode } from "@/lib/getThemeMode";
 import { getAppIdentity } from "@/lib/getAppIdentity";
+import { getCurrentEventId } from "@/lib/currentEvent";
 import { existsSync } from "fs";
 import { join } from "path";
 
@@ -38,33 +39,34 @@ import { join } from "path";
 // explicit revalidateTag() call from iph-apn's admin save handlers via
 // app/api/internal/revalidate/route.js.
 const getCachedActiveFont = unstable_cache(
-  () => getActiveFont(),
+  (eventId) => getActiveFont(eventId),
   ["layout-font"],
   { tags: ["layout-font"], revalidate: 300 }
 );
 const getCachedActiveFontEn = unstable_cache(
-  () => getActiveFontEn(),
+  (eventId) => getActiveFontEn(eventId),
   ["layout-font-en"],
   { tags: ["layout-font-en"], revalidate: 300 }
 );
 const getCachedThemeColors = unstable_cache(
-  () => getThemeColors(),
+  (eventId) => getThemeColors(eventId),
   ["layout-theme-colors"],
   { tags: ["layout-theme-colors"], revalidate: 300 }
 );
 const getCachedThemeMode = unstable_cache(
-  () => getThemeMode(),
+  (eventId) => getThemeMode(eventId),
   ["layout-theme-mode"],
   { tags: ["layout-theme-mode"], revalidate: 300 }
 );
 const getCachedAppIdentity = unstable_cache(
-  () => getAppIdentity(),
+  (eventId) => getAppIdentity(eventId),
   ["layout-app-identity"],
   { tags: ["layout-app-identity"], revalidate: 300 }
 );
 
 export async function generateMetadata() {
-  const identity = await getCachedAppIdentity();
+  const currentEventId = await getCurrentEventId();
+  const identity = await getCachedAppIdentity(currentEventId);
 
   const uploadedFavicon = join(process.cwd(), 'public', 'uploads', 'icons', 'favicon.png');
   const faviconHref = existsSync(uploadedFavicon)
@@ -143,11 +145,12 @@ function buildFontEnStyle(activeFontEn) {
 }
 
 export default async function RootLayout({ children }) {
+  const currentEventId = await getCurrentEventId();
   const [activeFont, activeFontEn, themeColors, themeMode] = await Promise.all([
-    getCachedActiveFont(),
-    getCachedActiveFontEn(),
-    getCachedThemeColors(),
-    getCachedThemeMode(),
+    getCachedActiveFont(currentEventId),
+    getCachedActiveFontEn(currentEventId),
+    getCachedThemeColors(currentEventId),
+    getCachedThemeMode(currentEventId),
   ]);
   const fontStyle = buildFontStyle(activeFont);
   const fontEnStyle = buildFontEnStyle(activeFontEn);

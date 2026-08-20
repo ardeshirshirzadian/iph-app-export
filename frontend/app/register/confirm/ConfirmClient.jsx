@@ -70,7 +70,9 @@ export default function ConfirmClient() {
         mutation: ADD_WIZARD_ITEMS,
         variables: {
           planIds: planIds.map(Number).filter(Boolean),
-          redirectUrl: "https://app.iphexpo.com/cart/callback",
+          // window.location.origin, not a hardcoded domain -- see
+          // app/cart/CartClient.jsx for the same fix + rationale.
+          redirectUrl: `${window.location.origin}/cart/callback`,
         },
       });
 

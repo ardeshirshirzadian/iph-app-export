@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { getRasayeshEventInfo } from '@/lib/publicRasayeshClient';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 export async function GET() {
   let eventSlug = 'iph';
@@ -8,9 +9,10 @@ export async function GET() {
   let cardTemplateId = 0;
   let eventOrigin = 'https://2025.iphexpo.com';
   try {
+    const currentEventId = await getCurrentEventId();
     const [badgeRes, originRes] = await Promise.all([
-      query("SELECT value FROM app_settings WHERE key = 'badge_page'"),
-      query("SELECT value FROM app_settings WHERE key = 'companies_config'"),
+      query("SELECT value FROM app_settings WHERE event_id = $1 AND key = 'badge_page'", [currentEventId]),
+      query("SELECT value FROM app_settings WHERE event_id = $1 AND key = 'companies_config'", [currentEventId]),
     ]);
     const s = badgeRes.rows[0]?.value ?? {};
     badgeEventId = Number(s.badge_event_id) || 18;

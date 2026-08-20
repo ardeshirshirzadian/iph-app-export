@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { unstable_cache } from 'next/cache';
 import { query } from '@/lib/db';
 import { fetchPublicGraphQL } from '@/lib/publicRasayeshClient';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 const EVENT_TEMPLATE_QUERY = `
   query EventTemplate($id: Int!) {
@@ -43,7 +44,11 @@ export async function GET(request) {
   }
 
   try {
-    const originRes = await query("SELECT value FROM app_settings WHERE key = 'companies_config'");
+    const currentEventId = await getCurrentEventId();
+    const originRes = await query(
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'companies_config'",
+      [currentEventId]
+    );
     const eventOrigin = originRes.rows[0]?.value?.event_origin || 'https://2025.iphexpo.com';
     const template = await getCachedTemplate(templateId, eventOrigin);
     return NextResponse.json({ template });

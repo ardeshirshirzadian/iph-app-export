@@ -1,5 +1,7 @@
 import { query } from '@/lib/db';
 import { getRasayeshEventInfo } from '@/lib/publicRasayeshClient';
+import { getCurrentEventId } from '@/lib/currentEvent';
+import { getEventDomain } from '@/lib/domainEventMap';
 
 const RASAYESH_URL = 'https://api.rasayesh.com/graphql';
 
@@ -47,7 +49,11 @@ export async function POST(request) {
       return Response.json({ action: 'failed', reason: 'missing_fields' }, { status: 400 });
     }
 
-    const regResult = await query("SELECT value FROM app_settings WHERE key = 'registration_config'");
+    const currentEventId = await getCurrentEventId();
+    const regResult = await query(
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'registration_config'",
+      [currentEventId]
+    );
     const regConfig = regResult.rows[0]?.value ?? {};
 
     const autoEnrollEnabled = !!regConfig.auto_enroll_enabled;
@@ -81,7 +87,11 @@ export async function POST(request) {
       return Response.json({ action: 'skipped', reason: 'already_enrolled' });
     }
 
-    // User has no plan — auto-enroll in the configured free plan
+    // User has no plan — auto-enroll in the configured free plan. redirectUrl
+    // must point back at the LOCAL event's own domain (currentEventId, the
+    // resolved local events.id) -- not the Rasayesh event id used above for
+    // eventOrigin/eventSlug, which is a different id from a different system.
+    const localDomain = await getEventDomain(currentEventId);
     const enrollResult = await rasayeshFetch(
       ADD_WIZARD_ITEMS_MUTATION,
       {
@@ -92,7 +102,7 @@ export async function POST(request) {
           EventService: [],
           EventMeal: [],
         },
-        redirectUrl: 'https://app.iphexpo.com/cart/callback',
+        redirectUrl: `https://${localDomain}/cart/callback`,
       },
       accessToken,
       eventOrigin

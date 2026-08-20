@@ -1,4 +1,5 @@
 import { query } from '@/lib/db';
+import { getCurrentEventId } from '@/lib/currentEvent';
 import RegisterClient from './RegisterClient';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +14,11 @@ const DEFAULTS = {
 export default async function RegisterPage() {
   let config = DEFAULTS;
   try {
-    const result = await query("SELECT value FROM app_settings WHERE key = 'registration_config'");
+    const currentEventId = await getCurrentEventId();
+    const result = await query(
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'registration_config'",
+      [currentEventId]
+    );
     if (result.rows[0]?.value) {
       config = { ...DEFAULTS, ...result.rows[0].value };
     }

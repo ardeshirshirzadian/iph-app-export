@@ -1,6 +1,7 @@
 import 'server-only';
 import { unstable_cache } from 'next/cache';
 import { query } from './db';
+import { getCurrentEventId } from './currentEvent';
 
 const DEFAULT_CONFIG = {
   eventId: null,
@@ -12,9 +13,15 @@ const DEFAULT_CONFIG = {
   eventNameEn: '',
 };
 
-export async function getCompaniesConfig() {
+// eventId: pass explicitly from inside an unstable_cache-wrapped call site
+// (see getCachedCompaniesConfig below) -- see lib/getActiveFont.js for why.
+export async function getCompaniesConfig(eventId) {
   try {
-    const result = await query("SELECT value FROM app_settings WHERE key = 'companies_config'");
+    const currentEventId = eventId ?? await getCurrentEventId();
+    const result = await query(
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'companies_config'",
+      [currentEventId]
+    );
     const config = result.rows[0]?.value ?? {};
     return {
       eventId: config.event_id ?? null,
@@ -37,7 +44,7 @@ export async function getCompaniesConfig() {
 // (the latter needs eventId/eventOrigin/logoBaseUrl to call Rasayesh) so both
 // read through the SAME cache entry instead of hitting the DB independently.
 export const getCachedCompaniesConfig = unstable_cache(
-  () => getCompaniesConfig(),
+  (eventId) => getCompaniesConfig(eventId),
   ['companies-config'],
   { tags: ['companies-config'], revalidate: 300 }
 );

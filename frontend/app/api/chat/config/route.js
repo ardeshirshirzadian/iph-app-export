@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 const DEFAULTS = {
   greeting_fa: 'سلام 👋 من دستیار هوش مصنوعی نمایشگاه ایران فارما هستم. چطور می‌تونم کمکتون کنم؟',
@@ -16,7 +17,11 @@ const DEFAULTS = {
 
 export async function GET() {
   try {
-    const result = await query("SELECT value FROM app_settings WHERE key = 'chatbot_widget_config'");
+    const currentEventId = await getCurrentEventId();
+    const result = await query(
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'chatbot_widget_config'",
+      [currentEventId]
+    );
     const config = result.rows[0]?.value ?? {};
     const merged = {};
     for (const key of Object.keys(DEFAULTS)) {

@@ -19,10 +19,11 @@ import { ensureQuestContentTable } from "@/lib/initQuestContent";
 import { getPageTitle } from "@/lib/getPageTitles";
 
 export const getCachedQuestContentBlocks = unstable_cache(
-  async () => {
-    await ensureQuestContentTable();
+  async (eventId) => {
+    await ensureQuestContentTable(eventId);
     const result = await query(
-      "SELECT * FROM quest_content_blocks ORDER BY section, sort_order ASC, id ASC"
+      "SELECT * FROM quest_content_blocks WHERE event_id = $1 ORDER BY section, sort_order ASC, id ASC",
+      [eventId]
     );
     return result.rows;
   },
@@ -31,9 +32,10 @@ export const getCachedQuestContentBlocks = unstable_cache(
 );
 
 export const getCachedQuestAppearanceConfig = unstable_cache(
-  async () => {
+  async (eventId) => {
     const appResult = await query(
-      "SELECT value FROM app_settings WHERE key = 'quest_appearance_config'"
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'quest_appearance_config'",
+      [eventId]
     );
     return appResult.rows[0]?.value ?? {};
   },
@@ -42,7 +44,7 @@ export const getCachedQuestAppearanceConfig = unstable_cache(
 );
 
 export const getCachedQuestPageTitle = unstable_cache(
-  () => getPageTitle('quest'),
+  (eventId) => getPageTitle('quest', eventId),
   ["quest-page-title"],
   { tags: ["quest-page-title"], revalidate: 300 }
 );

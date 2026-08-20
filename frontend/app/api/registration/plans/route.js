@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { getRasayeshEventInfo } from '@/lib/publicRasayeshClient';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 export async function GET() {
   try {
-    const result = await query("SELECT value FROM app_settings WHERE key = 'registration_config'");
+    const currentEventId = await getCurrentEventId();
+    const result = await query(
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'registration_config'",
+      [currentEventId]
+    );
     const defaults = { event_id: 18, is_enabled: false };
     const config = { ...defaults, ...(result.rows[0]?.value ?? {}) };
 

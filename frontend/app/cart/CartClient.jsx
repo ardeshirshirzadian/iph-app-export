@@ -190,7 +190,12 @@ export default function CartClient() {
         mutation: REQUEST_PAYMENT,
         variables: {
           ipgId: Number(config.ipg_id ?? 1),
-          redirectUrl: "https://app.iphexpo.com/cart/callback",
+          // window.location.origin, not a hardcoded domain -- this client
+          // component runs on whichever event's domain the browser is
+          // actually on, so it's inherently the correct per-event value
+          // with no DB lookup needed (see app/api/auth/auto-enroll/route.js
+          // for the equivalent server-side fix via lib/domainEventMap.js).
+          redirectUrl: `${window.location.origin}/cart/callback`,
         },
       });
       if (errors?.length) throw new Error(errors[0].message || "خطا");

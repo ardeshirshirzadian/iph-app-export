@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { unstable_cache } from 'next/cache';
 import { query } from '@/lib/db';
 import { getCachedCompaniesConfig } from '@/lib/getCompaniesConfig';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 // Booth/company DEFINITIONS only (admin/Rasayesh-sourced via the local
 // companies table -- brand name, hall, booth number, logo, booth_xp,
@@ -16,7 +17,7 @@ const getCachedBoothDefinitions = unstable_cache(
               repeatable_scan, repeatable_scan_hours,
               repeatable_start_hour, repeatable_end_hour
        FROM companies
-       WHERE hall_name IS NOT NULL AND booth_uuid IS NOT NULL AND event_id = $1
+       WHERE hall_name IS NOT NULL AND booth_uuid IS NOT NULL AND rasayesh_event_id = $1
        ORDER BY repeatable_scan DESC, hall_name ASC, booth_no ASC`,
       [eventId]
     );
@@ -36,7 +37,7 @@ export async function GET() {
   } catch {}
 
   try {
-    const config = await getCachedCompaniesConfig();
+    const config = await getCachedCompaniesConfig(await getCurrentEventId());
     const logoBaseUrl = config.logoBaseUrl || 'https://api.rasayesh.com/';
     const eventId = config.eventId;
 

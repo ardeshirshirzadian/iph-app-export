@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,9 +34,12 @@ function resolvePhotoUrl(profilePhotoUrl, profileImage, hideLeaderboardPhoto) {
   return null;
 }
 
-async function getLeaderboardLimit() {
+async function getLeaderboardLimit(eventId) {
   try {
-    const result = await query("SELECT value FROM app_settings WHERE key = 'quest_settings'");
+    const result = await query(
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'quest_settings'",
+      [eventId]
+    );
     const limit = parseInt(result.rows[0]?.value?.leaderboard_limit, 10);
     return Number.isFinite(limit) && limit >= 1 ? limit : 50;
   } catch {
@@ -43,19 +47,26 @@ async function getLeaderboardLimit() {
   }
 }
 
-// Shared CTE that computes total XP per user
+// Shared CTE that computes total XP per user, scoped to one event.
+// event_id must always be bound as the query's FIRST parameter ($1) by every
+// caller below -- quest_scans.event_id / quest_xp_grants.event_id are what
+// keep two events' XP totals (and therefore rankings) from being summed
+// together. quest_xp_grants itself has no unique constraint on event_id (see
+// Tier 3 audit notes), so this filter is the only thing keeping it isolated.
 const XP_CTE = `
   WITH scan_agg AS (
     SELECT user_uuid,
            SUM(xp_earned)::int AS xp,
            COUNT(*)::int       AS scan_count
     FROM quest_scans
+    WHERE event_id = $1
     GROUP BY user_uuid
   ),
   grant_agg AS (
     SELECT user_uuid,
            SUM(xp_amount)::int AS xp
     FROM quest_xp_grants
+    WHERE event_id = $1
     GROUP BY user_uuid
   ),
   combined AS (
@@ -78,6 +89,8 @@ export async function GET(request) {
     currentUuid = user?.uuid || null;
   } catch {}
 
+  const currentEventId = await getCurrentEventId();
+
   const { searchParams } = new URL(request.url);
   const levelParam = searchParams.get('level');
   const levelId = levelParam ? parseInt(levelParam, 10) : null;
@@ -88,8 +101,8 @@ export async function GET(request) {
     // ── LEVEL SUB-LEADERBOARD ──────────────────────────────────────────────
     if (levelId && Number.isFinite(levelId)) {
       const { rows: levelRows } = await query(
-        `SELECT min_xp, max_xp, leaderboard_limit FROM quest_levels WHERE id = $1 AND is_active = true`,
-        [levelId]
+        `SELECT min_xp, max_xp, leaderboard_limit FROM quest_levels WHERE id = $1 AND is_active = true AND event_id = $2`,
+        [levelId, currentEventId]
       );
       if (levelRows.length === 0) {
         return NextResponse.json({ leaderboard: [], currentUser: null });
@@ -99,13 +112,15 @@ export async function GET(request) {
       const limit = (Number.isFinite(leaderboard_limit) && leaderboard_limit >= 1) ? leaderboard_limit : 20;
       const maxXpFilter = max_xp !== null && max_xp !== undefined;
 
+      // event_id is always $1 (bound by XP_CTE itself); every param below is
+      // shifted +1 to make room for it.
       const { rows: topRows } = await query(`
         ${XP_CTE},
         in_level AS (
           SELECT user_uuid, total_xp, scan_count
           FROM combined
-          WHERE total_xp >= $1
-            ${maxXpFilter ? 'AND total_xp < $2' : ''}
+          WHERE total_xp >= $2
+            ${maxXpFilter ? 'AND total_xp < $3' : ''}
         ),
         ranked AS (
           SELECT user_uuid, total_xp, scan_count,
@@ -128,10 +143,10 @@ export async function GET(request) {
           au.hide_leaderboard_photo
         FROM ranked r
         LEFT JOIN quest_user_names qn ON r.user_uuid = qn.user_uuid
-        LEFT JOIN app_users        au ON r.user_uuid = au.uuid
+        LEFT JOIN app_users        au ON r.user_uuid = au.uuid AND au.event_id = $1
         ORDER BY r.rank
-        LIMIT $${maxXpFilter ? '3' : '2'}
-      `, maxXpFilter ? [min_xp, max_xp, limit] : [min_xp, limit]);
+        LIMIT $${maxXpFilter ? '4' : '3'}
+      `, maxXpFilter ? [currentEventId, min_xp, max_xp, limit] : [currentEventId, min_xp, limit]);
 
       const leaderboard = topRows.map(row => ({
         rank:              row.rank,
@@ -151,8 +166,8 @@ export async function GET(request) {
           in_level AS (
             SELECT user_uuid, total_xp
             FROM combined
-            WHERE total_xp >= $1
-              ${maxXpFilter ? 'AND total_xp < $2' : ''}
+            WHERE total_xp >= $2
+              ${maxXpFilter ? 'AND total_xp < $3' : ''}
           ),
           ranked AS (
             SELECT user_uuid, total_xp,
@@ -172,9 +187,9 @@ export async function GET(request) {
                  qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo
           FROM ranked r
           LEFT JOIN quest_user_names qn ON r.user_uuid = qn.user_uuid
-          LEFT JOIN app_users        au ON r.user_uuid = au.uuid
-          WHERE r.user_uuid = $${maxXpFilter ? '3' : '2'}
-        `, maxXpFilter ? [min_xp, max_xp, currentUuid] : [min_xp, currentUuid]);
+          LEFT JOIN app_users        au ON r.user_uuid = au.uuid AND au.event_id = $1
+          WHERE r.user_uuid = $${maxXpFilter ? '4' : '3'}
+        `, maxXpFilter ? [currentEventId, min_xp, max_xp, currentUuid] : [currentEventId, min_xp, currentUuid]);
 
         if (rankRows.length > 0) {
           currentUser = {
@@ -192,7 +207,7 @@ export async function GET(request) {
     }
 
     // ── OVERALL LEADERBOARD (original behavior) ────────────────────────────
-    const limit = await getLeaderboardLimit();
+    const limit = await getLeaderboardLimit(currentEventId);
 
     const { rows: leaderboardRows } = await query(`
       ${XP_CTE}
@@ -214,10 +229,10 @@ export async function GET(request) {
         c.scan_count
       FROM combined c
       LEFT JOIN quest_user_names qn ON c.user_uuid = qn.user_uuid
-      LEFT JOIN app_users        au ON c.user_uuid = au.uuid
+      LEFT JOIN app_users        au ON c.user_uuid = au.uuid AND au.event_id = $1
       ORDER BY c.total_xp DESC
-      LIMIT $1
-    `, [limit]);
+      LIMIT $2
+    `, [currentEventId, limit]);
 
     const leaderboard = leaderboardRows.map((row, idx) => ({
       rank:              idx + 1,
@@ -234,9 +249,9 @@ export async function GET(request) {
     if (currentUuid) {
       const { rows: rankRows } = await query(`
         WITH combined AS (
-          SELECT user_uuid, xp_earned AS xp FROM quest_scans
+          SELECT user_uuid, xp_earned AS xp FROM quest_scans WHERE event_id = $1
           UNION ALL
-          SELECT user_uuid, xp_amount AS xp FROM quest_xp_grants
+          SELECT user_uuid, xp_amount AS xp FROM quest_xp_grants WHERE event_id = $1
         ),
         ranked AS (
           SELECT
@@ -249,9 +264,9 @@ export async function GET(request) {
         SELECT r.rank, r.total_xp, qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo
         FROM ranked r
         LEFT JOIN quest_user_names qn ON r.user_uuid = qn.user_uuid
-        LEFT JOIN app_users        au ON r.user_uuid = au.uuid
-        WHERE r.user_uuid = $1
-      `, [currentUuid]);
+        LEFT JOIN app_users        au ON r.user_uuid = au.uuid AND au.event_id = $1
+        WHERE r.user_uuid = $2
+      `, [currentEventId, currentUuid]);
 
       if (rankRows.length > 0) {
         currentUser = {

@@ -22,10 +22,13 @@ export const BADGE_DEFAULTS = {
 // app/page.js's "/badge" home variant, so there is exactly one cache entry
 // regardless of which route triggered the read.
 export const getCachedBadgePageConfig = unstable_cache(
-  async () => {
+  async (eventId) => {
     let settings = BADGE_DEFAULTS;
     try {
-      const result = await query("SELECT value FROM app_settings WHERE key = 'badge_page'");
+      const result = await query(
+        "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'badge_page'",
+        [eventId]
+      );
       if (result.rows[0]?.value) {
         settings = { ...BADGE_DEFAULTS, ...result.rows[0].value };
       }

@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { ensureBadgeProgressTable } from '@/lib/initQuestBadges';
 import { ensureFeaturedBoothState } from '@/lib/featuredBoothHelper';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 const RASAYESH_BASE = 'https://api.rasayesh.com/';
 
@@ -97,7 +98,11 @@ export async function POST(request) {
       ALTER TABLE quest_scans ADD COLUMN IF NOT EXISTS is_featured_booth_bonus BOOLEAN DEFAULT false
     `);
 
-    const settingsResult = await query("SELECT value FROM app_settings WHERE key = 'companies_config'");
+    const currentEventId = await getCurrentEventId();
+    const settingsResult = await query(
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'companies_config'",
+      [currentEventId]
+    );
     const eventId = settingsResult.rows[0]?.value?.event_id;
 
     const companyResult = await query(
@@ -106,7 +111,7 @@ export async function POST(request) {
               is_manual, linked_mission_id, linked_badge_id,
               repeatable_scan, repeatable_scan_hours,
               repeatable_start_hour, repeatable_end_hour
-       FROM companies WHERE booth_uuid = $1 AND event_id = $2`,
+       FROM companies WHERE booth_uuid = $1 AND rasayesh_event_id = $2`,
       [uuid, Number(eventId)]
     );
 
@@ -248,7 +253,7 @@ export async function POST(request) {
             `SELECT COUNT(DISTINCT qs.company_id) AS cnt
              FROM quest_scans qs
              JOIN companies c ON c.id = qs.company_id
-             WHERE qs.user_uuid = $1 AND c.hall_name = $2 AND c.event_id = $3`,
+             WHERE qs.user_uuid = $1 AND c.hall_name = $2 AND c.rasayesh_event_id = $3`,
             [userUuid, m.target_hall_name, Number(eventId)]
           );
           const scanned = parseInt(rows[0].cnt, 10);

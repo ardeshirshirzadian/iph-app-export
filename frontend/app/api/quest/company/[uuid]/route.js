@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 export async function GET(request, { params }) {
   const { uuid } = await params;
@@ -9,15 +10,17 @@ export async function GET(request, { params }) {
   }
 
   try {
+    const currentEventId = await getCurrentEventId();
     const settingsResult = await query(
-      "SELECT value FROM app_settings WHERE key = 'companies_config'"
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'companies_config'",
+      [currentEventId]
     );
     const eventId = settingsResult.rows[0]?.value?.event_id;
 
     const result = await query(
       `SELECT id, slug, brand_name_fa, brand_name_en, logo,
               hall_name, booth_no, is_sponsor, website, booth_uuid
-       FROM companies WHERE booth_uuid = $1 AND event_id = $2`,
+       FROM companies WHERE booth_uuid = $1 AND rasayesh_event_id = $2`,
       [uuid, Number(eventId)]
     );
 

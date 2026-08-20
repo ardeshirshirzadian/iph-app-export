@@ -1,5 +1,6 @@
 import { unstable_cache } from 'next/cache';
 import { query } from '@/lib/db';
+import { getCurrentEventId } from '@/lib/currentEvent';
 import { getPageTitle } from '@/lib/getPageTitles';
 import { getWelcomeToast } from '@/lib/getWelcomeToast';
 import { getPushPrompt } from '@/lib/getPushPrompt';
@@ -25,10 +26,11 @@ import HomeVariantRenderer from './components/HomeVariantRenderer';
 
 // ── Default home data fetchers ───────────────────────────────────────────────
 
-async function getActiveServices() {
+async function getActiveServices(eventId) {
   try {
     const result = await query(
-      'SELECT id, title, title_en, icon_type, icon_value, link, link_en, is_visible, is_enabled, is_visible_en, is_enabled_en, icon_size FROM services WHERE (is_visible = true OR is_visible_en = true) ORDER BY sort_order ASC, id ASC'
+      'SELECT id, title, title_en, icon_type, icon_value, link, link_en, is_visible, is_enabled, is_visible_en, is_enabled_en, icon_size FROM services WHERE event_id = $1 AND (is_visible = true OR is_visible_en = true) ORDER BY sort_order ASC, id ASC',
+      [eventId]
     );
     return result.rows;
   } catch {
@@ -36,10 +38,11 @@ async function getActiveServices() {
   }
 }
 
-async function getActiveBanners() {
+async function getActiveBanners(eventId) {
   try {
     const result = await query(
-      'SELECT id, image_path, link, link_en, is_active, is_active_en FROM banners WHERE is_active = true OR is_active_en = true ORDER BY sort_order ASC, id ASC'
+      'SELECT id, image_path, link, link_en, is_active, is_active_en FROM banners WHERE event_id = $1 AND (is_active = true OR is_active_en = true) ORDER BY sort_order ASC, id ASC',
+      [eventId]
     );
     return result.rows;
   } catch {
@@ -47,10 +50,11 @@ async function getActiveBanners() {
   }
 }
 
-async function getDefaultNotifications() {
+async function getDefaultNotifications(eventId) {
   try {
     const result = await query(
-      'SELECT id, icon, title FROM notifications WHERE is_default = true ORDER BY created_at DESC LIMIT 5'
+      'SELECT id, icon, title FROM notifications WHERE event_id = $1 AND is_default = true ORDER BY created_at DESC LIMIT 5',
+      [eventId]
     );
     return result.rows;
   } catch {
@@ -91,9 +95,12 @@ const getCachedPushPrompt = unstable_cache(getPushPrompt, ['home-push-prompt'], 
 // on-demand revalidateTag() call wired into iph-apn's home-page save handler.
 // 300s is a safety-net ceiling only, same pattern as app/settings/page.js.
 const getCachedHomeContentRoute = unstable_cache(
-  async () => {
+  async (eventId) => {
     try {
-      const result = await query("SELECT value FROM app_settings WHERE key = 'home_page_config'");
+      const result = await query(
+        "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'home_page_config'",
+        [eventId]
+      );
       return result.rows[0]?.value?.redirect_path || '';
     } catch {
       return '';
@@ -106,7 +113,8 @@ const getCachedHomeContentRoute = unstable_cache(
 // ── Page component ───────────────────────────────────────────────────────────
 
 export default async function Home() {
-  const route = await getCachedHomeContentRoute();
+  const currentEventId = await getCurrentEventId();
+  const route = await getCachedHomeContentRoute(currentEventId);
 
   // Each case replicates the exact server-side logic from its own page.js,
   // then renders that page's Client Component directly. The URL stays "/".
@@ -115,33 +123,33 @@ export default async function Home() {
     case '/quest': {
       let content = { main: {}, main_en: {}, missions: [], leaderboard: [], badges: [] };
       try {
-        const rows = await getCachedQuestContentBlocks();
+        const rows = await getCachedQuestContentBlocks(currentEventId);
         content = parseQuestBlocks(rows);
       } catch (err) {
         console.error('[home→quest] failed to load content blocks:', err.message);
       }
       let appearanceConfig = {};
       try {
-        appearanceConfig = await getCachedQuestAppearanceConfig();
+        appearanceConfig = await getCachedQuestAppearanceConfig(currentEventId);
       } catch {
         // Fall back to defaults in QuestClient
       }
-      const { title, subtitle, title_en, subtitle_en } = await getCachedQuestPageTitle();
+      const { title, subtitle, title_en, subtitle_en } = await getCachedQuestPageTitle(currentEventId);
       return <HomeVariantRenderer route="/quest" content={content} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} appearanceConfig={appearanceConfig} isHomeContext={true} />;
     }
 
     case '/companies': {
-      const { title, subtitle, title_en, subtitle_en } = await getCachedCompaniesPageTitle();
+      const { title, subtitle, title_en, subtitle_en } = await getCachedCompaniesPageTitle(currentEventId);
       return <HomeVariantRenderer route="/companies" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/panels': {
-      const { title, subtitle, title_en, subtitle_en } = await getCachedPanelsPageTitle();
+      const { title, subtitle, title_en, subtitle_en } = await getCachedPanelsPageTitle(currentEventId);
       return <HomeVariantRenderer route="/panels" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/badge': {
-      const settings = await getCachedBadgePageConfig();
+      const settings = await getCachedBadgePageConfig(currentEventId);
       return (
         <HomeVariantRenderer
           route="/badge"
@@ -156,43 +164,43 @@ export default async function Home() {
     }
 
     case '/map': {
-      const { title, subtitle, title_en, subtitle_en } = await getCachedMapPageTitle();
+      const { title, subtitle, title_en, subtitle_en } = await getCachedMapPageTitle(currentEventId);
       return <HomeVariantRenderer route="/map" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/chat': {
-      const { title, subtitle, title_en, subtitle_en } = await getCachedChatPageTitle();
+      const { title, subtitle, title_en, subtitle_en } = await getCachedChatPageTitle(currentEventId);
       return <HomeVariantRenderer route="/chat" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/notifications': {
-      const { title, subtitle, title_en, subtitle_en } = await getPageTitle('notifications');
+      const { title, subtitle, title_en, subtitle_en } = await getPageTitle('notifications', currentEventId);
       return <HomeVariantRenderer route="/notifications" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/gallery': {
-      const { title, subtitle, title_en, subtitle_en } = await getCachedGalleryPageTitle();
+      const { title, subtitle, title_en, subtitle_en } = await getCachedGalleryPageTitle(currentEventId);
       return <HomeVariantRenderer route="/gallery" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/news': {
-      const { title, subtitle, title_en, subtitle_en } = await getCachedNewsPageTitle();
+      const { title, subtitle, title_en, subtitle_en } = await getCachedNewsPageTitle(currentEventId);
       return <HomeVariantRenderer route="/news" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     case '/profile': {
-      const { title, subtitle, title_en, subtitle_en } = await getPageTitle('profile');
+      const { title, subtitle, title_en, subtitle_en } = await getPageTitle('profile', currentEventId);
       return <HomeVariantRenderer route="/profile" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
     }
 
     default: {
       // Default (empty setting): render the services grid exactly as before.
       const [services, banners, defaultNotifications, welcomeToast, pushPrompt] = await Promise.all([
-        getCachedActiveServices(),
-        getCachedActiveBanners(),
-        getCachedDefaultNotifications(),
-        getCachedWelcomeToast(),
-        getCachedPushPrompt(),
+        getCachedActiveServices(currentEventId),
+        getCachedActiveBanners(currentEventId),
+        getCachedDefaultNotifications(currentEventId),
+        getCachedWelcomeToast(currentEventId),
+        getCachedPushPrompt(currentEventId),
       ]);
       return (
         <HomeVariantRenderer

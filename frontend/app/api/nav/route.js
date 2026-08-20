@@ -2,17 +2,19 @@ import { NextResponse } from 'next/server';
 import { unstable_cache } from 'next/cache';
 import { query } from '@/lib/db';
 import { ensureBottomNavTable } from '@/lib/initBottomNav';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 // Pure admin content (bottom_nav_items) -- same pattern as
 // app/api/companies/config/route.js.
 const getCachedNavItems = unstable_cache(
-  async () => {
-    await ensureBottomNavTable();
+  async (eventId) => {
+    await ensureBottomNavTable(eventId);
     const result = await query(
       `SELECT id, title_fa, title_en, icon_path, href
        FROM bottom_nav_items
-       WHERE is_active = true
-       ORDER BY sort_order ASC, id ASC`
+       WHERE is_active = true AND event_id = $1
+       ORDER BY sort_order ASC, id ASC`,
+      [eventId]
     );
     return result.rows;
   },
@@ -22,7 +24,8 @@ const getCachedNavItems = unstable_cache(
 
 export async function GET() {
   try {
-    const items = await getCachedNavItems();
+    const eventId = await getCurrentEventId();
+    const items = await getCachedNavItems(eventId);
     return NextResponse.json({ items });
   } catch (error) {
     console.error('Get nav items error:', error);

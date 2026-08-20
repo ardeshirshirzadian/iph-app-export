@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { unstable_cache } from 'next/cache';
 import { getCachedCompaniesConfig } from '@/lib/getCompaniesConfig';
 import { fetchPublicGraphQL } from '@/lib/publicRasayeshClient';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 // Company records live in Rasayesh (external CRM) -- this app's admin panel
 // doesn't control them and has no "saved" event to hook a revalidateTag()
@@ -123,7 +124,7 @@ export async function GET(request) {
   const type = searchParams.get('type');
 
   try {
-    const cfg = await getCachedCompaniesConfig();
+    const cfg = await getCachedCompaniesConfig(await getCurrentEventId());
     const eventId = cfg.eventId != null ? Number(cfg.eventId) : null;
 
     if (type === 'list') {

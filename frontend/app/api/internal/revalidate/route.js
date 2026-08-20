@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { revalidatePath, revalidateTag } from 'next/cache';
+import { invalidateDomainEventMap } from '@/lib/domainEventMap';
 
 // This route's entire job is to run fresh on every call — it must never be
 // cached/optimized itself, or an on-demand revalidation trigger could be
@@ -38,6 +39,15 @@ export async function POST(request) {
   // need immediate expiration" -- which is precisely what this endpoint is.
   if (path) revalidatePath(path);
   if (tag) revalidateTag(tag, { expire: 0 });
+
+  // 'domain-event-map' isn't a real unstable_cache tag (nothing is ever
+  // tagged with it) -- it's a dedicated signal from iph-apn's
+  // /api/admin/events create/update routes so a domain<->event change
+  // reaches every container replica's Redis-backed lookup immediately
+  // instead of waiting out its 5-min TTL. See lib/domainEventMap.js.
+  if (tag === 'domain-event-map') {
+    await invalidateDomainEventMap();
+  }
 
   return NextResponse.json({ revalidated: true, now: Date.now() });
 }

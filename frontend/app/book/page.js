@@ -1,4 +1,5 @@
 import { query } from '@/lib/db';
+import { getCurrentEventId } from '@/lib/currentEvent';
 import BookClient from './BookClient';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +14,11 @@ const DEFAULTS = {
 export default async function BookPage() {
   let config = DEFAULTS;
   try {
-    const result = await query("SELECT value FROM app_settings WHERE key = 'book_config'");
+    const currentEventId = await getCurrentEventId();
+    const result = await query(
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'book_config'",
+      [currentEventId]
+    );
     if (result.rows[0]?.value) {
       config = { ...DEFAULTS, ...result.rows[0].value };
     }

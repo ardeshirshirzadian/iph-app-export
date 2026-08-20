@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 export async function GET() {
   try {
-    const result = await query("SELECT value FROM app_settings WHERE key = 'panels_config'");
+    const currentEventId = await getCurrentEventId();
+    const result = await query(
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'panels_config'",
+      [currentEventId]
+    );
     const config = result.rows[0]?.value ?? {};
     return NextResponse.json({
       eventId: config.event_id ?? null,

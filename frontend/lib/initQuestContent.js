@@ -84,32 +84,41 @@ const SEED_ROWS = [
       description: 'حضور ۳ روز متوالی در نمایشگاه', earned: false }), 60],
 ];
 
-export async function ensureQuestContentTable() {
-  if (globalThis._questContentInitialized) return;
+export async function ensureQuestContentTable(eventId) {
+  if (!globalThis._questContentInitializedEvents) {
+    globalThis._questContentInitializedEvents = new Set();
+  }
 
   await query(CREATE_TABLE);
 
-  const { rows } = await query('SELECT COUNT(*)::int AS cnt FROM quest_content_blocks');
+  if (globalThis._questContentInitializedEvents.has(eventId)) return;
+
+  const { rows } = await query(
+    'SELECT COUNT(*)::int AS cnt FROM quest_content_blocks WHERE event_id = $1',
+    [eventId]
+  );
   if (rows[0].cnt === 0) {
     for (const [section, block_type, block_key, content, sort_order] of SEED_ROWS) {
       await query(
-        `INSERT INTO quest_content_blocks (section, block_type, block_key, content, sort_order)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [section, block_type, block_key, content, sort_order]
+        `INSERT INTO quest_content_blocks (section, block_type, block_key, content, sort_order, event_id)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [section, block_type, block_key, content, sort_order, eventId]
       );
     }
   } else {
     // Ensure new fields added after initial seed exist in existing installations
     const { rows: existing } = await query(
-      "SELECT id FROM quest_content_blocks WHERE section = 'main' AND block_key = 'xp_unit'"
+      "SELECT id FROM quest_content_blocks WHERE event_id = $1 AND section = 'main' AND block_key = 'xp_unit'",
+      [eventId]
     );
     if (existing.length === 0) {
       await query(
-        `INSERT INTO quest_content_blocks (section, block_type, block_key, content, sort_order)
-         VALUES ('main', 'text', 'xp_unit', 'XP', 75)`
+        `INSERT INTO quest_content_blocks (section, block_type, block_key, content, sort_order, event_id)
+         VALUES ('main', 'text', 'xp_unit', 'XP', 75, $1)`,
+        [eventId]
       );
     }
   }
 
-  globalThis._questContentInitialized = true;
+  globalThis._questContentInitializedEvents.add(eventId);
 }

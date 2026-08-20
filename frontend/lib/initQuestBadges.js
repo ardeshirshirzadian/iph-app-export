@@ -88,30 +88,38 @@ const SEED = [
   },
 ];
 
-export async function ensureQuestBadgesTable() {
-  if (globalThis._questBadgesInitialized) return;
+export async function ensureQuestBadgesTable(eventId) {
+  if (!globalThis._questBadgesInitializedEvents) {
+    globalThis._questBadgesInitializedEvents = new Set();
+  }
 
   await query(CREATE_BADGES_TABLE);
 
-  const { rows } = await query('SELECT COUNT(*)::int AS cnt FROM quest_badges');
+  if (globalThis._questBadgesInitializedEvents.has(eventId)) return;
+
+  const { rows } = await query(
+    'SELECT COUNT(*)::int AS cnt FROM quest_badges WHERE event_id = $1',
+    [eventId]
+  );
   if (rows[0].cnt === 0) {
     for (const b of SEED) {
       await query(
         `INSERT INTO quest_badges
            (name_fa, name_en, description_fa, description_en,
             icon_type, icon_value, icon_size,
-            badge_type, threshold, target_company_id, sort_order)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+            badge_type, threshold, target_company_id, sort_order, event_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
         [
           b.name_fa, b.name_en, b.description_fa, b.description_en,
           b.icon_type, b.icon_value, b.icon_size,
           b.badge_type, b.threshold, b.target_company_id ?? null, b.sort_order,
+          eventId,
         ]
       );
     }
   }
 
-  globalThis._questBadgesInitialized = true;
+  globalThis._questBadgesInitializedEvents.add(eventId);
 }
 
 export async function ensureAttendanceLogTable() {

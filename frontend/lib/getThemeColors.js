@@ -1,5 +1,6 @@
 import 'server-only';
 import { query } from './db';
+import { getCurrentEventId } from './currentEvent';
 
 const DEFAULT_COLORS = {
   dark: {
@@ -24,9 +25,15 @@ const DEFAULT_COLORS = {
   },
 };
 
-export async function getThemeColors() {
+// eventId: pass explicitly from inside an unstable_cache-wrapped call site --
+// see lib/getActiveFont.js for why.
+export async function getThemeColors(eventId) {
   try {
-    const result = await query('SELECT theme, color_key, color_value FROM theme_colors');
+    eventId = eventId ?? await getCurrentEventId();
+    const result = await query(
+      'SELECT theme, color_key, color_value FROM theme_colors WHERE event_id = $1',
+      [eventId]
+    );
     if (result.rows.length === 0) return DEFAULT_COLORS;
 
     const colors = {

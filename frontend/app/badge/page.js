@@ -1,8 +1,9 @@
 import { getCachedBadgePageConfig } from '@/lib/badgePageCache';
+import { getCurrentEventId } from '@/lib/currentEvent';
 import BadgeClient from './BadgeClient';
 
 export default async function BadgePage() {
-  const settings = await getCachedBadgePageConfig();
+  const settings = await getCachedBadgePageConfig(await getCurrentEventId());
 
   return (
     <BadgeClient

@@ -1,5 +1,6 @@
 import 'server-only';
 import { query } from './db';
+import { getCurrentEventId } from './currentEvent';
 
 const DEFAULT_IDENTITY = {
   title: 'Iranpharma',
@@ -7,10 +8,14 @@ const DEFAULT_IDENTITY = {
   description: 'Iran Pharma Exhibition Super App',
 };
 
-export async function getAppIdentity() {
+// eventId: pass explicitly from inside an unstable_cache-wrapped call site
+// (see app/layout.js) -- see getActiveFont.js for why.
+export async function getAppIdentity(eventId) {
   try {
+    eventId = eventId ?? await getCurrentEventId();
     const result = await query(
-      "SELECT value FROM app_settings WHERE key = 'app_identity'"
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'app_identity'",
+      [eventId]
     );
     if (result.rows.length === 0) return DEFAULT_IDENTITY;
     const stored = result.rows[0].value;

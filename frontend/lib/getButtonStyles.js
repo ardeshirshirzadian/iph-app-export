@@ -1,5 +1,6 @@
 import 'server-only';
 import { query } from './db';
+import { getCurrentEventId } from './currentEvent';
 
 export const BUTTON_DEFAULTS = {
   dark: {
@@ -18,10 +19,14 @@ export const BUTTON_DEFAULTS = {
   },
 };
 
-export async function getButtonStyles() {
+// eventId: pass explicitly from inside an unstable_cache-wrapped call site --
+// see lib/getActiveFont.js for why.
+export async function getButtonStyles(eventId) {
   try {
+    eventId = eventId ?? await getCurrentEventId();
     const result = await query(
-      "SELECT value FROM app_settings WHERE key = 'button_styles_config'"
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'button_styles_config'",
+      [eventId]
     );
     const saved = result.rows[0]?.value ?? {};
     return {

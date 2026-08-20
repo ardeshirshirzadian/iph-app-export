@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { unstable_cache } from 'next/cache';
 import { query } from '@/lib/db';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 const GQL = 'https://api.rasayesh.com/graphql';
 
@@ -59,8 +60,8 @@ const GET_WEBSITE_EVENT = `
 // corresponding admin save handler.
 
 const getCachedHallColors = unstable_cache(
-  async () => {
-    const r = await query("SELECT value FROM app_settings WHERE key = 'map_hall_colors'");
+  async (eventId) => {
+    const r = await query("SELECT value FROM app_settings WHERE event_id = $1 AND key = 'map_hall_colors'", [eventId]);
     return r.rows[0]?.value ?? {};
   },
   ['map-hall-colors'],
@@ -68,10 +69,11 @@ const getCachedHallColors = unstable_cache(
 );
 
 const getCachedMapElements = unstable_cache(
-  async () => {
+  async (eventId) => {
     try {
       const r = await query(
-        'SELECT id, title_fa, title_en, icon_type, icon_value, color, x, y, sort_order, floor, linked_element_id FROM map_elements WHERE is_active = true ORDER BY sort_order, id'
+        'SELECT id, title_fa, title_en, icon_type, icon_value, color, x, y, sort_order, floor, linked_element_id FROM map_elements WHERE is_active = true AND event_id = $1 ORDER BY sort_order, id',
+        [eventId]
       );
       return r.rows;
     } catch {
@@ -83,10 +85,11 @@ const getCachedMapElements = unstable_cache(
 );
 
 const getCachedMapDoors = unstable_cache(
-  async () => {
+  async (eventId) => {
     try {
       const r = await query(
-        'SELECT id, door_type, x, y, hall_name, width FROM map_doors WHERE is_active = true'
+        'SELECT id, door_type, x, y, hall_name, width FROM map_doors WHERE is_active = true AND event_id = $1',
+        [eventId]
       );
       return r.rows;
     } catch {
@@ -98,9 +101,9 @@ const getCachedMapDoors = unstable_cache(
 );
 
 const getCachedHallFloors = unstable_cache(
-  async () => {
+  async (eventId) => {
     try {
-      const r = await query('SELECT hall_name, floor FROM map_hall_floors');
+      const r = await query('SELECT hall_name, floor FROM map_hall_floors WHERE event_id = $1', [eventId]);
       return Object.fromEntries(r.rows.map(row => [row.hall_name, row.floor]));
     } catch {
       return {};
@@ -111,10 +114,11 @@ const getCachedHallFloors = unstable_cache(
 );
 
 const getCachedMapZones = unstable_cache(
-  async () => {
+  async (eventId) => {
     try {
       const r = await query(
-        "SELECT id, title_fa, title_en, hall_name, shape_type, x1, y1, x2, y2, cx, cy, radius, points, is_blocking, is_visible FROM map_zones WHERE is_active = true"
+        "SELECT id, title_fa, title_en, hall_name, shape_type, x1, y1, x2, y2, cx, cy, radius, points, is_blocking, is_visible FROM map_zones WHERE is_active = true AND event_id = $1",
+        [eventId]
       );
       return r.rows;
     } catch {
@@ -126,9 +130,9 @@ const getCachedMapZones = unstable_cache(
 );
 
 const getCachedMapWalls = unstable_cache(
-  async () => {
+  async (eventId) => {
     try {
-      const r = await query('SELECT id, hall_name, points FROM map_walls WHERE is_active = true');
+      const r = await query('SELECT id, hall_name, points FROM map_walls WHERE is_active = true AND event_id = $1', [eventId]);
       return r.rows;
     } catch {
       return [];
@@ -140,8 +144,8 @@ const getCachedMapWalls = unstable_cache(
 
 const NAV_CAMERA_DEFAULTS = { distance: 220, height: 90, walk_speed: 75, stair_transition_duration: 0.8 };
 const getCachedNavCameraConfig = unstable_cache(
-  async () => {
-    const r = await query("SELECT value FROM app_settings WHERE key = 'nav_camera_config'");
+  async (eventId) => {
+    const r = await query("SELECT value FROM app_settings WHERE event_id = $1 AND key = 'nav_camera_config'", [eventId]);
     return { ...NAV_CAMERA_DEFAULTS, ...(r.rows[0]?.value ?? {}) };
   },
   ['map-nav-camera'],
@@ -156,8 +160,8 @@ const NAV_MARKER_ICONS_DEFAULTS = {
   door_bidirectional: { type: 'builtin', value: '↔️' },
 };
 const getCachedNavMarkerIcons = unstable_cache(
-  async () => {
-    const r = await query("SELECT value FROM app_settings WHERE key = 'nav_marker_icons_config'");
+  async (eventId) => {
+    const r = await query("SELECT value FROM app_settings WHERE event_id = $1 AND key = 'nav_marker_icons_config'", [eventId]);
     return { ...NAV_MARKER_ICONS_DEFAULTS, ...(r.rows[0]?.value ?? {}) };
   },
   ['map-nav-markers'],
@@ -167,8 +171,8 @@ const getCachedNavMarkerIcons = unstable_cache(
 const MAP_APPEARANCE_CAM_DEFAULTS = { pitch: 50, distance: 1.0, heading: 86 };
 const MAP_APPEARANCE_BG_DEFAULTS = { dark: '#021f20', light: '#e8f5f0' };
 const getCachedMapAppearanceConfig = unstable_cache(
-  async () => {
-    const r = await query("SELECT value FROM app_settings WHERE key = 'map_appearance_config'");
+  async (eventId) => {
+    const r = await query("SELECT value FROM app_settings WHERE event_id = $1 AND key = 'map_appearance_config'", [eventId]);
     const stored = r.rows[0]?.value ?? {};
     return {
       default_camera: { ...MAP_APPEARANCE_CAM_DEFAULTS, ...(stored.default_camera ?? {}) },
@@ -186,8 +190,8 @@ const GESTURE_HINT_DEFAULTS = {
   en: '☝️ One finger: move map\n✌️ Two fingers: rotate + zoom',
 };
 const getCachedGestureHintConfig = unstable_cache(
-  async () => {
-    const r = await query("SELECT value FROM app_settings WHERE key = 'map_gesture_hint_config'");
+  async (eventId) => {
+    const r = await query("SELECT value FROM app_settings WHERE event_id = $1 AND key = 'map_gesture_hint_config'", [eventId]);
     return { ...GESTURE_HINT_DEFAULTS, ...(r.rows[0]?.value ?? {}) };
   },
   ['map-gesture-hint'],
@@ -199,8 +203,8 @@ const CONTROL_ICONS_DEFAULTS = {
   dark: { zoomIn: null, zoomOut: null, compass: null },
 };
 const getCachedControlIconsConfig = unstable_cache(
-  async () => {
-    const r = await query("SELECT value FROM app_settings WHERE key = 'map_control_icons_config'");
+  async (eventId) => {
+    const r = await query("SELECT value FROM app_settings WHERE event_id = $1 AND key = 'map_control_icons_config'", [eventId]);
     const stored = r.rows[0]?.value ?? {};
     return {
       light: { ...CONTROL_ICONS_DEFAULTS.light, ...(stored.light ?? {}) },
@@ -216,8 +220,8 @@ const GESTURE_HINT_IMAGES_DEFAULTS = {
   dark: { oneFinger: null, twoFinger: null },
 };
 const getCachedGestureHintImagesConfig = unstable_cache(
-  async () => {
-    const r = await query("SELECT value FROM app_settings WHERE key = 'map_gesture_hint_images_config'");
+  async (eventId) => {
+    const r = await query("SELECT value FROM app_settings WHERE event_id = $1 AND key = 'map_gesture_hint_images_config'", [eventId]);
     const stored = r.rows[0]?.value ?? {};
     return {
       light: { ...GESTURE_HINT_IMAGES_DEFAULTS.light, ...(stored.light ?? {}) },
@@ -239,8 +243,8 @@ const ROUTE_APPEARANCE_DEFAULTS = {
   },
 };
 const getCachedRouteAppearanceConfig = unstable_cache(
-  async () => {
-    const r = await query("SELECT value FROM app_settings WHERE key = 'route_appearance_config'");
+  async (eventId) => {
+    const r = await query("SELECT value FROM app_settings WHERE event_id = $1 AND key = 'route_appearance_config'", [eventId]);
     const stored = r.rows[0]?.value ?? {};
     // Migrate old flat format { dark: { routeLine, ... } } → new nested { dark: { primary: {...}, secondary: {...} } }
     const config = {};
@@ -269,8 +273,8 @@ const getCachedRouteAppearanceConfig = unstable_cache(
 );
 
 const getCachedMapLabelsConfig = unstable_cache(
-  async () => {
-    const r = await query("SELECT value FROM app_settings WHERE key = 'map_labels_config'");
+  async (eventId) => {
+    const r = await query("SELECT value FROM app_settings WHERE event_id = $1 AND key = 'map_labels_config'", [eventId]);
     return r.rows[0]?.value ?? null;
   },
   ['map-labels'],
@@ -316,10 +320,17 @@ export async function GET() {
     // Prefer map_config; fall back to companies_config for backward compat.
     // Not itself cached -- it's a tiny scalar read only used to pick which
     // Rasayesh origin Layer 2 queries, not returned to the client as content.
-    const mapResult = await query("SELECT value FROM app_settings WHERE key = 'map_config'");
+    const currentEventId = await getCurrentEventId();
+    const mapResult = await query(
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'map_config'",
+      [currentEventId]
+    );
     let eventOrigin = mapResult.rows[0]?.value?.event_origin;
     if (!eventOrigin) {
-      const fallback = await query("SELECT value FROM app_settings WHERE key = 'companies_config'");
+      const fallback = await query(
+        "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'companies_config'",
+        [currentEventId]
+      );
       eventOrigin = fallback.rows[0]?.value?.event_origin ?? 'https://2025.iphexpo.com';
     }
 
@@ -348,20 +359,20 @@ export async function GET() {
       routeAppearanceConfig,
       mapLabelsConfig,
     ] = await Promise.all([
-      getCachedHallColors(),
-      getCachedMapElements(),
-      getCachedMapDoors(),
-      getCachedHallFloors(),
-      getCachedMapZones(),
-      getCachedMapWalls(),
-      getCachedNavCameraConfig(),
-      getCachedNavMarkerIcons(),
-      getCachedMapAppearanceConfig(),
-      getCachedGestureHintConfig(),
-      getCachedControlIconsConfig(),
-      getCachedGestureHintImagesConfig(),
-      getCachedRouteAppearanceConfig(),
-      getCachedMapLabelsConfig(),
+      getCachedHallColors(currentEventId),
+      getCachedMapElements(currentEventId),
+      getCachedMapDoors(currentEventId),
+      getCachedHallFloors(currentEventId),
+      getCachedMapZones(currentEventId),
+      getCachedMapWalls(currentEventId),
+      getCachedNavCameraConfig(currentEventId),
+      getCachedNavMarkerIcons(currentEventId),
+      getCachedMapAppearanceConfig(currentEventId),
+      getCachedGestureHintConfig(currentEventId),
+      getCachedControlIconsConfig(currentEventId),
+      getCachedGestureHintImagesConfig(currentEventId),
+      getCachedRouteAppearanceConfig(currentEventId),
+      getCachedMapLabelsConfig(currentEventId),
     ]);
 
     return NextResponse.json({

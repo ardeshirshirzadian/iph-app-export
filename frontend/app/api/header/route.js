@@ -1,16 +1,20 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { ensureHeaderItemsTable } from '@/lib/initHeader';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    await ensureHeaderItemsTable();
+    const eventId = await getCurrentEventId();
+    await ensureHeaderItemsTable(eventId);
     const { rows } = await query(
       `SELECT id, item_type, title_fa, title_en, icon_path, icon_size, href, is_active, sort_order
        FROM header_items
-       ORDER BY sort_order ASC, id ASC`
+       WHERE event_id = $1
+       ORDER BY sort_order ASC, id ASC`,
+      [eventId]
     );
     return NextResponse.json({ items: rows });
   } catch (err) {

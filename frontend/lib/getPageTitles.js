@@ -1,5 +1,6 @@
 import 'server-only';
 import { query } from './db';
+import { getCurrentEventId } from './currentEvent';
 
 const DEFAULTS = {
   settings:      { title: 'تنظیمات',              subtitle: '' },
@@ -15,10 +16,15 @@ const DEFAULTS = {
   map:           { title: 'نقشه نمایشگاه',          subtitle: 'مکان‌یابی غرفه‌ها و سالن‌ها', title_en: 'Exhibition Map', subtitle_en: 'Locate halls and booths' },
 };
 
-export async function getPageTitle(pageKey) {
+// eventId: pass explicitly from inside an unstable_cache-wrapped call site
+// (see lib/questPageCache.js, lib/pageTitleCache.js) -- see
+// lib/getActiveFont.js for why.
+export async function getPageTitle(pageKey, eventId) {
   try {
+    eventId = eventId ?? await getCurrentEventId();
     const result = await query(
-      "SELECT value FROM app_settings WHERE key = 'page_titles'"
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'page_titles'",
+      [eventId]
     );
     const stored = result.rows[0]?.value ?? {};
     const def = DEFAULTS[pageKey] ?? { title: '', subtitle: '' };

@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 // GET /api/companies — public, no auth required
 export async function GET(request) {
   try {
+    const currentEventId = await getCurrentEventId();
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
     const lang = searchParams.get('lang') || 'fa';
@@ -13,7 +15,8 @@ export async function GET(request) {
     const offset = (page - 1) * limit;
 
     const settingsResult = await query(
-      "SELECT value FROM app_settings WHERE key = 'companies_config'"
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'companies_config'",
+      [currentEventId]
     );
     const config = settingsResult.rows[0]?.value ?? {};
     const visibleFields = config.visible_fields ?? {};
@@ -42,24 +45,28 @@ export async function GET(request) {
       orderClause = `ORDER BY ${sortField} ASC NULLS LAST`;
     }
 
-    const eventId = config.event_id;
-
-    // Distinct halls for filter bar (from all companies in this event)
-    const hallsResult = eventId
-      ? await query(
-          `SELECT DISTINCT hall_name FROM companies
-           WHERE hall_name IS NOT NULL AND event_id = $1
-           ORDER BY hall_name ASC`,
-          [Number(eventId)]
-        )
-      : { rows: [] };
+    // Distinct halls for filter bar (from all companies in this event).
+    // Uses the local event_id FK, not config.event_id (the Rasayesh id) --
+    // always set correctly by the sync process, unlike the config value
+    // which could be unset/stale.
+    const hallsResult = await query(
+      `SELECT DISTINCT hall_name FROM companies
+       WHERE hall_name IS NOT NULL AND event_id = $1
+       ORDER BY hall_name ASC`,
+      [currentEventId]
+    );
     const halls = hallsResult.rows.map(r => r.hall_name);
 
+    // Found live during Phase 5: neither of these two queries filtered by
+    // event at all -- with only one event in the DB this was dormant (see
+    // Phase 3 notes), but with a second real event now live it meant BOTH
+    // domains' company lists silently merged into one combined list/count.
     const countResult = await query(
       `SELECT COUNT(*) FROM companies
-       WHERE ($1 = '' OR brand_name_fa ILIKE $2 OR brand_name_en ILIKE $2)
-         AND ($3 = '' OR hall_name = $3)`,
-      [search, `%${search}%`, hall]
+       WHERE event_id = $1
+         AND ($2 = '' OR brand_name_fa ILIKE $3 OR brand_name_en ILIKE $3)
+         AND ($4 = '' OR hall_name = $4)`,
+      [currentEventId, search, `%${search}%`, hall]
     );
     const total = parseInt(countResult.rows[0].count, 10);
 
@@ -68,11 +75,12 @@ export async function GET(request) {
               website, description_fa, description_en, hall_name, booth_no,
               is_sponsor, sponsor_level
        FROM companies
-       WHERE ($1 = '' OR brand_name_fa ILIKE $2 OR brand_name_en ILIKE $2)
-         AND ($3 = '' OR hall_name = $3)
+       WHERE event_id = $1
+         AND ($2 = '' OR brand_name_fa ILIKE $3 OR brand_name_en ILIKE $3)
+         AND ($4 = '' OR hall_name = $4)
        ${orderClause}
-       LIMIT $4 OFFSET $5`,
-      [search, `%${search}%`, hall, limit, offset]
+       LIMIT $5 OFFSET $6`,
+      [currentEventId, search, `%${search}%`, hall, limit, offset]
     );
 
     return NextResponse.json({

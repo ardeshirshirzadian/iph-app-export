@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { unstable_cache } from 'next/cache';
 import { query } from '@/lib/db';
 import { ensureFeaturedBoothState, getFeaturedBoothCountdown } from '@/lib/featuredBoothHelper';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 // Mission DEFINITIONS only (admin-curated: title/description/xp/icon/quiz
 // question/survey fields/etc, quest_content table) — cached. Every per-user
@@ -10,9 +11,10 @@ import { ensureFeaturedBoothState, getFeaturedBoothCountdown } from '@/lib/featu
 // featured-booth pool scan status) is computed below via calcProgress() and
 // friends, per request, per user, completely untouched by this change.
 const getCachedMissionDefinitions = unstable_cache(
-  async () => {
+  async (currentEventId) => {
     const { rows } = await query(
-      `SELECT * FROM quest_content WHERE is_active = true ORDER BY sort_order ASC, id ASC`
+      `SELECT * FROM quest_content WHERE is_active = true AND event_id = $1 ORDER BY sort_order ASC, id ASC`,
+      [currentEventId]
     );
     return rows;
   },
@@ -32,22 +34,22 @@ async function getUserUuid() {
   }
 }
 
-async function calcProgress(mission, userUuid, eventId) {
+async function calcProgress(mission, userUuid, eventId, currentEventId) {
   if (!userUuid) return 0;
   try {
     switch (mission.mission_type) {
       case 'booth_scan': {
         const r = await query(
-          'SELECT COUNT(*) FROM quest_scans WHERE user_uuid = $1',
-          [userUuid]
+          'SELECT COUNT(*) FROM quest_scans WHERE user_uuid = $1 AND event_id = $2',
+          [userUuid, currentEventId]
         );
         return parseInt(r.rows[0].count, 10);
       }
       case 'special_booth': {
         if (!mission.target_company_id) return 0;
         const r = await query(
-          'SELECT COUNT(*) FROM quest_scans WHERE user_uuid = $1 AND company_id = $2',
-          [userUuid, mission.target_company_id]
+          'SELECT COUNT(*) FROM quest_scans WHERE user_uuid = $1 AND company_id = $2 AND event_id = $3',
+          [userUuid, mission.target_company_id, currentEventId]
         );
         return parseInt(r.rows[0].count, 10) > 0 ? 1 : 0;
       }
@@ -74,8 +76,9 @@ async function calcProgress(mission, userUuid, eventId) {
           `SELECT COUNT(DISTINCT qs.company_id) AS cnt
            FROM quest_scans qs
            JOIN companies c ON c.id = qs.company_id
-           WHERE qs.user_uuid = $1 AND c.hall_name = $2 AND c.event_id = $3`,
-          [userUuid, mission.target_hall_name, Number(eventId)]
+           WHERE qs.user_uuid = $1 AND c.hall_name = $2 AND c.rasayesh_event_id = $3
+             AND qs.event_id = $4 AND c.event_id = $4`,
+          [userUuid, mission.target_hall_name, Number(eventId), currentEventId]
         );
         const scanned = parseInt(r.rows[0].cnt, 10);
         return mission.hall_match_mode === 'any' ? (scanned >= 1 ? 1 : 0) : scanned;
@@ -120,16 +123,20 @@ async function calcProgress(mission, userUuid, eventId) {
 
 export async function GET() {
   try {
+    const currentEventId = await getCurrentEventId();
     const userUuid = await getUserUuid();
 
-    const settingsResult = await query("SELECT value FROM app_settings WHERE key = 'companies_config'");
+    const settingsResult = await query(
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'companies_config'",
+      [currentEventId]
+    );
     const eventId = settingsResult.rows[0]?.value?.event_id;
 
-    const rows = await getCachedMissionDefinitions();
+    const rows = await getCachedMissionDefinitions(currentEventId);
 
     const missions = await Promise.all(
       rows.map(async (m) => {
-        const progress = await calcProgress(m, userUuid, eventId);
+        const progress = await calcProgress(m, userUuid, eventId, currentEventId);
         let quiz_attempted = false;
         if (m.mission_type === 'quiz' && userUuid) {
           const aR = await query(
@@ -184,9 +191,9 @@ export async function GET() {
           if (Array.isArray(pool) && pool.length > 0) {
             const { rows: poolRows } = await query(
               `SELECT id AS company_id, brand_name_fa, brand_name_en, logo, hall_name, booth_no
-               FROM companies WHERE id = ANY($1::int[]) AND event_id = $2
+               FROM companies WHERE id = ANY($1::int[]) AND rasayesh_event_id = $2 AND event_id = $3
                ORDER BY hall_name ASC NULLS LAST, booth_no ASC NULLS LAST`,
-              [pool, Number(eventId)]
+              [pool, Number(eventId), currentEventId]
             ).catch(() => ({ rows: [] }));
             // Per-company scan status for the authenticated user.
             let scanMap = {};
@@ -195,9 +202,9 @@ export async function GET() {
               const { rows: scanRows } = await query(
                 `SELECT company_id, bool_or(is_featured_booth_bonus) AS got_bonus
                  FROM quest_scans
-                 WHERE user_uuid = $1 AND company_id = ANY($2::int[])
+                 WHERE user_uuid = $1 AND company_id = ANY($2::int[]) AND event_id = $3
                  GROUP BY company_id`,
-                [userUuid, ids]
+                [userUuid, ids, currentEventId]
               ).catch(() => ({ rows: [] }));
               for (const sr of scanRows) {
                 scanMap[sr.company_id] = { got_bonus: sr.got_bonus };

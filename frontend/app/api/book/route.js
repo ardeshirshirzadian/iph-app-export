@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 const BOOK_CONFIG_DEFAULTS = {
   event_id: 18,
@@ -12,7 +13,11 @@ const BOOK_CONFIG_DEFAULTS = {
 
 export async function GET() {
   try {
-    const result = await query("SELECT value FROM app_settings WHERE key = 'book_config'");
+    const currentEventId = await getCurrentEventId();
+    const result = await query(
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'book_config'",
+      [currentEventId]
+    );
     const config = { ...BOOK_CONFIG_DEFAULTS, ...(result.rows[0]?.value ?? {}) };
 
     if (!config.is_enabled) {

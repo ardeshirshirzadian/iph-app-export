@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import { query } from '@/lib/db';
+import { getCurrentEventId } from '@/lib/currentEvent';
 import LoginForm from './LoginForm';
 
 const DEFAULTS = {
@@ -22,9 +23,15 @@ const DEFAULTS = {
   edit_mobile_text: 'ویرایش شماره موبایل',
 };
 
-async function getLoginSettings() {
+// Found live during Phase 5: this query had no event_id filter at all --
+// never touched in Tier 3 (that pass covered iph-apn's admin login-page
+// route only; this public-facing page was never in scope). With a second
+// event's login_page_settings rows now existing, both events' rows were
+// read together and silently overwrote each other key-by-key in
+// unpredictable row order.
+async function getLoginSettings(eventId) {
   try {
-    const result = await query('SELECT key, value FROM login_page_settings');
+    const result = await query('SELECT key, value FROM login_page_settings WHERE event_id = $1', [eventId]);
     const settings = { ...DEFAULTS };
     for (const row of result.rows) settings[row.key] = row.value;
     return settings;
@@ -34,7 +41,7 @@ async function getLoginSettings() {
 }
 
 export default async function LoginPage({ searchParams }) {
-  const settings = await getLoginSettings();
+  const settings = await getLoginSettings(await getCurrentEventId());
   const sp = searchParams ? await Promise.resolve(searchParams) : {};
   return (
     <LoginForm

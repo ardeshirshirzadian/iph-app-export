@@ -23,27 +23,46 @@ const SEED = [
   { item_type: 'settings',    sort_order: 4 },
 ];
 
-export async function ensureHeaderItemsTable() {
-  if (globalThis._headerItemsInitialized) return;
+export async function ensureHeaderItemsTable(eventId) {
+  if (!globalThis._headerItemsInitializedEvents) {
+    globalThis._headerItemsInitializedEvents = new Set();
+  }
   await query(CREATE_TABLE);
-  const { rows } = await query('SELECT COUNT(*)::int AS cnt FROM header_items');
+  if (globalThis._headerItemsInitializedEvents.has(eventId)) return;
+
+  const { rows } = await query(
+    'SELECT COUNT(*)::int AS cnt FROM header_items WHERE event_id = $1',
+    [eventId]
+  );
   if (rows[0].cnt === 0) {
     for (const item of SEED) {
       await query(
-        'INSERT INTO header_items (item_type, sort_order) VALUES ($1, $2)',
-        [item.item_type, item.sort_order]
+        'INSERT INTO header_items (item_type, sort_order, event_id) VALUES ($1, $2, $3)',
+        [item.item_type, item.sort_order, eventId]
       );
     }
   } else {
     // Migrate: ensure profile_pic/settings rows exist in already-seeded tables
-    const { rows: pp } = await query("SELECT id FROM header_items WHERE item_type = 'profile_pic'");
+    const { rows: pp } = await query(
+      "SELECT id FROM header_items WHERE event_id = $1 AND item_type = 'profile_pic'",
+      [eventId]
+    );
     if (pp.length === 0) {
-      await query("INSERT INTO header_items (item_type, sort_order) VALUES ('profile_pic', 0)");
+      await query(
+        "INSERT INTO header_items (item_type, sort_order, event_id) VALUES ('profile_pic', 0, $1)",
+        [eventId]
+      );
     }
-    const { rows: st } = await query("SELECT id FROM header_items WHERE item_type = 'settings'");
+    const { rows: st } = await query(
+      "SELECT id FROM header_items WHERE event_id = $1 AND item_type = 'settings'",
+      [eventId]
+    );
     if (st.length === 0) {
-      await query("INSERT INTO header_items (item_type, sort_order) VALUES ('settings', 4)");
+      await query(
+        "INSERT INTO header_items (item_type, sort_order, event_id) VALUES ('settings', 4, $1)",
+        [eventId]
+      );
     }
   }
-  globalThis._headerItemsInitialized = true;
+  globalThis._headerItemsInitializedEvents.add(eventId);
 }

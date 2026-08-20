@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 // Resolves an IPH-BOOTH QR uuid to a company id so the client can locate
 // the booth on the map — does NOT record a quest scan or require user auth.
@@ -11,13 +12,15 @@ export async function GET(request) {
     return NextResponse.json({ error: 'invalid_uuid' }, { status: 400 });
   }
   try {
+    const currentEventId = await getCurrentEventId();
     const settingsResult = await query(
-      "SELECT value FROM app_settings WHERE key = 'companies_config'"
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'companies_config'",
+      [currentEventId]
     );
     const eventId = settingsResult.rows[0]?.value?.event_id;
 
     const r = await query(
-      'SELECT id, brand_name_fa, brand_name_en FROM companies WHERE booth_uuid = $1 AND event_id = $2',
+      'SELECT id, brand_name_fa, brand_name_en FROM companies WHERE booth_uuid = $1 AND rasayesh_event_id = $2',
       [uuid, Number(eventId)]
     );
     if (!r.rows.length) return NextResponse.json({ error: 'not_found' }, { status: 404 });

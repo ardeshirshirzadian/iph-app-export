@@ -1,6 +1,7 @@
 import 'server-only';
 import { query } from './db';
 import { scanFonts } from './fontScanner';
+import { getCurrentEventId } from './currentEvent';
 
 const DEFAULT_FONT = {
   family: 'Vazirmatn',
@@ -24,10 +25,11 @@ const DEFAULT_FONT_EN = {
     'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700&display=swap',
 };
 
-async function loadFontFromDb(settingsKey, defaultFont) {
+async function loadFontFromDb(settingsKey, defaultFont, eventId) {
+  eventId = eventId ?? await getCurrentEventId();
   const result = await query(
-    `SELECT value FROM app_settings WHERE key = $1`,
-    [settingsKey]
+    `SELECT value FROM app_settings WHERE event_id = $1 AND key = $2`,
+    [eventId, settingsKey]
   );
   if (result.rows.length === 0) return defaultFont;
 
@@ -63,18 +65,22 @@ async function loadFontFromDb(settingsKey, defaultFont) {
   };
 }
 
-export async function getActiveFont() {
+// eventId: pass explicitly when calling from inside an unstable_cache-wrapped
+// function (see app/layout.js) -- getCurrentEventId() reads next/headers,
+// which unstable_cache does not support accessing internally. Omit it for
+// any direct/unwrapped call site, where resolving it here is still correct.
+export async function getActiveFont(eventId) {
   try {
-    return await loadFontFromDb('active_font', DEFAULT_FONT);
+    return await loadFontFromDb('active_font', DEFAULT_FONT, eventId);
   } catch (err) {
     console.error('getActiveFont error:', err);
     return DEFAULT_FONT;
   }
 }
 
-export async function getActiveFontEn() {
+export async function getActiveFontEn(eventId) {
   try {
-    return await loadFontFromDb('active_font_en', DEFAULT_FONT_EN);
+    return await loadFontFromDb('active_font_en', DEFAULT_FONT_EN, eventId);
   } catch (err) {
     console.error('getActiveFontEn error:', err);
     return DEFAULT_FONT_EN;

@@ -4,14 +4,16 @@ import { unstable_cache } from 'next/cache';
 import { query } from '@/lib/db';
 import { ensureQuestBadgesTable, ensureAttendanceLogTable, ensureBadgeProgressTable } from '@/lib/initQuestBadges';
 import { ensureFeaturedBoothState, getFeaturedBoothCountdown } from '@/lib/featuredBoothHelper';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 // Badge DEFINITIONS only (admin-curated, quest_badges table) — cached.
 // `earned` and every other per-user field is computed below via
 // calcEarned() and friends, per request, per user, untouched.
 const getCachedBadgeDefinitions = unstable_cache(
-  async () => {
+  async (currentEventId) => {
     const { rows } = await query(
-      `SELECT * FROM quest_badges WHERE is_active = true ORDER BY sort_order ASC, id ASC`
+      `SELECT * FROM quest_badges WHERE is_active = true AND event_id = $1 ORDER BY sort_order ASC, id ASC`,
+      [currentEventId]
     );
     return rows;
   },
@@ -31,22 +33,22 @@ async function getUserUuid() {
   }
 }
 
-async function calcEarned(badge, userUuid, eventId) {
+async function calcEarned(badge, userUuid, eventId, currentEventId) {
   if (!userUuid) return false;
   try {
     switch (badge.badge_type) {
       case 'booth_scan_count': {
         const r = await query(
-          'SELECT COUNT(*) FROM quest_scans WHERE user_uuid = $1',
-          [userUuid]
+          'SELECT COUNT(*) FROM quest_scans WHERE user_uuid = $1 AND event_id = $2',
+          [userUuid, currentEventId]
         );
         return parseInt(r.rows[0].count, 10) >= badge.threshold;
       }
       case 'special_booth': {
         if (!badge.target_company_id) return false;
         const r = await query(
-          'SELECT COUNT(*) FROM quest_scans WHERE user_uuid = $1 AND company_id = $2',
-          [userUuid, badge.target_company_id]
+          'SELECT COUNT(*) FROM quest_scans WHERE user_uuid = $1 AND company_id = $2 AND event_id = $3',
+          [userUuid, badge.target_company_id, currentEventId]
         );
         return parseInt(r.rows[0].count, 10) > 0;
       }
@@ -60,17 +62,17 @@ async function calcEarned(badge, userUuid, eventId) {
       case 'booth_scan_single_day': {
         const r = await query(
           `SELECT DATE(scanned_at) AS day, COUNT(*) AS cnt
-           FROM quest_scans WHERE user_uuid = $1
+           FROM quest_scans WHERE user_uuid = $1 AND event_id = $2
            GROUP BY DATE(scanned_at)`,
-          [userUuid]
+          [userUuid, currentEventId]
         );
         return r.rows.some(row => parseInt(row.cnt, 10) >= badge.threshold);
       }
       case 'consecutive_days': {
         const r = await query(
           `SELECT DISTINCT event_date FROM quest_attendance_log
-           WHERE user_uuid = $1 ORDER BY event_date ASC`,
-          [userUuid]
+           WHERE user_uuid = $1 AND event_id = $2 ORDER BY event_date ASC`,
+          [userUuid, currentEventId]
         );
         if (r.rows.length < badge.threshold) return false;
         const dates = r.rows.map(row => new Date(row.event_date).getTime());
@@ -99,8 +101,9 @@ async function calcEarned(badge, userUuid, eventId) {
           `SELECT COUNT(DISTINCT qs.company_id) AS cnt
            FROM quest_scans qs
            JOIN companies c ON c.id = qs.company_id
-           WHERE qs.user_uuid = $1 AND c.hall_name = $2 AND c.event_id = $3`,
-          [userUuid, badge.target_hall_name, Number(eventId)]
+           WHERE qs.user_uuid = $1 AND c.hall_name = $2 AND c.rasayesh_event_id = $3
+             AND qs.event_id = $4 AND c.event_id = $4`,
+          [userUuid, badge.target_hall_name, Number(eventId), currentEventId]
         );
         const scanned = parseInt(r.rows[0].cnt, 10);
         return scanned >= badge.threshold;
@@ -145,20 +148,24 @@ async function calcEarned(badge, userUuid, eventId) {
 
 export async function GET() {
   try {
-    await ensureQuestBadgesTable();
+    const currentEventId = await getCurrentEventId();
+    await ensureQuestBadgesTable(currentEventId);
     await ensureAttendanceLogTable();
     await ensureBadgeProgressTable();
 
     const userUuid = await getUserUuid();
 
-    const settingsResult = await query("SELECT value FROM app_settings WHERE key = 'companies_config'");
+    const settingsResult = await query(
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'companies_config'",
+      [currentEventId]
+    );
     const eventId = settingsResult.rows[0]?.value?.event_id;
 
-    const rows = await getCachedBadgeDefinitions();
+    const rows = await getCachedBadgeDefinitions(currentEventId);
 
     const badges = await Promise.all(
       rows.map(async (b) => {
-        const earned = await calcEarned(b, userUuid, eventId);
+        const earned = await calcEarned(b, userUuid, eventId, currentEventId);
         let quiz_attempted = false;
         if (b.badge_type === 'quiz' && userUuid) {
           const aR = await query(
@@ -209,9 +216,9 @@ export async function GET() {
           if (Array.isArray(pool) && pool.length > 0) {
             const { rows: poolRows } = await query(
               `SELECT id AS company_id, brand_name_fa, brand_name_en, logo, hall_name, booth_no
-               FROM companies WHERE id = ANY($1::int[]) AND event_id = $2
+               FROM companies WHERE id = ANY($1::int[]) AND rasayesh_event_id = $2 AND event_id = $3
                ORDER BY hall_name ASC NULLS LAST, booth_no ASC NULLS LAST`,
-              [pool, Number(eventId)]
+              [pool, Number(eventId), currentEventId]
             ).catch(() => ({ rows: [] }));
             // Per-company scan status for the authenticated user.
             let scanMap = {};

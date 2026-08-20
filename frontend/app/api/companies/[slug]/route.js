@@ -1,13 +1,16 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 // GET /api/companies/[slug] — public, no auth required
 export async function GET(request, { params }) {
   try {
     const { slug } = await params;
+    const currentEventId = await getCurrentEventId();
 
     const settingsResult = await query(
-      "SELECT value FROM app_settings WHERE key = 'companies_config'"
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'companies_config'",
+      [currentEventId]
     );
     const config = settingsResult.rows[0]?.value ?? {};
     const logoBaseUrl = config.logo_base_url ?? '';
@@ -19,7 +22,7 @@ export async function GET(request, { params }) {
               phones, emails, address_fa, address_en, industry_id,
               hall_name, booth_no, is_sponsor, sponsor_level
        FROM companies
-       WHERE slug = $1 AND event_id = $2
+       WHERE slug = $1 AND rasayesh_event_id = $2
        LIMIT 1`,
       [slug, Number(eventId)]
     );

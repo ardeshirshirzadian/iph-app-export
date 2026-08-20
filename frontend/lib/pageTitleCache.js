@@ -9,25 +9,25 @@ import { getPageTitle } from '@/lib/getPageTitles';
 // lib/badgePageCache.js. Tags are unchanged from each page's own prior
 // caching step — see app/settings/page.js for the original rationale.
 export const getCachedCompaniesPageTitle = unstable_cache(
-  () => getPageTitle('companies'),
+  (eventId) => getPageTitle('companies', eventId),
   ['companies-page-title'],
   { tags: ['companies-page-title'], revalidate: 300 }
 );
 
 export const getCachedPanelsPageTitle = unstable_cache(
-  () => getPageTitle('panels'),
+  (eventId) => getPageTitle('panels', eventId),
   ['panels-page-title'],
   { tags: ['panels-page-title'], revalidate: 300 }
 );
 
 export const getCachedMapPageTitle = unstable_cache(
-  () => getPageTitle('map'),
+  (eventId) => getPageTitle('map', eventId),
   ['map-page-title'],
   { tags: ['map-page-title'], revalidate: 300 }
 );
 
 export const getCachedChatPageTitle = unstable_cache(
-  () => getPageTitle('chat'),
+  (eventId) => getPageTitle('chat', eventId),
   ['chat-page-title'],
   { tags: ['chat-page-title'], revalidate: 300 }
 );
@@ -35,13 +35,13 @@ export const getCachedChatPageTitle = unstable_cache(
 // getPageTitle has 12+ other call sites; only this page's own call site is
 // cached/tagged, the shared function itself is untouched.
 export const getCachedGalleryPageTitle = unstable_cache(
-  () => getPageTitle('gallery'),
+  (eventId) => getPageTitle('gallery', eventId),
   ['gallery-page-title'],
   { tags: ['gallery-page-title'], revalidate: 300 }
 );
 
 export const getCachedNewsPageTitle = unstable_cache(
-  () => getPageTitle('news'),
+  (eventId) => getPageTitle('news', eventId),
   ['news-page-title'],
   { tags: ['news-page-title'], revalidate: 300 }
 );

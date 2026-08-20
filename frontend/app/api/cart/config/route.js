@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 const DEFAULTS = {
   title_fa: 'سبد خرید',
@@ -16,7 +17,11 @@ const DEFAULTS = {
 
 export async function GET() {
   try {
-    const result = await query("SELECT value FROM app_settings WHERE key = 'cart_config'");
+    const currentEventId = await getCurrentEventId();
+    const result = await query(
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'cart_config'",
+      [currentEventId]
+    );
     const raw = result.rows[0]?.value ?? {};
     const config = {
       title_fa: raw.title_fa ?? DEFAULTS.title_fa,

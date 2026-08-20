@@ -42,27 +42,34 @@ const SEED = [
   },
 ];
 
-export async function ensureBottomNavTable() {
-  if (globalThis._bottomNavInitialized) return;
+export async function ensureBottomNavTable(eventId) {
+  if (!globalThis._bottomNavInitializedEvents) {
+    globalThis._bottomNavInitializedEvents = new Set();
+  }
 
   await query(CREATE_TABLE);
 
-  const { rows } = await query('SELECT COUNT(*)::int AS cnt FROM bottom_nav_items');
+  if (globalThis._bottomNavInitializedEvents.has(eventId)) return;
+
+  const { rows } = await query(
+    'SELECT COUNT(*)::int AS cnt FROM bottom_nav_items WHERE event_id = $1',
+    [eventId]
+  );
   if (rows[0].cnt === 0) {
     for (const item of SEED) {
       await query(
-        `INSERT INTO bottom_nav_items (title_fa, title_en, icon_path, href, sort_order)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [item.title_fa, item.title_en, item.icon_path, item.href, item.sort_order]
+        `INSERT INTO bottom_nav_items (title_fa, title_en, icon_path, href, sort_order, event_id)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [item.title_fa, item.title_en, item.icon_path, item.href, item.sort_order, eventId]
       );
     }
   } else {
     // Fix up rows seeded with /uploads/nav/ paths that don't exist in the Docker volume.
     // These WHERE conditions are idempotent — no-op once already corrected.
-    await query(`UPDATE bottom_nav_items SET icon_path = '/logo/services-icon.svg' WHERE href = '/' AND icon_path = '/uploads/nav/services-icon.svg'`);
-    await query(`UPDATE bottom_nav_items SET icon_path = '/logo/id-badge.svg'      WHERE href = '/badge' AND icon_path = '/uploads/nav/id-badge.svg'`);
-    await query(`UPDATE bottom_nav_items SET icon_path = '/logo/user.svg'           WHERE href = '/profile' AND icon_path = '/uploads/nav/user.svg'`);
+    await query(`UPDATE bottom_nav_items SET icon_path = '/logo/services-icon.svg' WHERE event_id = $1 AND href = '/' AND icon_path = '/uploads/nav/services-icon.svg'`, [eventId]);
+    await query(`UPDATE bottom_nav_items SET icon_path = '/logo/id-badge.svg'      WHERE event_id = $1 AND href = '/badge' AND icon_path = '/uploads/nav/id-badge.svg'`, [eventId]);
+    await query(`UPDATE bottom_nav_items SET icon_path = '/logo/user.svg'           WHERE event_id = $1 AND href = '/profile' AND icon_path = '/uploads/nav/user.svg'`, [eventId]);
   }
 
-  globalThis._bottomNavInitialized = true;
+  globalThis._bottomNavInitializedEvents.add(eventId);
 }
