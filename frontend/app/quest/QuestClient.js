@@ -19,6 +19,11 @@ const APPEARANCE_DEFAULTS = {
     leaderboard_size: 14,      leaderboard_color: '#ffffff',
     badge_title_size: 14,      badge_title_color: '#94a3b8',
     active_border_color: '#00ffb3',
+    // scan_glow_color intentionally has NO default here -- when the admin
+    // hasn't set one, ScanButton falls through to the event's live
+    // --accent CSS var via color-mix(), not a hardcoded hex (see
+    // ScanButton below). A static default here would reintroduce the
+    // wrong-fixed-color-on-every-other-event bug this field exists to fix.
     rotation_text_size: 11,    rotation_text_color: '#94a3b8',
   },
   light: {
@@ -27,6 +32,7 @@ const APPEARANCE_DEFAULTS = {
     leaderboard_size: 14,      leaderboard_color: '#0f172a',
     badge_title_size: 14,      badge_title_color: '#475569',
     active_border_color: '#047857',
+    // scan_glow_color: see comment in `dark` above -- same reasoning.
     rotation_text_size: 11,    rotation_text_color: '#475569',
   },
 };
@@ -290,21 +296,36 @@ function UserCardSkeleton() {
   );
 }
 
-function ScanButton({ isDark, label }) {
+function ScanButton({ isDark, label, glowColor }) {
+  // glowColor is only a real value once an admin explicitly sets
+  // scan_glow_color -- there's no static default for it (see
+  // APPEARANCE_DEFAULTS above). hexToRgba returns null for anything that
+  // isn't a literal #rrggbb (undefined, or an invalid string), so the
+  // fallback below is what actually runs for every event until an admin
+  // opts in: color-mix() against the live --accent CSS var (set per-event
+  // via the theme-colors settings), resolved by the browser at paint time --
+  // NOT a hardcoded hex, which is what caused this field to be added.
+  const shadowColor      = hexToRgba(glowColor, 0.5) || 'color-mix(in srgb, var(--accent) 50%, transparent)';
+  const shadowColorHover = hexToRgba(glowColor, 0.7) || 'color-mix(in srgb, var(--accent) 70%, transparent)';
+  const pingColor20      = hexToRgba(glowColor, 0.2) || 'color-mix(in srgb, var(--accent) 20%, transparent)';
+  const pingColor10      = hexToRgba(glowColor, 0.1) || 'color-mix(in srgb, var(--accent) 10%, transparent)';
   return (
     <Link href="/quest/scan" className="flex flex-col items-center gap-3 group">
-      <div className="relative">
+      <div
+        className="relative"
+        style={{ '--scan-glow-shadow': shadowColor, '--scan-glow-shadow-hover': shadowColorHover }}
+      >
         {isDark && (
           <>
-            <span className="absolute inset-0 rounded-full bg-[#00ffb3]/20 animate-ping" />
+            <span className="absolute inset-0 rounded-full animate-ping" style={{ background: pingColor20 }} />
             <span
-              className="absolute inset-[-6px] rounded-full bg-[#00ffb3]/10 animate-ping"
-              style={{ animationDelay: "0.3s" }}
+              className="absolute inset-[-6px] rounded-full animate-ping"
+              style={{ animationDelay: "0.3s", background: pingColor10 }}
             />
           </>
         )}
         <button
-          className="relative w-20 h-20 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(0,255,179,0.5)] group-hover:shadow-[0_0_45px_rgba(0,255,179,0.7)] transition-shadow duration-300 group-hover:scale-105 active:scale-95 transition-transform"
+          className="relative w-20 h-20 rounded-full flex items-center justify-center shadow-[0_0_30px_var(--scan-glow-shadow)] group-hover:shadow-[0_0_45px_var(--scan-glow-shadow-hover)] transition-shadow duration-300 group-hover:scale-105 active:scale-95 transition-transform"
           style={{ background: "var(--accent)" }}
         >
           <svg
@@ -2330,7 +2351,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         )}
 
         <div className="flex justify-center my-8">
-          <ScanButton isDark={isDark} label={labels.scanButtonLabel} />
+          <ScanButton isDark={isDark} label={labels.scanButtonLabel} glowColor={ea.scan_glow_color} />
         </div>
 
         <div
