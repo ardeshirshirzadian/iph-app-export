@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 export async function POST(request) {
   const cookieStore = await cookies();
@@ -33,27 +34,32 @@ export async function POST(request) {
   }
 
   try {
+    const currentEventId = await getCurrentEventId();
+
     // Check for existing attempt (single-attempt enforcement)
     const existingCheck = missionId
       ? await query(
-          `SELECT id FROM quest_quiz_attempts WHERE mission_id = $1 AND user_uuid = $2`,
-          [missionId, userUuid]
+          `SELECT id FROM quest_quiz_attempts WHERE mission_id = $1 AND user_uuid = $2 AND event_id = $3`,
+          [missionId, userUuid, currentEventId]
         )
       : await query(
-          `SELECT id FROM quest_quiz_attempts WHERE badge_id = $1 AND user_uuid = $2`,
-          [badgeId, userUuid]
+          `SELECT id FROM quest_quiz_attempts WHERE badge_id = $1 AND user_uuid = $2 AND event_id = $3`,
+          [badgeId, userUuid, currentEventId]
         );
 
     if (existingCheck.rows.length > 0) {
       return NextResponse.json({ error: 'already_attempted' }, { status: 409 });
     }
 
-    // Fetch correct answer + xp_reward from DB — never expose quiz_correct_index in response
+    // Fetch correct answer + xp_reward from DB — never expose quiz_correct_index in response.
+    // event_id filter here isn't just defense-in-depth: without it, a
+    // missionId/badgeId belonging to another event would still resolve and
+    // silently grant XP scoped to the current event.
     let correctIndex, xpReward;
     if (missionId) {
       const r = await query(
-        `SELECT quiz_correct_index, xp_reward FROM quest_content WHERE id = $1 AND mission_type = 'quiz'`,
-        [missionId]
+        `SELECT quiz_correct_index, xp_reward FROM quest_content WHERE id = $1 AND mission_type = 'quiz' AND event_id = $2`,
+        [missionId, currentEventId]
       );
       if (r.rows.length === 0) {
         return NextResponse.json({ error: 'mission_not_found' }, { status: 404 });
@@ -62,8 +68,8 @@ export async function POST(request) {
       xpReward     = r.rows[0].xp_reward ?? 0;
     } else {
       const r = await query(
-        `SELECT quiz_correct_index, 0 AS xp_reward FROM quest_badges WHERE id = $1 AND badge_type = 'quiz'`,
-        [badgeId]
+        `SELECT quiz_correct_index, 0 AS xp_reward FROM quest_badges WHERE id = $1 AND badge_type = 'quiz' AND event_id = $2`,
+        [badgeId, currentEventId]
       );
       if (r.rows.length === 0) {
         return NextResponse.json({ error: 'badge_not_found' }, { status: 404 });
@@ -75,9 +81,9 @@ export async function POST(request) {
     const isCorrect = selectedIndex === correctIndex;
 
     await query(
-      `INSERT INTO quest_quiz_attempts (mission_id, badge_id, user_uuid, selected_index, is_correct)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [missionId || null, badgeId || null, userUuid, selectedIndex, isCorrect]
+      `INSERT INTO quest_quiz_attempts (mission_id, badge_id, user_uuid, selected_index, is_correct, event_id)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [missionId || null, badgeId || null, userUuid, selectedIndex, isCorrect, currentEventId]
     );
 
     if (isCorrect) {
@@ -91,10 +97,10 @@ export async function POST(request) {
         const sourceType = missionId ? 'mission_quiz' : 'badge_quiz';
         const sourceId   = missionId || badgeId;
         await query(
-          `INSERT INTO quest_xp_grants (user_uuid, source_type, source_id, xp_amount)
-           VALUES ($1, $2, $3, $4)
+          `INSERT INTO quest_xp_grants (user_uuid, source_type, source_id, xp_amount, event_id)
+           VALUES ($1, $2, $3, $4, $5)
            ON CONFLICT (user_uuid, source_type, source_id) DO NOTHING`,
-          [userUuid, sourceType, sourceId, xpReward]
+          [userUuid, sourceType, sourceId, xpReward, currentEventId]
         ).catch(() => {});
       }
     }

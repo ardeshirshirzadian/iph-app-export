@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 export async function POST(request) {
   const cookieStore = await cookies();
@@ -25,10 +26,15 @@ export async function POST(request) {
   }
 
   try {
-    // Verify mission exists and is attendance/manual type
+    const currentEventId = await getCurrentEventId();
+
+    // Verify mission exists, is attendance/manual type, AND belongs to the
+    // current event -- mission_id comes straight from the client, so without
+    // the event_id check a request could mark another event's mission
+    // complete for this user.
     const { rows } = await query(
-      `SELECT id, mission_type FROM quest_content WHERE id = $1 AND is_active = true`,
-      [mission_id]
+      `SELECT id, mission_type FROM quest_content WHERE id = $1 AND is_active = true AND event_id = $2`,
+      [mission_id, currentEventId]
     );
     if (rows.length === 0) {
       return NextResponse.json({ error: 'Mission not found' }, { status: 404 });

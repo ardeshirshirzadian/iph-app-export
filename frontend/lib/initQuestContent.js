@@ -46,14 +46,21 @@ const SEED_ROWS = [
   ['main', 'text', 'icon_level_2',        JSON.stringify({ icon: '😎', icon_size: 14 }), 191],
 
   // ── Missions (JSON content per mission) ───────────────────────────────────
+  // progress/earned below are the starting (not-yet-completed) state for a
+  // brand-new event -- these blocks are shown to EVERY visitor as-is
+  // whenever an event has no real quest_content rows yet (see
+  // lib/questPageCache.js), so a nonzero progress/true earned here isn't a
+  // per-user preview, it's a fake "already done" shown to literally everyone
+  // (confirmed: this is what caused Iran Cosmetica's chat mission to render
+  // as checked for every user before any of them had actually chatted).
   ['missions', 'text', 'mission_1',
     JSON.stringify({ icon: '🏛️', title: 'بازدید از ۳ غرفه',
       description: 'از ۳ غرفه مختلف نمایشگاه بازدید کن',
-      xpReward: 60, progress: 1, total: 3 }), 10],
+      xpReward: 60, progress: 0, total: 3 }), 10],
   ['missions', 'text', 'mission_2',
     JSON.stringify({ icon: '💬', title: 'اولین مکالمه',
       description: 'با دستیار هوش مصنوعی چت کن',
-      xpReward: 30, progress: 1, total: 1 }), 20],
+      xpReward: 30, progress: 0, total: 1 }), 20],
   ['missions', 'text', 'mission_3',
     JSON.stringify({ icon: '⭐', title: 'غرفه برتر',
       description: 'از غرفه ویژه نمایشگاه بازدید کن',
@@ -64,12 +71,14 @@ const SEED_ROWS = [
       xpReward: 300, progress: 0, total: 1 }), 40],
 
   // ── Badges (JSON content per badge) ──────────────────────────────────────
+  // Same reasoning as the missions block above: earned:true here shows as
+  // already-earned to every visitor of a brand-new event, not just a preview.
   ['badges', 'text', 'badge_1',
     JSON.stringify({ icon: '🏛️', name: 'کاوشگر غرفه‌ها',
-      description: 'از ۳ غرفه بازدید کردی', earned: true }), 10],
+      description: 'از ۳ غرفه بازدید کردی', earned: false }), 10],
   ['badges', 'text', 'badge_2',
     JSON.stringify({ icon: '💬', name: 'گفتگوگر',
-      description: 'اولین مکالمه با دستیار هوش مصنوعی', earned: true }), 20],
+      description: 'اولین مکالمه با دستیار هوش مصنوعی', earned: false }), 20],
   ['badges', 'text', 'badge_3',
     JSON.stringify({ icon: '⭐', name: 'کاشف ویژه',
       description: 'غرفه ویژه نمایشگاه را پیدا کن', earned: false }), 30],

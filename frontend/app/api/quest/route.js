@@ -55,18 +55,20 @@ async function calcProgress(mission, userUuid, eventId, currentEventId) {
       }
       case 'chat': {
         const r = await query(
-          `SELECT completed FROM quest_user_progress
-           WHERE mission_id = $1 AND user_uuid = $2`,
-          [mission.id, userUuid]
+          `SELECT qup.completed FROM quest_user_progress qup
+           JOIN quest_content qc ON qc.id = qup.mission_id
+           WHERE qup.mission_id = $1 AND qup.user_uuid = $2 AND qc.event_id = $3`,
+          [mission.id, userUuid, currentEventId]
         );
         return r.rows.length > 0 && r.rows[0].completed ? 1 : 0;
       }
       case 'attendance':
       case 'manual': {
         const r = await query(
-          `SELECT completed FROM quest_user_progress
-           WHERE mission_id = $1 AND user_uuid = $2`,
-          [mission.id, userUuid]
+          `SELECT qup.completed FROM quest_user_progress qup
+           JOIN quest_content qc ON qc.id = qup.mission_id
+           WHERE qup.mission_id = $1 AND qup.user_uuid = $2 AND qc.event_id = $3`,
+          [mission.id, userUuid, currentEventId]
         );
         return r.rows.length > 0 && r.rows[0].completed ? 1 : 0;
       }
@@ -85,31 +87,33 @@ async function calcProgress(mission, userUuid, eventId, currentEventId) {
       }
       case 'quiz': {
         const r = await query(
-          `SELECT is_correct FROM quest_quiz_attempts WHERE mission_id = $1 AND user_uuid = $2`,
-          [mission.id, userUuid]
+          `SELECT is_correct FROM quest_quiz_attempts WHERE mission_id = $1 AND user_uuid = $2 AND event_id = $3`,
+          [mission.id, userUuid, currentEventId]
         ).catch(() => ({ rows: [] }));
         return r.rows.length > 0 && r.rows[0].is_correct ? 1 : 0;
       }
       case 'survey': {
         const r = await query(
-          `SELECT id FROM quest_survey_responses WHERE mission_id = $1 AND user_uuid = $2`,
-          [mission.id, userUuid]
+          `SELECT id FROM quest_survey_responses WHERE mission_id = $1 AND user_uuid = $2 AND event_id = $3`,
+          [mission.id, userUuid, currentEventId]
         ).catch(() => ({ rows: [] }));
         return r.rows.length > 0 ? 1 : 0;
       }
       case 'featured_booth': {
         const r = await query(
-          `SELECT completed FROM quest_user_progress WHERE mission_id = $1 AND user_uuid = $2`,
-          [mission.id, userUuid]
+          `SELECT qup.completed FROM quest_user_progress qup
+           JOIN quest_content qc ON qc.id = qup.mission_id
+           WHERE qup.mission_id = $1 AND qup.user_uuid = $2 AND qc.event_id = $3`,
+          [mission.id, userUuid, currentEventId]
         );
         return r.rows.length > 0 && r.rows[0].completed ? 1 : 0;
       }
       case 'social_share': {
         const r = await query(
           `SELECT status FROM quest_social_share_submissions
-           WHERE mission_id = $1 AND user_uuid = $2 AND status = 'approved'
+           WHERE mission_id = $1 AND user_uuid = $2 AND status = 'approved' AND event_id = $3
            LIMIT 1`,
-          [mission.id, userUuid]
+          [mission.id, userUuid, currentEventId]
         ).catch(() => ({ rows: [] }));
         return r.rows.length > 0 ? 1 : 0;
       }
@@ -140,16 +144,16 @@ export async function GET() {
         let quiz_attempted = false;
         if (m.mission_type === 'quiz' && userUuid) {
           const aR = await query(
-            `SELECT id FROM quest_quiz_attempts WHERE mission_id = $1 AND user_uuid = $2`,
-            [m.id, userUuid]
+            `SELECT id FROM quest_quiz_attempts WHERE mission_id = $1 AND user_uuid = $2 AND event_id = $3`,
+            [m.id, userUuid, currentEventId]
           ).catch(() => ({ rows: [] }));
           quiz_attempted = aR.rows.length > 0;
         }
         let survey_submitted = false;
         if (m.mission_type === 'survey' && userUuid) {
           const sR = await query(
-            `SELECT id FROM quest_survey_responses WHERE mission_id = $1 AND user_uuid = $2`,
-            [m.id, userUuid]
+            `SELECT id FROM quest_survey_responses WHERE mission_id = $1 AND user_uuid = $2 AND event_id = $3`,
+            [m.id, userUuid, currentEventId]
           ).catch(() => ({ rows: [] }));
           survey_submitted = sR.rows.length > 0;
         }
@@ -159,9 +163,9 @@ export async function GET() {
         if (m.mission_type === 'social_share' && userUuid) {
           const ssR = await query(
             `SELECT status, admin_note FROM quest_social_share_submissions
-             WHERE mission_id = $1 AND user_uuid = $2
+             WHERE mission_id = $1 AND user_uuid = $2 AND event_id = $3
              ORDER BY submitted_at DESC LIMIT 1`,
-            [m.id, userUuid]
+            [m.id, userUuid, currentEventId]
           ).catch(() => ({ rows: [] }));
           if (ssR.rows.length > 0) {
             social_share_status = ssR.rows[0].status;

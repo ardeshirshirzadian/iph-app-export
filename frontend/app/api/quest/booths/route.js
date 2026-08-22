@@ -37,7 +37,8 @@ export async function GET() {
   } catch {}
 
   try {
-    const config = await getCachedCompaniesConfig(await getCurrentEventId());
+    const currentEventId = await getCurrentEventId();
+    const config = await getCachedCompaniesConfig(currentEventId);
     const logoBaseUrl = config.logoBaseUrl || 'https://api.rasayesh.com/';
     const eventId = config.eventId;
 
@@ -48,12 +49,12 @@ export async function GET() {
 
     if (userUuid) {
       const [scansResult, lastScansResult] = await Promise.all([
-        query(`SELECT DISTINCT company_id FROM quest_scans WHERE user_uuid = $1`, [userUuid]),
+        query(`SELECT DISTINCT company_id FROM quest_scans WHERE user_uuid = $1 AND event_id = $2`, [userUuid, currentEventId]),
         query(
           `SELECT company_id, MAX(scanned_at) AS last_scan
-           FROM quest_scans WHERE user_uuid = $1
+           FROM quest_scans WHERE user_uuid = $1 AND event_id = $2
            GROUP BY company_id`,
-          [userUuid]
+          [userUuid, currentEventId]
         ),
       ]);
       scanned_ids = scansResult.rows.map(r => r.company_id);

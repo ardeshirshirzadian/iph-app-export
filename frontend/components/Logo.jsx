@@ -2,27 +2,23 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
+import { useLang } from "@/lib/useLang";
 
-// Intrinsic pixel dimensions of the fixed logo assets in public/logo/ — a
-// small, known-at-build-time set (not admin-uploaded), so next/image can
-// safely serve resized/modern-format variants instead of the full-size PNGs
-// (up to 5310x2134) at their actual ~32px display height.
-const LOGO_DIMENSIONS = {
-  "logo":      { width: 2134, height: 2134 },
-  "logo-fa":   { width: 5310, height: 2134 },
-  "logo-en":   { width: 5310, height: 2134 },
-  "logo-l":    { width: 2142, height: 2200 },
-  "logo-l-fa": { width: 4500, height: 1033 },
-  "logo-l-en": { width: 4500, height: 1033 },
+// Static per-variant fallbacks, shown until an admin uploads that specific
+// variant via Settings -> Header. Matches the login page's own default-value
+// convention (app/login/page.js's DEFAULT_SETTINGS.logo_path) of falling
+// back to a static asset instead of leaving the header blank -- now one
+// fallback per variant instead of a single universal one, mirroring the old
+// static Logo.jsx's logoKey(isLight, variant) asset set.
+const STATIC_FALLBACKS = {
+  light_fa: { path: "/logo/logo-fa.png", width: 5310, height: 2134 },
+  light_en: { path: "/logo/logo-en.png", width: 5310, height: 2134 },
+  dark_fa: { path: "/logo/logo-l-fa.png", width: 4500, height: 1033 },
+  dark_en: { path: "/logo/logo-l-en.png", width: 4500, height: 1033 },
 };
 
-function logoKey(isLight, variant) {
-  const base = isLight ? "logo" : "logo-l";
-  const suffix = variant === "fa" ? "-fa" : variant === "en" ? "-en" : "";
-  return `${base}${suffix}`;
-}
-
-export default function Logo({ variant = "default", className = "" }) {
+export default function Logo({ data, className = "" }) {
+  const { lang } = useLang();
   const [isLight, setIsLight] = useState(false);
 
   useEffect(() => {
@@ -38,16 +34,14 @@ export default function Logo({ variant = "default", className = "" }) {
     return () => observer.disconnect();
   }, []);
 
-  const key = logoKey(isLight, variant);
-  const { width, height } = LOGO_DIMENSIONS[key];
+  const variantKey = `${isLight ? "light" : "dark"}_${lang}`;
+  // Fall back only within the exact theme+lang requested -- an uploaded
+  // logo from a mismatched theme (e.g. a light-optimized wordmark rendered
+  // on a dark background) can be illegible, so the theme-correct static
+  // asset is a safer default than borrowing another uploaded variant.
+  const { path, width, height } = data?.[variantKey] || STATIC_FALLBACKS[variantKey];
 
   return (
-    <Image
-      src={`/logo/${key}.png`}
-      alt="ایران فارما"
-      width={width}
-      height={height}
-      className={className}
-    />
+    <Image src={path} alt="" width={width} height={height} className={className} />
   );
 }

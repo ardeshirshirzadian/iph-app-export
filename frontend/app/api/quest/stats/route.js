@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 const EMPTY = { xp: 0, total_scans: 0, today_scans: 0, name_fa: '', name_en: '', rank: null };
 
@@ -24,22 +25,24 @@ export async function GET() {
   if (!userUuid) return NextResponse.json(EMPTY);
 
   try {
+    const currentEventId = await getCurrentEventId();
+
     const [totalResult, todayResult, xpResult] = await Promise.all([
       query(
-        `SELECT COUNT(*) FROM quest_scans WHERE user_uuid = $1`,
-        [userUuid]
+        `SELECT COUNT(*) FROM quest_scans WHERE user_uuid = $1 AND event_id = $2`,
+        [userUuid, currentEventId]
       ),
       query(
         `SELECT COUNT(*) FROM quest_scans
-         WHERE user_uuid = $1 AND scanned_at > NOW() - INTERVAL '24 hours'`,
-        [userUuid]
+         WHERE user_uuid = $1 AND event_id = $2 AND scanned_at > NOW() - INTERVAL '24 hours'`,
+        [userUuid, currentEventId]
       ),
       query(
         `SELECT
-           COALESCE((SELECT SUM(xp_earned) FROM quest_scans      WHERE user_uuid = $1), 0) +
-           COALESCE((SELECT SUM(xp_amount) FROM quest_xp_grants  WHERE user_uuid = $1), 0)
+           COALESCE((SELECT SUM(xp_earned) FROM quest_scans      WHERE user_uuid = $1 AND event_id = $2), 0) +
+           COALESCE((SELECT SUM(xp_amount) FROM quest_xp_grants  WHERE user_uuid = $1 AND event_id = $2), 0)
          AS xp`,
-        [userUuid]
+        [userUuid, currentEventId]
       ),
     ]);
 

@@ -227,9 +227,9 @@ export async function GET() {
               const { rows: scanRows } = await query(
                 `SELECT company_id, bool_or(is_featured_booth_bonus) AS got_bonus
                  FROM quest_scans
-                 WHERE user_uuid = $1 AND company_id = ANY($2::int[])
+                 WHERE user_uuid = $1 AND company_id = ANY($2::int[]) AND event_id = $3
                  GROUP BY company_id`,
-                [userUuid, ids]
+                [userUuid, ids, currentEventId]
               ).catch(() => ({ rows: [] }));
               for (const sr of scanRows) {
                 scanMap[sr.company_id] = { got_bonus: sr.got_bonus };

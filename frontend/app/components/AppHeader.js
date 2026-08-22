@@ -111,7 +111,8 @@ export default function AppHeader({ leftActions, rightActions }) {
   const [lastSeen, setLastSeen] = useState(0);
   const [liveToast, setLiveToast] = useState(null);
   // Initialise from module-level cache so remounts render instantly without refetch.
-  const [headerItems, setHeaderItems] = useState(_headerCache);
+  const [headerItems, setHeaderItems] = useState(_headerCache?.items ?? null);
+  const [headerLogo, setHeaderLogo] = useState(_headerCache?.headerLogo ?? null);
 
   useEffect(() => {
     setLastSeen(Number(localStorage.getItem(LS_KEY) || 0));
@@ -135,8 +136,9 @@ export default function AppHeader({ leftActions, rightActions }) {
       .then((r) => r.json())
       .then((d) => {
         if (Array.isArray(d.items)) {
-          _headerCache = d.items;
+          _headerCache = { items: d.items, headerLogo: d.headerLogo ?? null };
           setHeaderItems(d.items);
+          setHeaderLogo(d.headerLogo ?? null);
         }
       })
       .catch(() => {});
@@ -274,27 +276,19 @@ export default function AppHeader({ leftActions, rightActions }) {
     return null;
   }
 
-  // The Logo block differs between FA and EN only in the internal order
-  // of the logo image and app-name text — exactly as it was hardcoded.
-  const logoBlockFA = logoVisible ? (
-    <Link href="/" className="flex items-center gap-2" style={{ textDecoration: "none" }}>
-      <span className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
-        {t(lang, "app_name")}
-      </span>
-      <div className="h-8 w-8 flex items-center justify-center">
-        <Logo className="h-8 w-auto object-contain" />
-      </div>
-    </Link>
-  ) : null;
-
-  const logoBlockEN = logoVisible ? (
-    <Link href="/" className="flex items-center gap-2" style={{ textDecoration: "none" }}>
-      <div className="h-8 w-8 flex items-center justify-center">
-        <Logo className="h-8 w-auto object-contain" />
-      </div>
-      <span className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
-        {t(lang, "app_name")}
-      </span>
+  // The header logo is now a single admin-uploaded image that already
+  // contains the full logo+wordmark lockup (see components/Logo.jsx) — the
+  // separate hardcoded app_name text this used to render next to is gone,
+  // so FA and EN no longer differ in content, only in which side of the
+  // header they're slotted into below (handled by the isRTL branch).
+  const logoBlock = logoVisible ? (
+    <Link
+      href="/"
+      aria-label={lang === "en" ? "Home" : "خانه"}
+      className="flex items-center gap-2"
+      style={{ textDecoration: "none" }}
+    >
+      <Logo data={headerLogo} className="h-8 w-auto object-contain" />
     </Link>
   ) : null;
 
@@ -322,14 +316,14 @@ export default function AppHeader({ leftActions, rightActions }) {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {rightActions}
-              {logoBlockFA}
+              {logoBlock}
             </div>
           </>
         ) : (
           <>
             {/* EN: logo on LEFT, action items on RIGHT (descending sort_order = mirrored) */}
             <div className="flex items-center gap-2 shrink-0">
-              {logoBlockEN}
+              {logoBlock}
               {rightActions}
             </div>
             <div className="flex items-center gap-2">

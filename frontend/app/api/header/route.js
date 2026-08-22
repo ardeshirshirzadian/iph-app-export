@@ -16,7 +16,12 @@ export async function GET() {
        ORDER BY sort_order ASC, id ASC`,
       [eventId]
     );
-    return NextResponse.json({ items: rows });
+    const logoResult = await query(
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'header_logo'",
+      [eventId]
+    );
+    const headerLogo = logoResult.rows[0]?.value ?? null;
+    return NextResponse.json({ items: rows, headerLogo });
   } catch (err) {
     console.error('Get header items error:', err);
     return NextResponse.json({ error: 'Failed to get header items' }, { status: 500 });

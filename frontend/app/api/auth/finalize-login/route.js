@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { extractProfilePhotoUrl } from '@/lib/utils';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 export async function POST(request) {
   let user;
@@ -47,25 +48,32 @@ export async function POST(request) {
     maxAge: 60 * 60 * 24 * 30,
   });
 
+  // Resolved here (inside the request scope, before the fire-and-forget
+  // call below) rather than inside upsertAppUser -- getCurrentEventId()
+  // reads next/headers, which is only valid while the request is in
+  // flight. upsertAppUser keeps running after this handler returns, so
+  // calling it there could hit headers() outside a request scope.
+  const currentEventId = await getCurrentEventId();
+
   // Fire-and-forget: upsert into app_users — never block login on this
-  upsertAppUser(user).catch((err) =>
+  upsertAppUser(user, currentEventId).catch((err) =>
     console.error('[app_users upsert error]', err)
   );
 
   return Response.json({ success: true });
 }
 
-async function upsertAppUser(u) {
+async function upsertAppUser(u, eventId) {
   await query(
     `INSERT INTO app_users (
-      rasayesh_id, uuid, firstname_fa, lastname_fa, firstname_en, lastname_en,
+      event_id, rasayesh_id, uuid, firstname_fa, lastname_fa, firstname_en, lastname_en,
       mobile, email, national_code, job_title_fa, job_title_en, phone,
       industry_id, occupation_id, country_id, state_id,
       address_fa, address_en, postal_code, is_foreign,
       mobile_verified, email_verified, profile_image, raw_data,
       first_login_at, last_login_at, login_count
     ) VALUES (
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,
       NOW(), NOW(), 1
     )
     ON CONFLICT (event_id, uuid) DO UPDATE SET
@@ -95,6 +103,7 @@ async function upsertAppUser(u) {
       last_login_at   = NOW(),
       login_count     = app_users.login_count + 1`,
     [
+      eventId,
       u.id ?? null,
       u.uuid,
       u.firstname_fa ?? null,

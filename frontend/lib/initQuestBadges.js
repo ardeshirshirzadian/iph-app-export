@@ -33,9 +33,27 @@ const CREATE_ATTENDANCE_TABLE = `
     user_uuid VARCHAR(100) NOT NULL,
     event_date DATE NOT NULL DEFAULT CURRENT_DATE,
     created_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(user_uuid, event_date)
+    event_id INTEGER NOT NULL DEFAULT 1 REFERENCES events(id)
   )
 `;
+
+// Migrates a pre-existing table (event_id added out-of-band, without this
+// bootstrap or its uniqueness constraint being updated to match) to be
+// event-scoped. Without this, the same account attending both events on the
+// same calendar day would have its second event's row silently dropped by
+// the old (user_uuid, event_date) constraint (ON CONFLICT DO NOTHING),
+// corrupting consecutive_days badge tracking for anyone active in both.
+// CREATE UNIQUE INDEX IF NOT EXISTS makes the new constraint idempotent
+// (unlike ADD CONSTRAINT, which has no IF NOT EXISTS form) -- ON CONFLICT
+// can target a unique index directly, no named constraint required.
+async function migrateAttendanceLogEventScoping() {
+  await query(`ALTER TABLE quest_attendance_log ADD COLUMN IF NOT EXISTS event_id INTEGER NOT NULL DEFAULT 1`);
+  await query(`ALTER TABLE quest_attendance_log DROP CONSTRAINT IF EXISTS quest_attendance_log_user_uuid_event_date_key`);
+  await query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS quest_attendance_log_user_date_event_uidx
+      ON quest_attendance_log (user_uuid, event_date, event_id)
+  `);
+}
 
 const SEED = [
   {
@@ -125,6 +143,7 @@ export async function ensureQuestBadgesTable(eventId) {
 export async function ensureAttendanceLogTable() {
   if (globalThis._attendanceLogInitialized) return;
   await query(CREATE_ATTENDANCE_TABLE);
+  await migrateAttendanceLogEventScoping();
   globalThis._attendanceLogInitialized = true;
 }
 

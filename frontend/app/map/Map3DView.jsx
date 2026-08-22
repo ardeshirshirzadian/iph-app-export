@@ -68,6 +68,12 @@ function getHallColor(hall, hallColors) {
   return hallColors[hall.name] || hall.color || "#00ffb3";
 }
 
+// Zone fill when its hall_name has no entry in hallColors -- see the same
+// constant in MapClient.jsx for the full explanation. Kept identical across
+// both renderers so the 2D and 3D maps never disagree on what "unconfigured"
+// looks like.
+const UNCONFIGURED_ZONE_COLOR = "#ff00ff";
+
 function parseColor(c) {
   if (!c) return new THREE.Color(0x00ffb3);
   try { return new THREE.Color(c); } catch { return new THREE.Color(0x888888); }
@@ -391,7 +397,7 @@ export default function Map3DView({
 
     // ── Build named zones — same height as booths for visual consistency ─────
     for (const zone of (zones ?? [])) {
-      const colorStr = hallColors[zone.hall_name] || "#00ffb3";
+      const colorStr = hallColors[zone.hall_name] || UNCONFIGURED_ZONE_COLOR;
       const shape = zone.shape_type || "rectangle";
       let cx, cz, bw, bd;
       if (shape === "circle") {

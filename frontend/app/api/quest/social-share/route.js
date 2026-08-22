@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 const VALID_PLATFORMS = ['Instagram', 'Telegram', 'WhatsApp', 'Other'];
 
@@ -37,17 +38,19 @@ export async function POST(request) {
   const resolvedPlatform = VALID_PLATFORMS.includes(platform) ? platform : null;
 
   try {
+    const currentEventId = await getCurrentEventId();
+
     // Check for existing PENDING submission — block duplicate pending
     const existingPending = missionId
       ? await query(
           `SELECT id FROM quest_social_share_submissions
-           WHERE mission_id = $1 AND user_uuid = $2 AND status = 'pending'`,
-          [missionId, userUuid]
+           WHERE mission_id = $1 AND user_uuid = $2 AND status = 'pending' AND event_id = $3`,
+          [missionId, userUuid, currentEventId]
         )
       : await query(
           `SELECT id FROM quest_social_share_submissions
-           WHERE badge_id = $1 AND user_uuid = $2 AND status = 'pending'`,
-          [badgeId, userUuid]
+           WHERE badge_id = $1 AND user_uuid = $2 AND status = 'pending' AND event_id = $3`,
+          [badgeId, userUuid, currentEventId]
         );
 
     if (existingPending.rows.length > 0) {
@@ -58,39 +61,42 @@ export async function POST(request) {
     const existingApproved = missionId
       ? await query(
           `SELECT id FROM quest_social_share_submissions
-           WHERE mission_id = $1 AND user_uuid = $2 AND status = 'approved'`,
-          [missionId, userUuid]
+           WHERE mission_id = $1 AND user_uuid = $2 AND status = 'approved' AND event_id = $3`,
+          [missionId, userUuid, currentEventId]
         )
       : await query(
           `SELECT id FROM quest_social_share_submissions
-           WHERE badge_id = $1 AND user_uuid = $2 AND status = 'approved'`,
-          [badgeId, userUuid]
+           WHERE badge_id = $1 AND user_uuid = $2 AND status = 'approved' AND event_id = $3`,
+          [badgeId, userUuid, currentEventId]
         );
 
     if (existingApproved.rows.length > 0) {
       return NextResponse.json({ error: 'already_approved' }, { status: 409 });
     }
 
-    // Verify mission/badge exists and is the right type
+    // Verify mission/badge exists, is the right type, AND belongs to the
+    // current event -- missionId/badgeId come straight from the client, so
+    // without the event_id check here a request could reference another
+    // event's content and still succeed, scoped to (and polluting) this event.
     if (missionId) {
       const r = await query(
-        `SELECT id FROM quest_content WHERE id = $1 AND mission_type = 'social_share'`,
-        [missionId]
+        `SELECT id FROM quest_content WHERE id = $1 AND mission_type = 'social_share' AND event_id = $2`,
+        [missionId, currentEventId]
       );
       if (r.rows.length === 0) return NextResponse.json({ error: 'mission_not_found' }, { status: 404 });
     } else {
       const r = await query(
-        `SELECT id FROM quest_badges WHERE id = $1 AND badge_type = 'social_share'`,
-        [badgeId]
+        `SELECT id FROM quest_badges WHERE id = $1 AND badge_type = 'social_share' AND event_id = $2`,
+        [badgeId, currentEventId]
       );
       if (r.rows.length === 0) return NextResponse.json({ error: 'badge_not_found' }, { status: 404 });
     }
 
     await query(
       `INSERT INTO quest_social_share_submissions
-         (mission_id, badge_id, user_uuid, link_url, platform, status)
-       VALUES ($1, $2, $3, $4, $5, 'pending')`,
-      [missionId || null, badgeId || null, userUuid, link_url.trim(), resolvedPlatform]
+         (mission_id, badge_id, user_uuid, link_url, platform, status, event_id)
+       VALUES ($1, $2, $3, $4, $5, 'pending', $6)`,
+      [missionId || null, badgeId || null, userUuid, link_url.trim(), resolvedPlatform, currentEventId]
     );
 
     return NextResponse.json({ ok: true, status: 'pending' });

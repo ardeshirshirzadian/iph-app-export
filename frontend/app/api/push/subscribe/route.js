@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { cookies } from 'next/headers';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 export async function POST(request) {
   let body;
@@ -26,14 +27,20 @@ export async function POST(request) {
   }
 
   try {
+    // event_id is stamped for data accuracy (which event this subscription
+    // was created under) even though sendPush.js's current broadcast-to-all
+    // read doesn't filter by it yet -- see PR notes on whether that read
+    // should become event-scoped too.
+    const currentEventId = await getCurrentEventId();
     await query(
-      `INSERT INTO push_subscriptions (user_uuid, endpoint, p256dh, auth)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO push_subscriptions (user_uuid, endpoint, p256dh, auth, event_id)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (endpoint) DO UPDATE
          SET user_uuid = EXCLUDED.user_uuid,
              p256dh    = EXCLUDED.p256dh,
-             auth      = EXCLUDED.auth`,
-      [userUuid, endpoint, keys.p256dh, keys.auth]
+             auth      = EXCLUDED.auth,
+             event_id  = EXCLUDED.event_id`,
+      [userUuid, endpoint, keys.p256dh, keys.auth, currentEventId]
     );
     return NextResponse.json({ ok: true });
   } catch (err) {

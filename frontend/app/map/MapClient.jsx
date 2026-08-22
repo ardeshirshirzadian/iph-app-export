@@ -290,6 +290,16 @@ function getHallColor(hall, hallColors) {
   return hallColors[hall.name] || hall.color || "#00ffb3";
 }
 
+// Zone fill when its hall_name has no entry in hallColors -- should only
+// happen if a hall is renamed/removed from map_hall_colors after zones
+// already reference it, since the admin form now prevents saving a visible
+// zone without a valid hall. A hot magenta reads as "unconfigured" (the
+// standard missing-texture/missing-asset color convention) rather than a
+// plausible brand color -- unlike the previous #00ffb3 green, which matched
+// a real hall color closely enough to go unnoticed for the Iran Cosmetica
+// incident this fallback replaces.
+const UNCONFIGURED_ZONE_COLOR = "#ff00ff";
+
 // Returns an SVG path `d` string tracing only the OUTER boundary of a merged
 // group as disconnected edge segments (M x,y L x,y …). Internal edges shared
 // by two booth polygons are omitted. Delegates to the shared groupOuterLoops
@@ -2255,7 +2265,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
               {[...mapZones.filter((z) => z.title_fa && z.is_visible !== false)]
                 .sort((a, b) => zoneArea(b) - zoneArea(a))
                 .map((zone) => {
-                const color = hallColors[zone.hall_name] || "#00ffb3";
+                const color = hallColors[zone.hall_name] || UNCONFIGURED_ZONE_COLOR;
                 const isActive = selectedZone?.id === zone.id;
                 const fill   = isActive ? `${color}bb` : `${color}40`;
                 const stroke = isActive ? color : `${color}80`;

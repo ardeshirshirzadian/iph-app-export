@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { ensureAttendanceLogTable } from '@/lib/initQuestBadges';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 export async function POST() {
   const cookieStore = await cookies();
@@ -17,11 +18,12 @@ export async function POST() {
 
   try {
     await ensureAttendanceLogTable();
+    const currentEventId = await getCurrentEventId();
     await query(
-      `INSERT INTO quest_attendance_log (user_uuid, event_date)
-       VALUES ($1, CURRENT_DATE)
-       ON CONFLICT (user_uuid, event_date) DO NOTHING`,
-      [userUuid]
+      `INSERT INTO quest_attendance_log (user_uuid, event_date, event_id)
+       VALUES ($1, CURRENT_DATE, $2)
+       ON CONFLICT (user_uuid, event_date, event_id) DO NOTHING`,
+      [userUuid, currentEventId]
     );
     return NextResponse.json({ success: true });
   } catch (err) {

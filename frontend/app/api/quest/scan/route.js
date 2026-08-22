@@ -21,29 +21,43 @@ async function ensureQuestUserNamesTable() {
   globalThis._questUserNamesReady = true;
 }
 
-async function cacheUserName(userUuid, displayNameFa, displayNameEn) {
+async function cacheUserName(userUuid, displayNameFa, displayNameEn, eventId) {
   try {
     await ensureQuestUserNamesTable();
 
-    // Resolve profile photo from app_users (populated at login time)
+    // Resolve profile photo from app_users (populated at login time).
+    // event_id-scoped: since app_users now has one row per (event_id, uuid)
+    // instead of a single cross-event row, an unscoped lookup here could
+    // match the wrong event's row (or, with no ORDER BY, an arbitrary one)
+    // once a user has logged into more than one event.
     let profilePhotoUrl = null;
     try {
-      const { rows } = await query('SELECT profile_image FROM app_users WHERE uuid = $1', [userUuid]);
+      const { rows } = await query(
+        'SELECT profile_image FROM app_users WHERE uuid = $1 AND event_id = $2',
+        [userUuid, eventId]
+      );
       const raw = rows[0]?.profile_image;
       if (raw && typeof raw === 'string') {
         profilePhotoUrl = raw.startsWith('http') ? raw : RASAYESH_BASE + raw;
       }
     } catch {}
 
+    // quest_user_names is intentionally NOT event-scoped in its reads (PK is
+    // user_uuid alone; leaderboard joins it without an event_id filter) --
+    // display name/photo are person-level attributes, not event-level, so a
+    // single global cache row per user is correct. event_id is still stamped
+    // here for data accuracy (which event's login last refreshed the cache)
+    // even though nothing currently filters on it.
     await query(
-      `INSERT INTO quest_user_names (user_uuid, display_name_fa, display_name_en, profile_photo_url, updated_at)
-       VALUES ($1, $2, $3, $4, NOW())
+      `INSERT INTO quest_user_names (user_uuid, display_name_fa, display_name_en, profile_photo_url, updated_at, event_id)
+       VALUES ($1, $2, $3, $4, NOW(), $5)
        ON CONFLICT (user_uuid) DO UPDATE
          SET display_name_fa   = EXCLUDED.display_name_fa,
              display_name_en   = EXCLUDED.display_name_en,
              profile_photo_url = COALESCE(EXCLUDED.profile_photo_url, quest_user_names.profile_photo_url),
-             updated_at        = NOW()`,
-      [userUuid, displayNameFa || null, displayNameEn || null, profilePhotoUrl]
+             updated_at        = NOW(),
+             event_id          = EXCLUDED.event_id`,
+      [userUuid, displayNameFa || null, displayNameEn || null, profilePhotoUrl, eventId]
     );
   } catch (err) {
     console.error('[quest/scan] cacheUserName failed:', err.message);
@@ -136,9 +150,9 @@ export async function POST(request) {
 
       const lastScanResult = await query(
         `SELECT scanned_at FROM quest_scans
-         WHERE user_uuid = $1 AND company_id = $2
+         WHERE user_uuid = $1 AND company_id = $2 AND event_id = $3
          ORDER BY scanned_at DESC LIMIT 1`,
-        [userUuid, company.id]
+        [userUuid, company.id, currentEventId]
       );
       if (lastScanResult.rows.length > 0) {
         const elapsedMs = Date.now() - new Date(lastScanResult.rows[0].scanned_at).getTime();
@@ -157,9 +171,9 @@ export async function POST(request) {
     } else {
       const existingResult = await query(
         `SELECT id FROM quest_scans
-         WHERE user_uuid = $1 AND company_id = $2
+         WHERE user_uuid = $1 AND company_id = $2 AND event_id = $3
            AND scanned_at > NOW() - INTERVAL '24 hours'`,
-        [userUuid, company.id]
+        [userUuid, company.id, currentEventId]
       );
       if (existingResult.rows.length > 0) {
         return NextResponse.json({ already_scanned: true, company });
@@ -179,7 +193,8 @@ export async function POST(request) {
         `SELECT id, featured_booth_pool, featured_booth_bonus_xp, featured_booth_rotation_hours
          FROM quest_content
          WHERE is_active = true AND mission_type = 'featured_booth'
-           AND featured_booth_pool IS NOT NULL`
+           AND featured_booth_pool IS NOT NULL AND event_id = $1`,
+        [currentEventId]
       );
       for (const m of fbMissions) {
         const pool = Array.isArray(m.featured_booth_pool) ? m.featured_booth_pool : [];
@@ -195,7 +210,8 @@ export async function POST(request) {
         `SELECT id, featured_booth_pool, featured_booth_rotation_hours
          FROM quest_badges
          WHERE is_active = true AND badge_type = 'featured_booth'
-           AND featured_booth_pool IS NOT NULL`
+           AND featured_booth_pool IS NOT NULL AND event_id = $1`,
+        [currentEventId]
       );
       for (const b of fbBadges) {
         const pool = Array.isArray(b.featured_booth_pool) ? b.featured_booth_pool : [];
@@ -215,13 +231,13 @@ export async function POST(request) {
     const xpEarned  = baseXp + bonusXp;
 
     await query(
-      `INSERT INTO quest_scans (user_uuid, company_id, booth_uuid, xp_earned, is_featured_booth_bonus)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [userUuid, company.id, uuid, xpEarned, bonusXp > 0]
+      `INSERT INTO quest_scans (user_uuid, company_id, booth_uuid, xp_earned, is_featured_booth_bonus, event_id)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [userUuid, company.id, uuid, xpEarned, bonusXp > 0, currentEventId]
     );
 
     // Cache user display name so leaderboard doesn't need live Rasayesh calls
-    cacheUserName(userUuid, displayNameFa, displayNameEn).catch(() => {});
+    cacheUserName(userUuid, displayNameFa, displayNameEn, currentEventId).catch(() => {});
 
     // ── Mission completion XP grants (booth_scan, hall_scan, special_booth) ──
     // Every other mission type (quiz, survey, social_share) already inserts into
@@ -233,8 +249,9 @@ export async function POST(request) {
       const { rows: scanMissions } = await query(
         `SELECT id, mission_type, xp_reward, total, target_hall_name, hall_match_mode, target_company_id
          FROM quest_content
-         WHERE is_active = true AND xp_reward > 0
-           AND mission_type IN ('booth_scan', 'hall_scan', 'special_booth')`
+         WHERE is_active = true AND xp_reward > 0 AND event_id = $1
+           AND mission_type IN ('booth_scan', 'hall_scan', 'special_booth')`,
+        [currentEventId]
       );
 
       for (const m of scanMissions) {
@@ -242,8 +259,8 @@ export async function POST(request) {
 
         if (m.mission_type === 'booth_scan') {
           const { rows } = await query(
-            `SELECT COUNT(*) AS cnt FROM quest_scans WHERE user_uuid = $1`,
-            [userUuid]
+            `SELECT COUNT(*) AS cnt FROM quest_scans WHERE user_uuid = $1 AND event_id = $2`,
+            [userUuid, currentEventId]
           );
           completed = parseInt(rows[0].cnt, 10) >= m.total;
 
@@ -266,10 +283,10 @@ export async function POST(request) {
 
         if (completed) {
           await query(
-            `INSERT INTO quest_xp_grants (user_uuid, source_type, source_id, xp_amount)
-             VALUES ($1, $2, $3, $4)
+            `INSERT INTO quest_xp_grants (user_uuid, source_type, source_id, xp_amount, event_id)
+             VALUES ($1, $2, $3, $4, $5)
              ON CONFLICT (user_uuid, source_type, source_id) DO NOTHING`,
-            [userUuid, `mission_${m.mission_type}`, m.id, m.xp_reward]
+            [userUuid, `mission_${m.mission_type}`, m.id, m.xp_reward, currentEventId]
           ).catch(() => {});
         }
       }
@@ -290,10 +307,10 @@ export async function POST(request) {
       if (company.linked_badge_id) {
         await ensureBadgeProgressTable();
         await query(
-          `INSERT INTO quest_badge_progress (badge_id, user_uuid, earned, earned_at)
-           VALUES ($1, $2, true, NOW())
+          `INSERT INTO quest_badge_progress (badge_id, user_uuid, earned, earned_at, event_id)
+           VALUES ($1, $2, true, NOW(), $3)
            ON CONFLICT (badge_id, user_uuid) DO UPDATE SET earned = true, earned_at = NOW()`,
-          [company.linked_badge_id, userUuid]
+          [company.linked_badge_id, userUuid, currentEventId]
         ).catch(() => {});
       }
     }
@@ -310,10 +327,10 @@ export async function POST(request) {
     if (bonusBadge) {
       await ensureBadgeProgressTable();
       await query(
-        `INSERT INTO quest_badge_progress (badge_id, user_uuid, earned, earned_at)
-         VALUES ($1, $2, true, NOW())
+        `INSERT INTO quest_badge_progress (badge_id, user_uuid, earned, earned_at, event_id)
+         VALUES ($1, $2, true, NOW(), $3)
          ON CONFLICT (badge_id, user_uuid) DO UPDATE SET earned = true, earned_at = NOW()`,
-        [bonusBadge.id, userUuid]
+        [bonusBadge.id, userUuid, currentEventId]
       ).catch(() => {});
     }
 

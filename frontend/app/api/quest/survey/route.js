@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 export async function POST(request) {
   const cookieStore = await cookies();
@@ -28,35 +29,40 @@ export async function POST(request) {
   }
 
   try {
+    const currentEventId = await getCurrentEventId();
+
     // Single-attempt enforcement
     const existingCheck = missionId
       ? await query(
-          `SELECT id FROM quest_survey_responses WHERE mission_id = $1 AND user_uuid = $2`,
-          [missionId, userUuid]
+          `SELECT id FROM quest_survey_responses WHERE mission_id = $1 AND user_uuid = $2 AND event_id = $3`,
+          [missionId, userUuid, currentEventId]
         )
       : await query(
-          `SELECT id FROM quest_survey_responses WHERE badge_id = $1 AND user_uuid = $2`,
-          [badgeId, userUuid]
+          `SELECT id FROM quest_survey_responses WHERE badge_id = $1 AND user_uuid = $2 AND event_id = $3`,
+          [badgeId, userUuid, currentEventId]
         );
 
     if (existingCheck.rows.length > 0) {
       return NextResponse.json({ error: 'already_submitted' }, { status: 409 });
     }
 
-    // Fetch survey_fields + xp_reward for server-side validation and XP grant
+    // Fetch survey_fields + xp_reward for server-side validation and XP grant.
+    // event_id filter here isn't just defense-in-depth: without it, a
+    // missionId/badgeId belonging to another event would still resolve and
+    // silently grant XP scoped to the current event.
     let surveyFields, xpReward;
     if (missionId) {
       const r = await query(
-        `SELECT survey_fields, xp_reward FROM quest_content WHERE id = $1 AND mission_type = 'survey'`,
-        [missionId]
+        `SELECT survey_fields, xp_reward FROM quest_content WHERE id = $1 AND mission_type = 'survey' AND event_id = $2`,
+        [missionId, currentEventId]
       );
       if (r.rows.length === 0) return NextResponse.json({ error: 'mission_not_found' }, { status: 404 });
       surveyFields = r.rows[0].survey_fields;
       xpReward     = r.rows[0].xp_reward ?? 0;
     } else {
       const r = await query(
-        `SELECT survey_fields, 0 AS xp_reward FROM quest_badges WHERE id = $1 AND badge_type = 'survey'`,
-        [badgeId]
+        `SELECT survey_fields, 0 AS xp_reward FROM quest_badges WHERE id = $1 AND badge_type = 'survey' AND event_id = $2`,
+        [badgeId, currentEventId]
       );
       if (r.rows.length === 0) return NextResponse.json({ error: 'badge_not_found' }, { status: 404 });
       surveyFields = r.rows[0].survey_fields;
@@ -82,9 +88,9 @@ export async function POST(request) {
     }
 
     await query(
-      `INSERT INTO quest_survey_responses (mission_id, badge_id, user_uuid, answers)
-       VALUES ($1, $2, $3, $4)`,
-      [missionId || null, badgeId || null, userUuid, JSON.stringify(answers)]
+      `INSERT INTO quest_survey_responses (mission_id, badge_id, user_uuid, answers, event_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [missionId || null, badgeId || null, userUuid, JSON.stringify(answers), currentEventId]
     );
 
     // Completion is tracked in quest_survey_responses (already inserted above).
@@ -97,10 +103,10 @@ export async function POST(request) {
       const sourceType = missionId ? 'mission_survey' : 'badge_survey';
       const sourceId   = missionId || badgeId;
       await query(
-        `INSERT INTO quest_xp_grants (user_uuid, source_type, source_id, xp_amount)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO quest_xp_grants (user_uuid, source_type, source_id, xp_amount, event_id)
+         VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (user_uuid, source_type, source_id) DO NOTHING`,
-        [userUuid, sourceType, sourceId, xpReward]
+        [userUuid, sourceType, sourceId, xpReward, currentEventId]
       ).catch(() => {});
     }
 
