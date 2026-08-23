@@ -42,7 +42,7 @@ export default async function CartCallbackPage({ searchParams }) {
           <Link
             href="/"
             className="inline-block px-6 py-2.5 rounded-xl font-bold text-sm"
-            style={{ background: "var(--accent)", color: "#021f20" }}
+            style={{ background: "var(--accent)", color: "var(--btn-primary-text)" }}
           >
             بازگشت به صفحه اصلی
           </Link>

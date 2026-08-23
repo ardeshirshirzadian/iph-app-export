@@ -230,7 +230,7 @@ export default function AppHeader({ leftActions, rightActions }) {
           {unreadCount > 0 && (
             <span
               className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold leading-none"
-              style={{ background: "var(--accent)", color: "#021f20" }}
+              style={{ background: "var(--accent)", color: "var(--btn-primary-text)" }}
             >
               {badgeLabel}
             </span>

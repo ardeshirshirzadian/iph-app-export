@@ -313,7 +313,7 @@ function FilterPill({ label, active, onClick }) {
       style={{
         background: active ? "var(--accent)" : "var(--surface)",
         border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
-        color: active ? "#021f20" : "var(--text-muted)",
+        color: active ? "var(--btn-primary-text)" : "var(--text-muted)",
         fontFamily: "inherit",
         cursor: "pointer",
       }}

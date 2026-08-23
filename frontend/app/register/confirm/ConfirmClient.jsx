@@ -138,7 +138,7 @@ export default function ConfirmClient() {
               <div className="flex items-center gap-3">
                 <div
                   className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-base"
-                  style={{ background: "var(--accent)", color: "#021f20" }}
+                  style={{ background: "var(--accent)", color: "var(--btn-primary-text)" }}
                 >
                   {(displayName?.[0] || "?").toUpperCase()}
                 </div>
@@ -220,7 +220,7 @@ export default function ConfirmClient() {
               onClick={handleConfirm}
               disabled={submitting || selectedPlans.length === 0}
               className="w-full py-3.5 rounded-xl font-bold text-sm transition-all active:scale-95 disabled:opacity-50"
-              style={{ background: "var(--accent)", color: "#021f20" }}
+              style={{ background: "var(--accent)", color: "var(--btn-primary-text)" }}
             >
               {submitting
                 ? (lang === "fa" ? "در حال پردازش..." : "Processing...")

@@ -72,7 +72,7 @@ function QuantityControl({ value, onChange, min = 0, max = 10 }) {
         onClick={() => onChange(Math.min(max, value + 1))}
         disabled={value >= max}
         className="w-8 h-8 rounded-lg flex items-center justify-center text-base font-bold transition-all active:scale-95 disabled:opacity-30"
-        style={{ background: "var(--accent)", color: "#021f20" }}
+        style={{ background: "var(--accent)", color: "var(--btn-primary-text)" }}
       >
         +
       </button>
@@ -366,7 +366,7 @@ export default function BookClient({ title, subtitle, title_en, subtitle_en }) {
                   onClick={handleAddToCart}
                   disabled={!anySelected || addingToCart}
                   className="w-full py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-50"
-                  style={{ background: "var(--accent)", color: "#021f20" }}
+                  style={{ background: "var(--accent)", color: "var(--btn-primary-text)" }}
                 >
                   {addingToCart ? "..." : t(lang, "book_add_to_cart")}
                 </button>

@@ -57,8 +57,8 @@ const INPUT_STYLE = {
   width: "100%",
   borderRadius: 8,
   padding: "9px 12px",
-  background: "rgba(5,64,65,0.4)",
-  border: "1px solid rgba(255,255,255,0.1)",
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
   color: "var(--text)",
   fontFamily: "inherit",
   fontSize: 14,
@@ -87,7 +87,7 @@ function SectionCard({ title, children }) {
   return (
     <div
       className="rounded-3xl p-5 backdrop-blur-xl border space-y-4"
-      style={{ background: "rgba(5,64,65,0.4)", borderColor: "rgba(0,255,179,0.2)" }}
+      style={{ background: "var(--surface)", borderColor: "rgba(0,255,179,0.2)" }}
     >
       <p className="text-xs font-bold tracking-wide" style={{ color: "var(--text-dim)" }}>
         {title}
@@ -297,7 +297,7 @@ export default function ProfileUpdateClient() {
               type="button"
               onClick={() => {}}
               className="flex-1 py-2 text-sm font-bold"
-              style={{ background: !isEN ? "var(--accent)" : "transparent", color: !isEN ? "#021f20" : "var(--text-dim)" }}
+              style={{ background: !isEN ? "var(--accent)" : "transparent", color: !isEN ? "var(--btn-primary-text)" : "var(--text-dim)" }}
             >
               FA فارسی
             </button>
@@ -305,7 +305,7 @@ export default function ProfileUpdateClient() {
               type="button"
               onClick={() => {}}
               className="flex-1 py-2 text-sm font-bold"
-              style={{ background: isEN ? "var(--accent)" : "transparent", color: isEN ? "#021f20" : "var(--text-dim)" }}
+              style={{ background: isEN ? "var(--accent)" : "transparent", color: isEN ? "var(--btn-primary-text)" : "var(--text-dim)" }}
             >
               EN English
             </button>
@@ -416,9 +416,9 @@ export default function ProfileUpdateClient() {
                             onClick={() => toggleActivity(f.id)}
                             className="text-xs px-3 py-1.5 rounded-full border transition-all"
                             style={{
-                              background: isActive ? "var(--accent)" : "rgba(5,64,65,0.5)",
-                              color: isActive ? "#021f20" : "rgba(255,255,255,0.6)",
-                              borderColor: isActive ? "var(--accent)" : "rgba(255,255,255,0.1)",
+                              background: isActive ? "var(--accent)" : "var(--surface)",
+                              color: isActive ? "var(--btn-primary-text)" : "var(--text-muted)",
+                              borderColor: isActive ? "var(--accent)" : "var(--border)",
                               fontWeight: isActive ? "700" : "400",
                             }}
                           >
@@ -458,7 +458,7 @@ export default function ProfileUpdateClient() {
             onClick={handleSave}
             disabled={submitting}
             className="w-full py-3.5 rounded-xl font-bold text-sm transition-all active:scale-95 disabled:opacity-50"
-            style={{ background: "var(--accent)", color: "#021f20" }}
+            style={{ background: "var(--accent)", color: "var(--btn-primary-text)" }}
           >
             {submitting
               ? (isEN ? "Saving..." : "در حال ذخیره...")

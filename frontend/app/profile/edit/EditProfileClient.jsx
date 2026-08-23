@@ -156,8 +156,8 @@ const INPUT_STYLE = {
   width: "100%",
   borderRadius: 8,
   padding: "9px 12px",
-  background: "rgba(5,64,65,0.4)",
-  border: "1px solid rgba(255,255,255,0.1)",
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
   color: "var(--text)",
   fontFamily: "inherit",
   fontSize: 14,
@@ -203,7 +203,7 @@ function SaveButton({ onClick, saving, saved }) {
       className="w-full py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
       style={{
         background: saved ? "rgba(34,197,94,0.15)" : "var(--accent)",
-        color: saved ? "#22c55e" : "#021f20",
+        color: saved ? "#22c55e" : "var(--btn-primary-text)",
         border: saved ? "1px solid rgba(34,197,94,0.3)" : "none",
       }}
     >
@@ -652,7 +652,7 @@ export default function EditProfileClient() {
             >
               <div
                 className="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center border-2"
-                style={{ background: "rgba(5,64,65,0.5)", borderColor: "rgba(0,255,179,0.3)" }}
+                style={{ background: "var(--surface)", borderColor: "rgba(0,255,179,0.3)" }}
               >
                 {profileUrl ? (
                   <img src={profileUrl} alt="profile" className="w-full h-full object-cover" />
@@ -714,7 +714,7 @@ export default function EditProfileClient() {
               className="flex-1 py-2 text-sm font-bold transition-colors"
               style={{
                 background: editLang === "fa" ? "var(--accent)" : "transparent",
-                color: editLang === "fa" ? "#021f20" : "var(--text-muted)",
+                color: editLang === "fa" ? "var(--btn-primary-text)" : "var(--text-muted)",
               }}
             >
               FA فارسی
@@ -725,7 +725,7 @@ export default function EditProfileClient() {
               className="flex-1 py-2 text-sm font-bold transition-colors"
               style={{
                 background: editLang === "en" ? "var(--accent)" : "transparent",
-                color: editLang === "en" ? "#021f20" : "var(--text-muted)",
+                color: editLang === "en" ? "var(--btn-primary-text)" : "var(--text-muted)",
               }}
             >
               EN English
@@ -785,7 +785,7 @@ export default function EditProfileClient() {
               className="w-full py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
               style={{
                 background: infoState.saved ? "rgba(34,197,94,0.12)" : "var(--accent)",
-                color: infoState.saved ? "#22c55e" : "#021f20",
+                color: infoState.saved ? "#22c55e" : "var(--btn-primary-text)",
                 border: infoState.saved ? "1px solid rgba(34,197,94,0.25)" : "none",
               }}
             >
@@ -835,7 +835,7 @@ export default function EditProfileClient() {
                       onClick={sendPhoneOtp}
                       disabled={phoneSendLoading || !newPhone}
                       className="text-xs px-3 py-2 rounded-xl font-bold whitespace-nowrap disabled:opacity-50"
-                      style={{ background: "var(--accent)", color: "#021f20" }}
+                      style={{ background: "var(--accent)", color: "var(--btn-primary-text)" }}
                     >
                       {phoneSendLoading ? "..." : "ارسال کد"}
                     </button>
@@ -870,7 +870,7 @@ export default function EditProfileClient() {
                       onClick={verifyPhoneOtp}
                       disabled={phoneVerifyLoading || phoneOtp.length < 4}
                       className="text-xs px-3 py-2 rounded-xl font-bold whitespace-nowrap disabled:opacity-50"
-                      style={{ background: "var(--accent)", color: "#021f20" }}
+                      style={{ background: "var(--accent)", color: "var(--btn-primary-text)" }}
                     >
                       {phoneVerifyLoading ? "..." : "تأیید"}
                     </button>
@@ -922,7 +922,7 @@ export default function EditProfileClient() {
               className="w-full py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
               style={{
                 background: contactState.saved ? "rgba(34,197,94,0.12)" : "var(--accent)",
-                color: contactState.saved ? "#22c55e" : "#021f20",
+                color: contactState.saved ? "#22c55e" : "var(--btn-primary-text)",
                 border: contactState.saved ? "1px solid rgba(34,197,94,0.25)" : "none",
               }}
             >
@@ -967,9 +967,9 @@ export default function EditProfileClient() {
                             onClick={() => toggleActivity(f.id)}
                             className="text-xs px-3 py-1.5 rounded-full border transition-all"
                             style={{
-                              background: isActive ? "var(--accent)" : "rgba(5,64,65,0.5)",
-                              color: isActive ? "#021f20" : "rgba(255,255,255,0.6)",
-                              borderColor: isActive ? "var(--accent)" : "rgba(255,255,255,0.1)",
+                              background: isActive ? "var(--accent)" : "var(--surface)",
+                              color: isActive ? "var(--btn-primary-text)" : "var(--text-muted)",
+                              borderColor: isActive ? "var(--accent)" : "var(--border)",
                               fontWeight: isActive ? "700" : "400",
                             }}
                           >
@@ -1010,7 +1010,7 @@ export default function EditProfileClient() {
               className="w-full py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
               style={{
                 background: activityState.saved ? "rgba(34,197,94,0.12)" : "var(--accent)",
-                color: activityState.saved ? "#22c55e" : "#021f20",
+                color: activityState.saved ? "#22c55e" : "var(--btn-primary-text)",
                 border: activityState.saved ? "1px solid rgba(34,197,94,0.25)" : "none",
               }}
             >

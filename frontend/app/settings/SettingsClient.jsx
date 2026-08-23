@@ -118,7 +118,7 @@ export default function SettingsClient({ title, subtitle, title_en, subtitle_en,
                 className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all"
                 style={{
                   background: lang === "fa" ? "var(--accent)" : "var(--surface-2)",
-                  color: lang === "fa" ? "#021f20" : "var(--text-dim)",
+                  color: lang === "fa" ? "var(--btn-primary-text)" : "var(--text-dim)",
                   border: lang === "fa" ? "none" : "1px solid var(--border)",
                 }}
               >
@@ -129,7 +129,7 @@ export default function SettingsClient({ title, subtitle, title_en, subtitle_en,
                 className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all"
                 style={{
                   background: lang === "en" ? "var(--accent)" : "var(--surface-2)",
-                  color: lang === "en" ? "#021f20" : "var(--text-dim)",
+                  color: lang === "en" ? "var(--btn-primary-text)" : "var(--text-dim)",
                   border: lang === "en" ? "none" : "1px solid var(--border)",
                 }}
               >

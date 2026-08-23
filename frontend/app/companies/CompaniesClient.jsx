@@ -209,7 +209,7 @@ function FilterPill({ label, active, onClick }) {
       style={{
         background: active ? "var(--accent)" : "var(--surface)",
         border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
-        color: active ? "#021f20" : "var(--text-muted)",
+        color: active ? "var(--btn-primary-text)" : "var(--text-muted)",
         fontFamily: "inherit",
         cursor: "pointer",
       }}
@@ -523,7 +523,7 @@ export default function CompaniesClient({ title, subtitle, title_en, subtitle_en
                   style={{
                     background: p === page ? "var(--accent)" : "var(--surface)",
                     border: `1px solid ${p === page ? "var(--accent)" : "var(--border)"}`,
-                    color: p === page ? "#021f20" : "var(--text)",
+                    color: p === page ? "var(--btn-primary-text)" : "var(--text)",
                   }}
                 >
                   {lang === "fa" ? toPersianDigits(p) : p}

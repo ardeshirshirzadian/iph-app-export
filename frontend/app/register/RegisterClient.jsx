@@ -95,13 +95,13 @@ function PlanCard({ plan, selected, onToggle, lang, isAutoIncluded }) {
           <div
             className="flex-shrink-0 w-5 h-5 rounded flex items-center justify-center transition-all"
             style={{
-              border: selected ? "2px solid var(--accent)" : "2px solid rgba(255,255,255,0.3)",
+              border: selected ? "2px solid var(--accent)" : "2px solid var(--border)",
               background: selected ? "var(--accent)" : "transparent",
             }}
           >
             {selected && (
               <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                <path d="M1 4L3.5 6.5L9 1" stroke="#021f20" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M1 4L3.5 6.5L9 1" stroke="var(--btn-primary-text)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             )}
           </div>
@@ -262,7 +262,7 @@ export default function RegisterClient({ title, subtitle, title_en, subtitle_en 
             <button
               onClick={() => router.push("/badge")}
               className="px-5 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95"
-              style={{ background: "var(--accent)", color: "#021f20" }}
+              style={{ background: "var(--accent)", color: "var(--btn-primary-text)" }}
             >
               {lang === "fa" ? "مشاهده کارت بازدیدکننده" : "View Visitor Card"}
             </button>
@@ -312,7 +312,7 @@ export default function RegisterClient({ title, subtitle, title_en, subtitle_en 
             <button
               onClick={handleContinue}
               className="w-full py-3.5 rounded-xl font-bold text-sm transition-all active:scale-95"
-              style={{ background: "var(--accent)", color: "#021f20" }}
+              style={{ background: "var(--accent)", color: "var(--btn-primary-text)" }}
             >
               {lang === "fa" ? "ادامه" : "Continue"}
             </button>
