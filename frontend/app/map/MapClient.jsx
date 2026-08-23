@@ -76,7 +76,7 @@ const Map3DView = dynamic(() => import("./Map3DView"), {
 function Map3DViewLoading() {
   return (
     <div className="absolute inset-0 flex items-center justify-center" style={{ background: "var(--bg)" }}>
-      <div className="w-10 h-10 rounded-full animate-pulse" style={{ background: "rgba(0,255,179,0.15)" }} />
+      <div className="w-10 h-10 rounded-full animate-pulse" style={{ background: "color-mix(in srgb, var(--accent) 15%, transparent)" }} />
     </div>
   );
 }
@@ -992,11 +992,11 @@ function MapSkeleton() {
           <div
             key={i}
             className="rounded-xl animate-pulse"
-            style={{ width: w, height: 40, background: "rgba(0,255,179,0.08)" }}
+            style={{ width: w, height: 40, background: "color-mix(in srgb, var(--accent) 8%, transparent)" }}
           />
         ))}
       </div>
-      <div className="w-48 h-4 rounded-full animate-pulse" style={{ background: "rgba(255,255,255,0.06)" }} />
+      <div className="w-48 h-4 rounded-full animate-pulse" style={{ background: "color-mix(in srgb, var(--text) 6%, transparent)" }} />
       <p className="text-sm" style={{ color: "var(--text-dim)" }}>در حال بارگذاری نقشه...</p>
     </div>
   );
