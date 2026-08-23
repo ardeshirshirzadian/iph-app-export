@@ -55,8 +55,8 @@ function Section({ title, children }) {
     <div
       className="rounded-3xl p-5 mb-4"
       style={{
-        background: "rgba(5,64,65,0.4)",
-        border: "1px solid rgba(0,255,179,0.2)",
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
         backdropFilter: "blur(12px)",
       }}
     >
@@ -71,21 +71,21 @@ function Section({ title, children }) {
 function LoadingSkeleton() {
   return (
     <div className="animate-pulse">
-      <div className="rounded-3xl mx-auto mb-5" style={{ width: 256, height: 256, background: "rgba(255,255,255,0.05)" }} />
-      <div className="rounded-3xl p-5 mb-4" style={{ background: "rgba(5,64,65,0.4)", border: "1px solid rgba(0,255,179,0.1)" }}>
-        <div className="rounded mb-3" style={{ height: 12, width: "40%", background: "rgba(255,255,255,0.06)" }} />
-        <div className="rounded mb-2" style={{ height: 16, width: "70%", background: "rgba(255,255,255,0.08)" }} />
-        <div className="rounded" style={{ height: 14, width: "55%", background: "rgba(255,255,255,0.06)" }} />
+      <div className="rounded-3xl mx-auto mb-5" style={{ width: 256, height: 256, background: "var(--border)" }} />
+      <div className="rounded-3xl p-5 mb-4" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
+        <div className="rounded mb-3" style={{ height: 12, width: "40%", background: "var(--border)" }} />
+        <div className="rounded mb-2" style={{ height: 16, width: "70%", background: "var(--border)" }} />
+        <div className="rounded" style={{ height: 14, width: "55%", background: "var(--border)" }} />
       </div>
-      <div className="rounded-3xl p-5 mb-4" style={{ background: "rgba(5,64,65,0.4)", border: "1px solid rgba(0,255,179,0.1)" }}>
-        <div className="rounded mb-3" style={{ height: 12, width: "30%", background: "rgba(255,255,255,0.06)" }} />
-        <div className="rounded mb-2" style={{ height: 14, background: "rgba(255,255,255,0.05)" }} />
-        <div className="rounded mb-2" style={{ height: 14, width: "85%", background: "rgba(255,255,255,0.05)" }} />
-        <div className="rounded" style={{ height: 14, width: "60%", background: "rgba(255,255,255,0.05)" }} />
+      <div className="rounded-3xl p-5 mb-4" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
+        <div className="rounded mb-3" style={{ height: 12, width: "30%", background: "var(--border)" }} />
+        <div className="rounded mb-2" style={{ height: 14, background: "var(--border)" }} />
+        <div className="rounded mb-2" style={{ height: 14, width: "85%", background: "var(--border)" }} />
+        <div className="rounded" style={{ height: 14, width: "60%", background: "var(--border)" }} />
       </div>
-      <div className="rounded-3xl p-5 mb-4" style={{ background: "rgba(5,64,65,0.4)", border: "1px solid rgba(0,255,179,0.1)" }}>
-        <div className="rounded mb-3" style={{ height: 12, width: "25%", background: "rgba(255,255,255,0.06)" }} />
-        <div className="rounded" style={{ height: 14, width: "50%", background: "rgba(255,255,255,0.05)" }} />
+      <div className="rounded-3xl p-5 mb-4" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
+        <div className="rounded mb-3" style={{ height: 12, width: "25%", background: "var(--border)" }} />
+        <div className="rounded" style={{ height: 14, width: "50%", background: "var(--border)" }} />
       </div>
     </div>
   );
@@ -158,7 +158,7 @@ export default function CompanyDetailClient({ slug }) {
           <div className="flex items-center gap-3 mb-5">
             <div className="rounded-xl" style={{ width: 38, height: 38, background: "var(--surface)", border: "1px solid var(--border)" }} />
             <div className="flex-1">
-              <div className="rounded animate-pulse" style={{ height: 18, width: "55%", background: "rgba(255,255,255,0.08)" }} />
+              <div className="rounded animate-pulse" style={{ height: 18, width: "55%", background: "var(--border)" }} />
             </div>
           </div>
           <LoadingSkeleton />
@@ -191,7 +191,7 @@ export default function CompanyDetailClient({ slug }) {
           </div>
           <div
             className="rounded-3xl p-10 text-center mt-6"
-            style={{ background: "rgba(5,64,65,0.4)", border: "1px solid rgba(0,255,179,0.2)", backdropFilter: "blur(12px)" }}
+            style={{ background: "var(--surface)", border: "1px solid var(--border)", backdropFilter: "blur(12px)" }}
           >
             <div className="text-4xl mb-3">🏢</div>
             <p className="text-sm font-medium mb-1" style={{ color: "var(--text)" }}>

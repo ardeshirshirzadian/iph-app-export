@@ -17,13 +17,13 @@ body {
    are injected by layout.js from the theme_colors DB table (force-dynamic).
    Only derived/secondary vars that are not admin-configurable live here. */
 :root {
-  --surface-2: rgba(255, 255, 255, 0.05);
-  --surface-hover: rgba(255, 255, 255, 0.2);
-  --text-faint: rgba(255, 255, 255, 0.25);
-  --border-accent: rgba(0, 255, 179, 0.2);
-  --nav-bg: rgba(5, 64, 65, 0.8);
-  --sheet-bg: rgba(2, 31, 32, 0.95);
-  --overlay: rgba(2, 31, 32, 0.6);
+  --surface-2: color-mix(in srgb, var(--surface) 12.5%, transparent);
+  --surface-hover: color-mix(in srgb, var(--text) 20%, transparent);
+  --text-faint: color-mix(in srgb, var(--text) 25%, transparent);
+  --border-accent: color-mix(in srgb, var(--accent) 20%, transparent);
+  --nav-bg: color-mix(in srgb, rgb(from var(--surface) r g b) 80%, transparent);
+  --sheet-bg: color-mix(in srgb, var(--bg) 95%, transparent);
+  --overlay: color-mix(in srgb, var(--bg) 60%, transparent);
 }
 
 html.lang-en body {
@@ -31,13 +31,13 @@ html.lang-en body {
 }
 
 html.light {
-  --surface-2: rgba(255, 255, 255, 0.6);
-  --surface-hover: rgba(15, 36, 32, 0.1);
-  --text-faint: rgba(15, 36, 32, 0.35);
-  --border-accent: rgba(4, 120, 87, 0.2);
-  --nav-bg: rgba(255, 255, 255, 0.85);
-  --sheet-bg: rgba(240, 250, 248, 0.98);
-  --overlay: rgba(15, 36, 32, 0.4);
+  --surface-2: color-mix(in srgb, var(--surface) 75%, transparent);
+  --surface-hover: color-mix(in srgb, var(--text) 10%, transparent);
+  --text-faint: color-mix(in srgb, var(--text) 35%, transparent);
+  --border-accent: color-mix(in srgb, var(--accent) 20%, transparent);
+  --nav-bg: color-mix(in srgb, rgb(from var(--surface) r g b) 85%, transparent);
+  --sheet-bg: color-mix(in srgb, var(--bg) 98%, transparent);
+  --overlay: color-mix(in srgb, var(--text) 40%, transparent);
 }
 /* Hide dark-mode decorative blur glows in light theme */
 html.light .dark-only { display: none !important; }

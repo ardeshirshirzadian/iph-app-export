@@ -3,7 +3,9 @@
 /**
  * Shared button component — 5 variants: primary | secondary | danger | ghost | icon
  * Colors come from CSS custom properties (--btn-{variant}-{prop}) injected by /api/theme.css,
- * which reads button_styles_config from app_settings so admins can adjust per variant per theme.
+ * which reads button_colors (iph-apn, event-scoped) so admins can adjust text color per
+ * variant per theme via iph-apn's /app-settings appearance tab. bg/border/fontSize are not
+ * admin-configurable -- always from lib/getButtonStyles.js's BUTTON_DEFAULTS.
  */
 export default function Button({
   variant = 'primary',

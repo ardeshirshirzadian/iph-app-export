@@ -19,26 +19,44 @@ export const BUTTON_DEFAULTS = {
   },
 };
 
+const VARIANTS = ['primary', 'secondary', 'danger', 'ghost', 'icon'];
+
 // eventId: pass explicitly from inside an unstable_cache-wrapped call site --
 // see lib/getActiveFont.js for why.
+//
+// button_colors (iph-apn, event-scoped) only stores a text-color override per
+// (theme, variant) -- bg/border/fontSize are not admin-configurable and always
+// come from BUTTON_DEFAULTS. Only .text gets replaced per variant; spreading a
+// bare color string over a variant's whole style object would blow away its
+// bg/border/fontSize (see route.js comment / investigation for the bug this avoided).
 export async function getButtonStyles(eventId) {
   try {
     eventId = eventId ?? await getCurrentEventId();
     const result = await query(
-      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'button_styles_config'",
+      'SELECT theme, variant, color_value FROM button_colors WHERE event_id = $1',
       [eventId]
     );
-    const saved = result.rows[0]?.value ?? {};
+    const textOverrides = { dark: {}, light: {} };
+    for (const row of result.rows) {
+      if (textOverrides[row.theme] !== undefined) {
+        textOverrides[row.theme][row.variant] = row.color_value;
+      }
+    }
+    const applyOverrides = (theme) =>
+      Object.fromEntries(
+        VARIANTS.map((v) => [
+          v,
+          { ...BUTTON_DEFAULTS[theme][v], text: textOverrides[theme][v] ?? BUTTON_DEFAULTS[theme][v].text },
+        ])
+      );
     return {
-      dark:  { ...BUTTON_DEFAULTS.dark,  ...(saved.dark  ?? {}) },
-      light: { ...BUTTON_DEFAULTS.light, ...(saved.light ?? {}) },
+      dark: applyOverrides('dark'),
+      light: applyOverrides('light'),
     };
   } catch {
     return BUTTON_DEFAULTS;
   }
 }
-
-const VARIANTS = ['primary', 'secondary', 'danger', 'ghost', 'icon'];
 
 export function buildButtonCssVars(styles) {
   const toVars = (theme, map) =>

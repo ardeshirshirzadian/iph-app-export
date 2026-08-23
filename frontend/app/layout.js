@@ -181,13 +181,15 @@ export default async function RootLayout({ children }) {
           </>
         )}
         {/* Dynamic font: @font-face for all weights + --active-font-family variable.
-            Changing the font in /apn/appearance takes effect on next page load, no restart. */}
+            Changing the font in iph-apn's /app-settings (appearance tab) takes effect on
+            next page load, no restart. */}
         {/* eslint-disable-next-line react/no-danger */}
         <style dangerouslySetInnerHTML={{ __html: fontStyle }} />
         {/* eslint-disable-next-line react/no-danger */}
         <style dangerouslySetInnerHTML={{ __html: fontEnStyle }} />
         {/* DB-driven theme colors served from /api/theme.css — no-store so changes in
-            /apn/appearance take effect on next page load without a rebuild. */}
+            iph-apn's /app-settings (appearance tab) take effect on next page load without
+            a rebuild. */}
         <link rel="stylesheet" href="/api/theme.css" />
       </head>
       <body>

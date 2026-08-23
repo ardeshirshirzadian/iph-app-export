@@ -32,7 +32,7 @@ function SkeletonBlock({ className }) {
   return (
     <div
       className={`animate-pulse rounded-2xl ${className}`}
-      style={{ background: "rgba(255,255,255,0.05)" }}
+      style={{ background: "var(--surface)" }}
     />
   );
 }
@@ -149,14 +149,14 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en, 
               {lang === "en" ? (
                 <>
                   <p className="text-sm font-bold mb-1" style={{ color: "#ffb300" }}>Profile photo required</p>
-                  <p className="text-xs leading-5" style={{ color: "rgba(255,255,255,0.7)" }}>
+                  <p className="text-xs leading-5" style={{ color: "var(--text-muted)" }}>
                     You must upload a profile photo to access the app. Please tap the button below to add your photo.
                   </p>
                 </>
               ) : (
                 <>
                   <p className="text-sm font-bold mb-1" style={{ color: "#ffb300" }}>تصویر پروفایل الزامی است</p>
-                  <p className="text-xs leading-6" style={{ color: "rgba(255,255,255,0.7)" }}>
+                  <p className="text-xs leading-6" style={{ color: "var(--text-muted)" }}>
                     برای استفاده از اپلیکیشن باید تصویر پروفایل خود را آپلود کنید. لطفاً روی دکمه زیر ضربه بزنید.
                   </p>
                 </>
@@ -191,8 +191,8 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en, 
               alignItems: "center",
               justifyContent: "center",
               borderRadius: 8,
-              background: "rgba(255,255,255,0.05)",
-              border: "1px solid rgba(255,255,255,0.08)",
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
               color: "var(--text-muted)",
             }}
           >

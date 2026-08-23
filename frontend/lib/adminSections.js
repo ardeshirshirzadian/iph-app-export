@@ -20,13 +20,6 @@ export const ADMIN_SECTIONS = [
     desc: 'عنوان مرورگر، آیکون اپ و فاوآیکون',
   },
   {
-    key: 'appearance',
-    label: 'تنظیمات ظاهری',
-    path: '/apn/appearance',
-    icon: '🎨',
-    desc: 'مدیریت فونت‌ها و رنگ‌های اپلیکیشن',
-  },
-  {
     key: 'services',
     label: 'سرویس‌ها و بنرها',
     path: '/apn/services',

@@ -160,7 +160,6 @@ const PAGE_SECTION_MAP = Object.fromEntries(
 const API_SECTION_PREFIXES = [
   ['/api/admin/app-settings', 'app-settings'],
   ['/api/admin/app-pages', 'app-settings'],
-  ['/api/admin/button-styles', 'appearance'],
   ['/api/admin/banners', 'appearance'],
   ['/api/admin/fonts', 'appearance'],
   ['/api/admin/theme-colors', 'appearance'],
