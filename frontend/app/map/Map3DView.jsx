@@ -64,8 +64,8 @@ function boothRangeLabel(nos) {
   return [...strs].sort().join(", ");
 }
 
-function getHallColor(hall, hallColors) {
-  return hallColors[hall.name] || hall.color || "#00ffb3";
+function getHallColor(hall, hallColors, resolvedAccentColor) {
+  return hallColors[hall.name] || hall.color || resolvedAccentColor || "#00ffb3";
 }
 
 // Zone fill when its hall_name has no entry in hallColors -- see the same
@@ -204,6 +204,9 @@ export default function Map3DView({
   bgColor,              // string hex — map background color (theme-specific, from DB)
   routeColors,          // { routeLine, routeArrow, walkthroughHalo, walkthroughStripe } — primary (same-floor) colors
   routeColorsSecondary, // same shape — cross-floor/destination-floor colors (pathB in multi_floor routes)
+  resolvedAccentColor,  // live --accent hex, resolved by MapClient via getComputedStyle (Three.js can't read
+                         // CSS custom properties itself) — last-resort fallback when a hall/route has no
+                         // admin-configured color at all
   tapStartMode,         // bool — next tap sets route start
   onBoothTap,           // (booth, hall, { cx, cy, mergedLabel }) → void
   onZoneTap,            // (zone, { cx, cy }) → void
@@ -334,7 +337,7 @@ export default function Map3DView({
     const allXs = [], allZs = [];
     for (const hall of halls) {
       const floorY   = (hall.floor ?? 0) * FLOOR_GAP;
-      const colorStr = getHallColor(hall, hallColors);
+      const colorStr = getHallColor(hall, hallColors, resolvedAccentColor);
 
       for (const group of (hall.groups ?? [])) {
         if (!group.booths.length) continue;
@@ -1173,8 +1176,8 @@ export default function Map3DView({
     }
 
     // Primary (same-floor) colors
-    const rStripe = routeColors?.walkthroughStripe ?? '#00ffb3';
-    const rHalo   = routeColors?.walkthroughHalo   ?? '#00ffb3';
+    const rStripe = routeColors?.walkthroughStripe ?? resolvedAccentColor ?? '#00ffb3';
+    const rHalo   = routeColors?.walkthroughHalo   ?? resolvedAccentColor ?? '#00ffb3';
     // Secondary (cross-floor destination segment) colors
     const sStripe = routeColorsSecondary?.walkthroughStripe ?? '#f59e0b';
     const sHalo   = routeColorsSecondary?.walkthroughHalo   ?? '#f59e0b';

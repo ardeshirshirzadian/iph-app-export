@@ -52,7 +52,7 @@
 // ║    [ ] Does it need pathfinding? → add to buildFloorGrids once, cache it.    ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 
-import { Suspense, useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { Suspense, useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import AppHeaderRaw from "@/app/components/AppHeader";
@@ -1011,6 +1011,10 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const [navCameraConfig, setNavCameraConfig] = useState({ distance: 220, height: 90, walk_speed: 75, stair_transition_duration: 0.8 });
   const [mapAppearanceConfig, setMapAppearanceConfig] = useState(null);
   const [mapTheme, setMapTheme] = useState('dark'); // tracks 'dark'|'light' for bg color
+  // Live-resolved --accent hex, read via getComputedStyle (see the mapTheme-tracking
+  // effect below) -- Three.js/WebGL (Map3DView) can't resolve CSS custom properties
+  // itself, unlike the 2D SVG path which references var(--accent) directly.
+  const [resolvedAccent, setResolvedAccent] = useState(null);
   const [gestureHintConfig, setGestureHintConfig] = useState(null);
   const [controlIconsConfig, setControlIconsConfig] = useState(null);
   const [gestureHintImagesConfig, setGestureHintImagesConfig] = useState(null);
@@ -1374,9 +1378,20 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   }, [view3D, gestureHintConfig]);
 
   // Track current theme ('dark'|'light') so 3D scene background updates when theme switches.
-  // Reads the 'light' class applied to <html> by ThemeSync.js.
-  useEffect(() => {
-    const update = () => setMapTheme(document.documentElement.classList.contains('light') ? 'light' : 'dark');
+  // Reads the 'light' class applied to <html> by ThemeSync.js. Also resolves the live
+  // --accent hex here (same DOM read, same timing) for Map3DView's WebGL color props,
+  // which can't reference CSS custom properties the way the 2D SVG path can.
+  //
+  // useLayoutEffect (not useEffect) is required so this runs before the browser paints --
+  // otherwise the fallback-literal route/hall colors would be visible for a frame before
+  // correcting. Map3DView itself is ssr:false (see the dynamic() import above), so there's
+  // no SSR output to hydration-mismatch against; MapClient's own SSR output doesn't depend
+  // on resolvedAccent (only the 2D SVG's var(--accent) references, resolved by the browser).
+  useLayoutEffect(() => {
+    const update = () => {
+      setMapTheme(document.documentElement.classList.contains('light') ? 'light' : 'dark');
+      setResolvedAccent(getComputedStyle(document.documentElement).getPropertyValue('--accent').trim());
+    };
     update();
     const obs = new MutationObserver(update);
     obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
@@ -1872,8 +1887,19 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
     const defaults = mapTheme === 'light'
       ? { routeLine: '#007755', routeArrow: '#007755', walkthroughHalo: '#007755', walkthroughStripe: '#007755' }
       : { routeLine: '#00ffb3', routeArrow: '#00ffb3', walkthroughHalo: '#00ffb3', walkthroughStripe: '#00ffb3' };
-    return { ...defaults, ...(themeConfig?.primary ?? {}) };
-  }, [mapTheme, routeAppearanceConfig]);
+    const merged = { ...defaults, ...(themeConfig?.primary ?? {}) };
+    // 'primary' route colors should track the event's own accent when the admin hasn't
+    // set an explicit override -- same "still equals the literal default" check used
+    // elsewhere today. 'secondary' (cross-floor segment color, amber) is intentionally
+    // theme/accent-independent -- see ROUTE_FIELDS labels in iph-apn's map admin page,
+    // it exists specifically to contrast with primary, not to match branding.
+    if (resolvedAccent) {
+      for (const key of Object.keys(defaults)) {
+        if (merged[key] === defaults[key]) merged[key] = resolvedAccent;
+      }
+    }
+    return merged;
+  }, [mapTheme, routeAppearanceConfig, resolvedAccent]);
 
   const routeColorsSecondary = useMemo(() => {
     const themeConfig = routeAppearanceConfig?.[mapTheme];
@@ -2107,6 +2133,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
               onGestureEnd={onGestureSettle}
               routeColors={routeColors}
               routeColorsSecondary={routeColorsSecondary}
+              resolvedAccentColor={resolvedAccent}
               tapStartMode={false}
               onBoothTap={onBooth3DTap}
               onZoneTap={onZone3DTap}
