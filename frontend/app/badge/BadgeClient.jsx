@@ -84,7 +84,7 @@ function QRModal({ uuid, onClose }) {
         className="relative rounded-3xl p-6 flex flex-col items-center gap-3"
         style={{
           background: "var(--surface)",
-          border: "1px solid rgba(0,255,179,0.2)",
+          border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)",
           boxShadow: "0 24px 64px rgba(0,0,0,0.6)",
         }}
         onClick={(e) => e.stopPropagation()}
@@ -290,12 +290,12 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
 
         {loading && (
           <div
-            className="backdrop-blur-xl border border-[#00ffb3]/20 rounded-3xl overflow-hidden"
-            style={{ background: "var(--surface)" }}
+            className="backdrop-blur-xl border rounded-3xl overflow-hidden"
+            style={{ background: "var(--surface)", borderColor: "color-mix(in srgb, var(--accent) 20%, transparent)" }}
           >
             <div
               className="px-6 py-4"
-              style={{ background: "linear-gradient(135deg, rgba(0,255,179,0.1), rgba(0,255,179,0.03))" }}
+              style={{ background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, transparent), color-mix(in srgb, var(--accent) 3%, transparent))" }}
             >
               <SkeletonBlock className="h-5 w-48 mb-1" />
               <SkeletonBlock className="h-3 w-32" />
@@ -312,10 +312,16 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
 
         {!loading && !isLoggedIn && (
           <div
-            className="backdrop-blur-xl border border-[#00ffb3]/20 rounded-3xl p-8 flex flex-col items-center gap-4 text-center"
-            style={{ background: "var(--surface)" }}
+            className="backdrop-blur-xl border rounded-3xl p-8 flex flex-col items-center gap-4 text-center"
+            style={{ background: "var(--surface)", borderColor: "color-mix(in srgb, var(--accent) 20%, transparent)" }}
           >
-            <div className="w-20 h-20 rounded-full bg-[#00ffb3]/10 border border-[#00ffb3]/20 flex items-center justify-center overflow-hidden">
+            <div
+              className="w-20 h-20 rounded-full flex items-center justify-center overflow-hidden"
+              style={{
+                background: "color-mix(in srgb, var(--accent) 10%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)",
+              }}
+            >
               <BadgeIcon settings={settings} maxSize={72} />
             </div>
             <p className="font-medium leading-7" style={{ color: "var(--text)" }}>
@@ -358,23 +364,29 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
               /* Fallback glass card */
               <div
                 id="rasayesh-badge-card"
-                className="backdrop-blur-xl border-2 border-[#00ffb3]/40 rounded-3xl overflow-hidden"
-                style={{ background: "var(--surface)" }}
+                className="backdrop-blur-xl border-2 rounded-3xl overflow-hidden"
+                style={{ background: "var(--surface)", borderColor: "color-mix(in srgb, var(--accent) 40%, transparent)" }}
               >
                 {/* Card header with event name and logo */}
                 <div
                   className="px-5 py-4 flex items-center justify-between"
                   style={{
-                    background: "linear-gradient(135deg, rgba(0,255,179,0.15), rgba(0,255,179,0.04))",
-                    borderBottom: "1px solid rgba(0,255,179,0.15)",
+                    background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 15%, transparent), color-mix(in srgb, var(--accent) 4%, transparent))",
+                    borderBottom: "1px solid color-mix(in srgb, var(--accent) 15%, transparent)",
                   }}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-[#00ffb3]/20 border border-[#00ffb3]/30 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                    <div
+                      className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden"
+                      style={{
+                        background: "color-mix(in srgb, var(--accent) 20%, transparent)",
+                        border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
+                      }}
+                    >
                       <BadgeIcon settings={settings} maxSize={30} />
                     </div>
                     <div>
-                      <p className="font-black text-sm leading-5" style={{ color: "#00ffb3" }}>
+                      <p className="font-black text-sm leading-5" style={{ color: "var(--accent)" }}>
                         {displayEventName}
                       </p>
                       <p className="text-xs leading-5" style={{ color: "var(--text-dim)" }}>
@@ -384,7 +396,7 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
                   </div>
                   <div
                     className="px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider"
-                    style={{ background: "rgba(0,255,179,0.15)", color: "#00ffb3" }}
+                    style={{ background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent)" }}
                   >
                     VISITOR
                   </div>
@@ -409,7 +421,7 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
                     <div className="mt-2 inline-flex">
                       <span
                         className="px-3 py-1 rounded-lg text-xs font-medium"
-                        style={{ background: "rgba(0,255,179,0.06)", color: "var(--text-dim)" }}
+                        style={{ background: "color-mix(in srgb, var(--accent) 6%, transparent)", color: "var(--text-dim)" }}
                       >
                         {lang === "en" && attendee.company_name_en
                           ? attendee.company_name_en
@@ -421,7 +433,7 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
                     <div className="mt-2 inline-flex">
                       <span
                         className="px-3 py-1 rounded-lg text-xs font-medium"
-                        style={{ background: "rgba(0,255,179,0.1)", color: "#00ffb3" }}
+                        style={{ background: "color-mix(in srgb, var(--accent) 10%, transparent)", color: "var(--accent)" }}
                       >
                         {attendee.job_title_fa}
                       </span>
@@ -449,7 +461,7 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
                 {registrationPlan?.id && (
                   <div
                     className="px-5 py-3 flex items-center justify-between"
-                    style={{ borderTop: "1px solid rgba(0,255,179,0.1)" }}
+                    style={{ borderTop: "1px solid color-mix(in srgb, var(--accent) 10%, transparent)" }}
                   >
                     <p className="text-xs" style={{ color: "var(--text-dim)" }}>
                       {t(lang, "badge_reg_plan")}
@@ -462,10 +474,10 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
                 {!registrationPlan?.id && (
                   <div
                     className="px-5 py-3"
-                    style={{ borderTop: "1px solid rgba(0,255,179,0.1)" }}
+                    style={{ borderTop: "1px solid color-mix(in srgb, var(--accent) 10%, transparent)" }}
                   >
                     <p className="text-xs text-center" style={{ color: "var(--text-faint)" }}>
-                      IranPharma 2025 · iphexpo.com
+                      {displayEventName}
                     </p>
                   </div>
                 )}
@@ -476,8 +488,8 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
 
         {!loading && isLoggedIn && badgeStatus !== "success" && (
           <div
-            className="backdrop-blur-xl border border-[#00ffb3]/20 rounded-3xl p-8 flex flex-col items-center gap-4 text-center"
-            style={{ background: "var(--surface)" }}
+            className="backdrop-blur-xl border rounded-3xl p-8 flex flex-col items-center gap-4 text-center"
+            style={{ background: "var(--surface)", borderColor: "color-mix(in srgb, var(--accent) 20%, transparent)" }}
           >
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
               <BadgeIcon settings={settings} />

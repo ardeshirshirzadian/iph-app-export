@@ -553,7 +553,7 @@ function RouteInfoCard({ route, lang, isRTL, onClear, is3D = false, walkActive =
 
   if (route.type === "computing") {
     return (
-      <div className="absolute z-[20]" style={{ ...cardStyle, border: "1px solid rgba(0,255,179,0.15)" }}>
+      <div className="absolute z-[20]" style={{ ...cardStyle, border: "1px solid color-mix(in srgb, var(--accent) 15%, transparent)" }}>
         <div style={infoRow}>
           <span style={{ fontSize: 20 }}>🧭</span>
           <div className="animate-pulse" style={{ flex: 1, fontSize: 14, color: "var(--accent)" }}>
@@ -615,7 +615,7 @@ function RouteInfoCard({ route, lang, isRTL, onClear, is3D = false, walkActive =
   // 3D mode, before start: single "▶ شروع ناوبری" button (onStartNav).
   // 3D mode, during walkthrough: ⏮ step-back | ⏸/▶ pause-resume | ⏭ step-forward | ⏹ stop.
   const navBtnStyle = {
-    background: "rgba(0,255,179,0.10)", border: "1px solid rgba(0,255,179,0.5)",
+    background: "color-mix(in srgb, var(--accent) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 50%, transparent)",
     borderRadius: 8, padding: "6px 14px", color: "var(--accent)",
     fontFamily: "inherit", fontSize: 12, cursor: "pointer", fontWeight: 700, flexShrink: 0,
   };
@@ -629,7 +629,7 @@ function RouteInfoCard({ route, lang, isRTL, onClear, is3D = false, walkActive =
         >⏮</button>
         <button
           onClick={walkPaused ? onResumeNav : onPauseNav}
-          style={{ background: walkPaused ? "rgba(0,255,179,0.10)" : "var(--surface-2)", border: `1px solid ${walkPaused ? "rgba(0,255,179,0.5)" : "var(--border)"}`, borderRadius: 8, padding: "6px 11px", color: walkPaused ? "var(--accent)" : "var(--text)", fontFamily: "inherit", fontSize: 12, cursor: "pointer", fontWeight: 700, flexShrink: 0 }}
+          style={{ background: walkPaused ? "color-mix(in srgb, var(--accent) 10%, transparent)" : "var(--surface-2)", border: `1px solid ${walkPaused ? "color-mix(in srgb, var(--accent) 50%, transparent)" : "var(--border)"}`, borderRadius: 8, padding: "6px 11px", color: walkPaused ? "var(--accent)" : "var(--text)", fontFamily: "inherit", fontSize: 12, cursor: "pointer", fontWeight: 700, flexShrink: 0 }}
         >{walkPaused ? (isEN ? "▶ Resume" : "▶ ادامه") : (isEN ? "⏸ Pause" : "⏸ توقف")}</button>
         <button
           onClick={onStepForward}
@@ -654,7 +654,7 @@ function RouteInfoCard({ route, lang, isRTL, onClear, is3D = false, walkActive =
   );
 
   return (
-    <div className="absolute z-[20]" style={{ ...cardStyle, border: "1px solid rgba(0,255,179,0.3)" }}>
+    <div className="absolute z-[20]" style={{ ...cardStyle, border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)" }}>
       <div style={infoRow}>
         <span style={{ fontSize: 22 }}>{walkActive ? "🚶" : isMultiFloor ? "🪜" : "🧭"}</span>
         <div style={{ flex: 1 }}>
@@ -731,8 +731,8 @@ function BoothSheet({ booth, hall, mergedLabel, lang, isRTL, onClose, onNavigate
             className="flex-shrink-0 rounded-2xl flex items-center justify-center overflow-hidden"
             style={{
               width: 64, height: 64,
-              background: logoUrl ? "#fff" : "rgba(0,255,179,0.08)",
-              border: "1px solid rgba(0,255,179,0.2)",
+              background: logoUrl ? "#fff" : "color-mix(in srgb, var(--accent) 8%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)",
             }}
           >
             {logoUrl ? (
@@ -774,9 +774,9 @@ function BoothSheet({ booth, hall, mergedLabel, lang, isRTL, onClose, onNavigate
                 key={i}
                 className="px-2.5 py-0.5 rounded-full text-xs"
                 style={{
-                  background: "rgba(0,255,179,0.08)",
+                  background: "color-mix(in srgb, var(--accent) 8%, transparent)",
                   color: "var(--accent)",
-                  border: "1px solid rgba(0,255,179,0.15)",
+                  border: "1px solid color-mix(in srgb, var(--accent) 15%, transparent)",
                 }}
               >
                 {isEN ? (f.title_en || f.title_fa) : (f.title_fa || f.title_en)}
@@ -854,7 +854,7 @@ function ZoneSheet({ zone, lang, isRTL, onClose, onNavigate, labels }) {
         <div className="flex items-center gap-3 mb-4">
           <div
             className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
-            style={{ background: "rgba(0,255,179,0.08)", border: "1px solid rgba(0,255,179,0.2)" }}
+            style={{ background: "color-mix(in srgb, var(--accent) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
           >
             <span style={{ fontSize: 24 }}>🏛️</span>
           </div>
@@ -2183,7 +2183,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                   );
                 });
               })()}
-              <div style={{ fontSize: 11, color: 'rgba(0,255,179,0.55)', marginTop: 8, textAlign: 'center' }}>
+              <div style={{ fontSize: 11, color: 'color-mix(in srgb, var(--accent) 55%, transparent)', marginTop: 8, textAlign: 'center' }}>
                 {isEN ? 'Tap to dismiss' : 'برای بستن لمس کنید'}
               </div>
             </div>

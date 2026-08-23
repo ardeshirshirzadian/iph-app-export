@@ -57,7 +57,7 @@ function PlanCard({ plan, selected, onToggle, lang, isAutoIncluded }) {
       style={{
         background: selected
           ? "color-mix(in srgb, var(--accent) 8%, transparent)"
-          : "rgba(5,64,65,0.4)",
+          : "var(--surface)",
         border: selected
           ? "1px solid color-mix(in srgb, var(--accent) 40%, transparent)"
           : "1px solid color-mix(in srgb, var(--accent) 20%, transparent)",
@@ -253,7 +253,7 @@ export default function RegisterClient({ title, subtitle, title_en, subtitle_en 
         {!loading && alreadyRegistered && (
           <div
             className="rounded-3xl p-8 flex flex-col items-center gap-4 text-center mb-4"
-            style={{ background: "rgba(5,64,65,0.4)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
+            style={{ background: "var(--surface)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
           >
             <div style={{ fontSize: 48 }}>🪪</div>
             <p className="text-sm font-bold" style={{ color: "var(--text)" }}>
@@ -273,7 +273,7 @@ export default function RegisterClient({ title, subtitle, title_en, subtitle_en 
         {!loading && !enabled && (
           <div
             className="rounded-3xl p-10 flex flex-col items-center gap-4 text-center"
-            style={{ background: "rgba(5,64,65,0.4)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
+            style={{ background: "var(--surface)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
           >
             <div style={{ fontSize: 56 }}>🗓️</div>
             <p className="text-sm font-bold leading-7" style={{ color: "var(--text)" }}>
@@ -322,7 +322,7 @@ export default function RegisterClient({ title, subtitle, title_en, subtitle_en 
         {!loading && enabled && !alreadyRegistered && plans.length === 0 && (
           <div
             className="rounded-3xl p-10 text-center"
-            style={{ background: "rgba(5,64,65,0.4)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
+            style={{ background: "var(--surface)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
           >
             <p className="text-sm" style={{ color: "var(--text-muted)" }}>
               {lang === "fa" ? "پلنی برای نمایش وجود ندارد" : "No plans available"}

@@ -251,7 +251,7 @@ export default function CartClient() {
         {!loading && !hasCart && (
           <div
             className="rounded-3xl p-12 flex flex-col items-center gap-5"
-            style={{ background: "rgba(5,64,65,0.4)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
+            style={{ background: "var(--surface)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
           >
             <div style={{ lineHeight: 1 }}>
               {config.logo_icon_type === 'emoji' ? (
@@ -294,7 +294,7 @@ export default function CartClient() {
                   <div
                     key={item.id}
                     className="rounded-3xl p-4 flex items-center gap-4 backdrop-blur-xl"
-                    style={{ background: "rgba(5,64,65,0.4)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
+                    style={{ background: "var(--surface)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
                   >
                     <div
                       className="flex-shrink-0 rounded-xl flex items-center justify-center"
@@ -345,7 +345,7 @@ export default function CartClient() {
             {/* Coupon section */}
             <div
               className="rounded-3xl p-5 backdrop-blur-xl"
-              style={{ background: "rgba(5,64,65,0.4)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
+              style={{ background: "var(--surface)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
             >
               <div className="flex gap-2">
                 <input
@@ -389,7 +389,7 @@ export default function CartClient() {
             {/* Price summary */}
             <div
               className="rounded-3xl p-5 backdrop-blur-xl"
-              style={{ background: "rgba(5,64,65,0.4)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
+              style={{ background: "var(--surface)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
             >
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between">

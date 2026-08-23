@@ -260,7 +260,7 @@ function ServiceItem({ icon_type, icon_value, title, title_en, link, link_en, is
       className="w-16 h-16 rounded-[16px] flex items-center justify-center relative"
       style={{
         background: "var(--surface-alt)",
-        border: "1px solid color-mix(in srgb, var(--surface-alt) 200%, transparent)",
+        border: "1px solid color-mix(in srgb, rgb(from var(--surface-alt) r g b) 25%, transparent)",
       }}
     >
       {icon_type === 'image' ? (

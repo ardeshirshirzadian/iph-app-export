@@ -23,7 +23,7 @@ export default async function CartCallbackAuthorityPage({ params, searchParams }
       <div
         className="relative max-w-sm w-full rounded-3xl p-8 text-center backdrop-blur-xl"
         style={{
-          background: "rgba(5,64,65,0.4)",
+          background: "var(--surface)",
           border: `1px solid ${isOk ? "color-mix(in srgb, var(--accent) 30%, transparent)" : "rgba(239,68,68,0.3)"}`,
         }}
       >

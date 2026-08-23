@@ -130,7 +130,7 @@ export default function ConfirmClient() {
             {/* User info card */}
             <div
               className="rounded-3xl p-5 backdrop-blur-xl border"
-              style={{ background: "rgba(5,64,65,0.4)", borderColor: "color-mix(in srgb, var(--accent) 20%, transparent)" }}
+              style={{ background: "var(--surface)", borderColor: "color-mix(in srgb, var(--accent) 20%, transparent)" }}
             >
               <p className="text-xs font-bold mb-3" style={{ color: "var(--text-dim)" }}>
                 {lang === "fa" ? "اطلاعات شما" : "Your Information"}
@@ -163,7 +163,7 @@ export default function ConfirmClient() {
             {/* Selected plans */}
             <div
               className="rounded-3xl p-5 backdrop-blur-xl border"
-              style={{ background: "rgba(5,64,65,0.4)", borderColor: "color-mix(in srgb, var(--accent) 20%, transparent)" }}
+              style={{ background: "var(--surface)", borderColor: "color-mix(in srgb, var(--accent) 20%, transparent)" }}
             >
               <p className="text-xs font-bold mb-3" style={{ color: "var(--text-dim)" }}>
                 {lang === "fa" ? "پلن‌های انتخاب‌شده" : "Selected Plans"}

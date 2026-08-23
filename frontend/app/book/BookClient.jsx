@@ -219,7 +219,7 @@ export default function BookClient({ title, subtitle, title_en, subtitle_en }) {
         {!loading && !enabled && (
           <div
             className="rounded-3xl p-10 text-center"
-            style={{ background: "rgba(5,64,65,0.4)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
+            style={{ background: "var(--surface)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
           >
             <div className="text-4xl mb-3">📚</div>
             <p className="text-sm font-medium" style={{ color: "var(--text)" }}>
@@ -231,7 +231,7 @@ export default function BookClient({ title, subtitle, title_en, subtitle_en }) {
         {!loading && enabled && !book && (
           <div
             className="rounded-3xl p-10 text-center"
-            style={{ background: "rgba(5,64,65,0.4)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
+            style={{ background: "var(--surface)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
           >
             <div className="text-4xl mb-3">📚</div>
             <p className="text-sm font-medium" style={{ color: "var(--text)" }}>
@@ -320,7 +320,7 @@ export default function BookClient({ title, subtitle, title_en, subtitle_en }) {
             {/* Order selection card */}
             <div
               className="rounded-3xl p-5 backdrop-blur-xl"
-              style={{ background: "rgba(5,64,65,0.4)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
+              style={{ background: "var(--surface)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
             >
               <h3 className="text-sm font-bold mb-4" style={{ color: "var(--accent)" }}>
                 {t(lang, "book_select_product")}

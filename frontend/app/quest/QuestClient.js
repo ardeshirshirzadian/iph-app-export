@@ -200,8 +200,8 @@ function UserCard({ user, thresholds, levelColors, labels, lang, showLevelCircle
 
   return (
     <div
-      className="backdrop-blur-xl border border-[#00ffb3]/20 rounded-3xl p-5"
-      style={{ background: "var(--surface)" }}
+      className="backdrop-blur-xl border rounded-3xl p-5"
+      style={{ background: "var(--surface)", borderColor: "color-mix(in srgb, var(--accent) 20%, transparent)" }}
     >
       <div className="flex items-center justify-between mb-4">
         <div>
@@ -231,7 +231,7 @@ function UserCard({ user, thresholds, levelColors, labels, lang, showLevelCircle
           className="font-bold transition-all duration-500"
           style={{
             color: "var(--accent)",
-            textShadow: xpFlash ? '0 0 16px var(--accent), 0 0 32px rgba(0,255,179,0.4)' : undefined,
+            textShadow: xpFlash ? '0 0 16px var(--accent), 0 0 32px color-mix(in srgb, var(--accent) 40%, transparent)' : undefined,
           }}
         >
           {lang === 'fa'
@@ -272,8 +272,8 @@ function UserCard({ user, thresholds, levelColors, labels, lang, showLevelCircle
 function UserCardSkeleton() {
   return (
     <div
-      className="backdrop-blur-xl border border-[#00ffb3]/20 rounded-3xl p-5 animate-pulse"
-      style={{ background: "var(--surface)" }}
+      className="backdrop-blur-xl border rounded-3xl p-5 animate-pulse"
+      style={{ background: "var(--surface)", borderColor: "color-mix(in srgb, var(--accent) 20%, transparent)" }}
     >
       <div className="flex items-center justify-between mb-4">
         <div className="space-y-2">
@@ -457,7 +457,7 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
             ) : <span />}
             {featuredClickable && (
               <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0"
-                style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
+                style={{ background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent)" }}>
                 {langProp === 'fa' ? 'مشاهده غرفه‌ها ←' : 'See booths →'}
               </span>
             )}
@@ -471,7 +471,7 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
             ) : <span />}
             {quizClickable && (
               <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0"
-                style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
+                style={{ background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent)" }}>
                 {langProp === 'fa' ? 'شرکت کن ←' : 'Join →'}
               </span>
             )}
@@ -483,7 +483,7 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
             ) : <span />}
             {surveyClickable && (
               <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0"
-                style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
+                style={{ background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent)" }}>
                 {langProp === 'fa' ? 'شرکت در نظرسنجی ←' : 'Take Survey →'}
               </span>
             )}
@@ -500,7 +500,7 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
               ) : <span />}
               {socialShareClickable && (
                 <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0"
-                  style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
+                  style={{ background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent)" }}>
                   {socialShareStatus === 'rejected'
                     ? (langProp === 'fa' ? 'ارسال مجدد ←' : 'Resubmit →')
                     : (langProp === 'fa' ? 'اشتراک‌گذاری کن ←' : 'Share →')}
@@ -847,7 +847,7 @@ function BadgeCard({ badge, onQuizClick, onFeaturedClick, onSurveyClick, onSocia
       {badge.earned ? (
         <div
           className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full"
-          style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}
+          style={{ background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent)" }}
         >
           <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -860,7 +860,7 @@ function BadgeCard({ badge, onQuizClick, onFeaturedClick, onSurveyClick, onSocia
           {countdownText && <p style={{ fontSize: "var(--quest-rotation-size)", color: "var(--quest-rotation-color)" }}>{countdownText}</p>}
           {featuredClickable && (
             <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
-              style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
+              style={{ background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent)" }}>
               {lang === 'fa' ? 'مشاهده غرفه‌ها ←' : 'See booths →'}
             </span>
           )}
@@ -870,7 +870,7 @@ function BadgeCard({ badge, onQuizClick, onFeaturedClick, onSurveyClick, onSocia
       ) : isQuiz ? (
         <div className="mt-2">
           <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
-            style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
+            style={{ background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent)" }}>
             {lang === 'fa' ? 'شرکت کن ←' : 'Join →'}
           </span>
         </div>
@@ -879,7 +879,7 @@ function BadgeCard({ badge, onQuizClick, onFeaturedClick, onSurveyClick, onSocia
       ) : isSurvey ? (
         <div className="mt-2">
           <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
-            style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
+            style={{ background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent)" }}>
             {lang === 'fa' ? 'شرکت در نظرسنجی ←' : 'Take Survey →'}
           </span>
         </div>
@@ -895,14 +895,14 @@ function BadgeCard({ badge, onQuizClick, onFeaturedClick, onSurveyClick, onSocia
               {socialShareNote && <p className="text-[10px] leading-4" style={{ color: 'var(--text-dim)' }}>{socialShareNote}</p>}
               {socialShareClickable && (
                 <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
-                  style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
+                  style={{ background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent)" }}>
                   {lang === 'fa' ? 'ارسال مجدد ←' : 'Resubmit →'}
                 </span>
               )}
             </>
           ) : (
             <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
-              style={{ background: "rgba(0,255,179,0.15)", color: "var(--accent)" }}>
+              style={{ background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent)" }}>
               {lang === 'fa' ? 'اشتراک‌گذاری کن ←' : 'Share →'}
             </span>
           )}
@@ -1147,10 +1147,10 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
             return (
               <div
                 key={booth.id}
-                className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 border transition-colors ${
-                  scanned ? "bg-[#00ffb3]/5 border-[#00ffb3]/20" : "border-[var(--border)]"
-                }`}
-                style={scanned ? undefined : { background: "var(--surface-2)", opacity: 0.7 }}
+                className="flex items-center gap-3 rounded-2xl px-3 py-2.5 border transition-colors"
+                style={scanned
+                  ? { background: "color-mix(in srgb, var(--accent) 5%, transparent)", borderColor: "color-mix(in srgb, var(--accent) 20%, transparent)" }
+                  : { background: "var(--surface-2)", opacity: 0.7, borderColor: "var(--border)" }}
               >
                 {/* Logo or initial — BoothLogo handles onError fallback */}
                 <BoothLogo logoUrl={logoUrl} firstLetter={firstLetter} />
@@ -1201,7 +1201,7 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
                 {/* Scanned indicator */}
                 <div
                   className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center"
-                  style={{ background: scanned ? "rgba(0,255,179,0.15)" : "var(--surface-hover)" }}
+                  style={{ background: scanned ? "color-mix(in srgb, var(--accent) 15%, transparent)" : "var(--surface-hover)" }}
                 >
                   {scanned ? (
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
@@ -1287,7 +1287,7 @@ function FeaturedBoothPoolSheet({ open, onClose, item, isRTL, lang, logoBaseUrl 
         <div className="overflow-y-auto max-h-[65vh] px-4 pt-3 pb-8">
           {/* Framing message — tells user what to do without revealing the active booth */}
           <div className="mb-3 px-1 py-2.5 rounded-xl text-xs leading-6"
-            style={{ background: "rgba(0,255,179,0.06)", color: "var(--text-dim)", borderRight: isRTL ? "3px solid rgba(0,255,179,0.3)" : "none", borderLeft: !isRTL ? "3px solid rgba(0,255,179,0.3)" : "none", paddingRight: isRTL ? 10 : 6, paddingLeft: !isRTL ? 10 : 6 }}>
+            style={{ background: "color-mix(in srgb, var(--accent) 6%, transparent)", color: "var(--text-dim)", borderRight: isRTL ? "3px solid color-mix(in srgb, var(--accent) 30%, transparent)" : "none", borderLeft: !isRTL ? "3px solid color-mix(in srgb, var(--accent) 30%, transparent)" : "none", paddingRight: isRTL ? 10 : 6, paddingLeft: !isRTL ? 10 : 6 }}>
             {lang === 'fa'
               ? 'یکی از این غرفه‌ها به‌صورت تصادفی انتخاب شده — غرفه فعال را با اسکن QR هر کدام پیدا کن.'
               : 'One of these booths is randomly selected as the active target — find it by scanning the QR code of each.'}
@@ -1313,7 +1313,7 @@ function FeaturedBoothPoolSheet({ open, onClose, item, isRTL, lang, logoBaseUrl 
                     gotBonus
                       ? { background: "rgba(251,191,36,0.07)", borderColor: "rgba(251,191,36,0.35)" }
                       : scanned
-                        ? { background: "rgba(0,255,179,0.05)", borderColor: "rgba(0,255,179,0.2)" }
+                        ? { background: "color-mix(in srgb, var(--accent) 5%, transparent)", borderColor: "color-mix(in srgb, var(--accent) 20%, transparent)" }
                         : { background: "var(--surface-2)", borderColor: "var(--border)" }
                   }
                 >
@@ -1346,7 +1346,7 @@ function FeaturedBoothPoolSheet({ open, onClose, item, isRTL, lang, logoBaseUrl 
                     </div>
                   ) : scanned ? (
                     <div className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center"
-                      style={{ background: "rgba(0,255,179,0.15)" }}>
+                      style={{ background: "color-mix(in srgb, var(--accent) 15%, transparent)" }}>
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
                         strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
                         style={{ stroke: "var(--accent)" }}>
@@ -1464,8 +1464,8 @@ function QuizModal({ quiz, onClose, onComplete, lang }) {
               disabled={quiz.quiz_hint_type === 'video' && !videoEnded}
               className="w-full py-3 rounded-xl font-bold text-sm transition-all"
               style={{
-                background: (quiz.quiz_hint_type === 'video' && !videoEnded) ? 'rgba(0,255,179,0.2)' : 'var(--accent)',
-                color: (quiz.quiz_hint_type === 'video' && !videoEnded) ? 'rgba(0,255,179,0.4)' : 'var(--bg)',
+                background: (quiz.quiz_hint_type === 'video' && !videoEnded) ? 'color-mix(in srgb, var(--accent) 20%, transparent)' : 'var(--accent)',
+                color: (quiz.quiz_hint_type === 'video' && !videoEnded) ? 'color-mix(in srgb, var(--accent) 40%, transparent)' : 'var(--bg)',
               }}
             >
               {lang === 'fa' ? 'ادامه' : 'Continue'}
@@ -1487,7 +1487,7 @@ function QuizModal({ quiz, onClose, onComplete, lang }) {
                   className="w-full text-right px-4 py-3 rounded-xl border text-sm font-medium transition-all"
                   style={{
                     borderColor: selected === i ? 'var(--accent)' : 'var(--border)',
-                    background: selected === i ? 'rgba(0,255,179,0.12)' : 'var(--surface-2)',
+                    background: selected === i ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'var(--surface-2)',
                     color: selected === i ? 'var(--accent)' : 'var(--text)',
                   }}
                 >
@@ -1500,8 +1500,8 @@ function QuizModal({ quiz, onClose, onComplete, lang }) {
               disabled={selected === null || submitting}
               className="w-full py-3 rounded-xl font-bold text-sm transition-all"
               style={{
-                background: selected === null ? 'rgba(0,255,179,0.2)' : 'var(--accent)',
-                color: selected === null ? 'rgba(0,255,179,0.4)' : 'var(--bg)',
+                background: selected === null ? 'color-mix(in srgb, var(--accent) 20%, transparent)' : 'var(--accent)',
+                color: selected === null ? 'color-mix(in srgb, var(--accent) 40%, transparent)' : 'var(--bg)',
               }}
             >
               {submitting ? '…' : (lang === 'fa' ? 'ثبت پاسخ' : 'Submit')}
@@ -1707,7 +1707,7 @@ function SurveyModal({ survey, onClose, onComplete, lang }) {
               if (field.type === 'description') {
                 return (
                   <div key={field.id} className="rounded-xl px-4 py-3 text-sm leading-7"
-                    style={{ background: 'rgba(0,255,179,0.05)', borderLeft: isRTL ? 'none' : '3px solid rgba(0,255,179,0.3)', borderRight: isRTL ? '3px solid rgba(0,255,179,0.3)' : 'none', paddingLeft: isRTL ? 14 : 10, paddingRight: isRTL ? 10 : 14, color: 'var(--text-dim)' }}>
+                    style={{ background: 'color-mix(in srgb, var(--accent) 5%, transparent)', borderLeft: isRTL ? 'none' : '3px solid color-mix(in srgb, var(--accent) 30%, transparent)', borderRight: isRTL ? '3px solid color-mix(in srgb, var(--accent) 30%, transparent)' : 'none', paddingLeft: isRTL ? 14 : 10, paddingRight: isRTL ? 10 : 14, color: 'var(--text-dim)' }}>
                     {descText}
                   </div>
                 );
@@ -1731,7 +1731,7 @@ function SurveyModal({ survey, onClose, onComplete, lang }) {
                         border: '1px solid var(--border)',
                         color: 'var(--text)',
                       }}
-                      onFocus={e => { e.target.style.borderColor = 'rgba(0,255,179,0.4)'; }}
+                      onFocus={e => { e.target.style.borderColor = 'color-mix(in srgb, var(--accent) 40%, transparent)'; }}
                       onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
                     />
                   )}
@@ -1748,7 +1748,7 @@ function SurveyModal({ survey, onClose, onComplete, lang }) {
                             className="w-full text-right px-4 py-3 rounded-xl border text-sm font-medium transition-all"
                             style={{
                               borderColor: selected ? 'var(--accent)' : 'var(--border)',
-                              background: selected ? 'rgba(0,255,179,0.12)' : 'var(--surface-2)',
+                              background: selected ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'var(--surface-2)',
                               color: selected ? 'var(--accent)' : 'var(--text)',
                               textAlign: isRTL ? 'right' : 'left',
                             }}
@@ -1779,7 +1779,7 @@ function SurveyModal({ survey, onClose, onComplete, lang }) {
                             className="w-full text-right px-4 py-3 rounded-xl border text-sm font-medium transition-all"
                             style={{
                               borderColor: checked ? 'var(--accent)' : 'var(--border)',
-                              background: checked ? 'rgba(0,255,179,0.12)' : 'var(--surface-2)',
+                              background: checked ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'var(--surface-2)',
                               color: checked ? 'var(--accent)' : 'var(--text)',
                               textAlign: isRTL ? 'right' : 'left',
                             }}
@@ -1812,7 +1812,7 @@ function SurveyModal({ survey, onClose, onComplete, lang }) {
               disabled={submitting}
               className="w-full py-3 rounded-xl font-bold text-sm transition-all"
               style={{
-                background: submitting ? 'rgba(0,255,179,0.3)' : 'var(--accent)',
+                background: submitting ? 'color-mix(in srgb, var(--accent) 30%, transparent)' : 'var(--accent)',
                 color: submitting ? 'rgba(2,31,32,0.5)' : 'var(--bg)',
               }}
             >
@@ -1887,7 +1887,7 @@ function SocialShareModal({ share, onClose, onComplete, lang }) {
     >
       <div
         className="w-full max-w-lg rounded-t-3xl p-6 pb-10"
-        style={{ background: 'var(--bg)', border: '1px solid rgba(0,255,179,0.15)', borderBottom: 'none' }}
+        style={{ background: 'var(--bg)', border: '1px solid color-mix(in srgb, var(--accent) 15%, transparent)', borderBottom: 'none' }}
       >
         <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: 'var(--border)' }} />
 
@@ -1975,7 +1975,7 @@ function SocialShareModal({ share, onClose, onComplete, lang }) {
               disabled={state === 'submitting'}
               className="w-full py-3 rounded-xl font-bold text-sm transition-all"
               style={{
-                background: state === 'submitting' ? 'rgba(0,255,179,0.3)' : 'var(--accent)',
+                background: state === 'submitting' ? 'color-mix(in srgb, var(--accent) 30%, transparent)' : 'var(--accent)',
                 color: state === 'submitting' ? 'rgba(2,31,32,0.5)' : 'var(--bg)',
               }}
             >

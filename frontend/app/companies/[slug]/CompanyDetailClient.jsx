@@ -266,8 +266,8 @@ export default function CompanyDetailClient({ slug }) {
           style={{
             width: 256,
             height: 256,
-            background: logoUrl ? "#ffffff" : "rgba(0,255,179,0.08)",
-            border: "1px solid rgba(0,255,179,0.2)",
+            background: logoUrl ? "#ffffff" : "color-mix(in srgb, var(--accent) 8%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)",
           }}
         >
           {logoUrl ? (

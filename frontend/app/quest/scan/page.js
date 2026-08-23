@@ -195,8 +195,11 @@ export default function QRScanPage() {
           to { opacity: 1; transform: translateY(0); }
         }
         @keyframes successPulse {
-          0%, 100% { box-shadow: 0 0 30px rgba(0,255,179,0.35); }
-          50% { box-shadow: 0 0 60px rgba(0,255,179,0.65); }
+          0%, 100% { box-shadow: 0 0 30px color-mix(in srgb, var(--accent) 35%, transparent); }
+          50% { box-shadow: 0 0 60px color-mix(in srgb, var(--accent) 65%, transparent); }
+        }
+        .scan-back-btn:hover {
+          background: color-mix(in srgb, var(--accent) 90%, black);
         }
       `}</style>
 
@@ -235,8 +238,14 @@ export default function QRScanPage() {
       {/* ── Requesting permission ── */}
       {status === "requesting" && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 z-10">
-          <div className="w-16 h-16 rounded-full bg-[#00ffb3]/10 border border-[#00ffb3]/30 flex items-center justify-center">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00ffb3" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <div
+            className="w-16 h-16 rounded-full flex items-center justify-center"
+            style={{
+              background: "color-mix(in srgb, var(--accent) 10%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
+            }}
+          >
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
               <circle cx="12" cy="13" r="4" />
             </svg>
@@ -254,24 +263,24 @@ export default function QRScanPage() {
           <div className="relative w-64 h-64">
             {/* Corner brackets */}
             <svg className="absolute top-0 left-0" width="40" height="40" fill="none">
-              <path d="M4 36 L4 4 L36 4" stroke="#00ffb3" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M4 36 L4 4 L36 4" stroke="var(--accent)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <svg className="absolute top-0 right-0" width="40" height="40" fill="none">
-              <path d="M4 4 L36 4 L36 36" stroke="#00ffb3" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M4 4 L36 4 L36 36" stroke="var(--accent)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <svg className="absolute bottom-0 right-0" width="40" height="40" fill="none">
-              <path d="M36 4 L36 36 L4 36" stroke="#00ffb3" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M36 4 L36 36 L4 36" stroke="var(--accent)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <svg className="absolute bottom-0 left-0" width="40" height="40" fill="none">
-              <path d="M36 36 L4 36 L4 4" stroke="#00ffb3" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M36 36 L4 36 L4 4" stroke="var(--accent)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
 
             {/* Animated scan line */}
             <div
               className="absolute left-3 right-3 h-px"
               style={{
-                background: "linear-gradient(90deg, transparent, #00ffb3, transparent)",
-                boxShadow: "0 0 6px rgba(0,255,179,0.9)",
+                background: "linear-gradient(90deg, transparent, var(--accent), transparent)",
+                boxShadow: "0 0 6px color-mix(in srgb, var(--accent) 90%, transparent)",
                 animation: "scanLine 2s ease-in-out infinite",
               }}
             />
@@ -300,7 +309,8 @@ export default function QRScanPage() {
           </div>
           <button
             onClick={() => router.replace("/quest")}
-            className="bg-[#00ffb3] text-[#021f20] font-bold rounded-xl px-8 py-3 hover:bg-[#00e6a0] active:scale-95 transition-all"
+            className="scan-back-btn font-bold rounded-xl px-8 py-3 active:scale-95 transition-all"
+            style={{ background: "var(--accent)", color: "var(--btn-primary-text)" }}
           >
             {t(lang, "scan_back_to_missions")}
           </button>
@@ -313,8 +323,8 @@ export default function QRScanPage() {
           {/* Check icon or logo */}
           {logoUrl && !scanResult?.outsideWindow ? (
             <div
-              className="w-24 h-24 rounded-2xl border-2 border-[#00ffb3] overflow-hidden flex items-center justify-center bg-white"
-              style={{ animation: "successPulse 1.4s ease-in-out infinite" }}
+              className="w-24 h-24 rounded-2xl overflow-hidden flex items-center justify-center bg-white"
+              style={{ animation: "successPulse 1.4s ease-in-out infinite", border: "2px solid var(--accent)" }}
             >
               <img src={logoUrl} alt="" onError={() => setLogoErr(true)} className="w-full h-full object-contain" />
             </div>
@@ -327,10 +337,14 @@ export default function QRScanPage() {
             </div>
           ) : (
             <div
-              className="w-24 h-24 rounded-full bg-[#00ffb3]/20 border-2 border-[#00ffb3] flex items-center justify-center"
-              style={{ animation: "successPulse 1.4s ease-in-out infinite" }}
+              className="w-24 h-24 rounded-full flex items-center justify-center"
+              style={{
+                animation: "successPulse 1.4s ease-in-out infinite",
+                background: "color-mix(in srgb, var(--accent) 20%, transparent)",
+                border: "2px solid var(--accent)",
+              }}
             >
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#00ffb3" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             </div>
@@ -376,8 +390,8 @@ export default function QRScanPage() {
             ) : (
               <p
                 dir="ltr"
-                className="text-[#00ffb3] font-black text-3xl mb-2"
-                style={{ textShadow: "0 0 20px rgba(0,255,179,0.5)" }}
+                className="font-black text-3xl mb-2"
+                style={{ color: "var(--accent)", textShadow: "0 0 20px color-mix(in srgb, var(--accent) 50%, transparent)" }}
               >
                 +{lang === "fa" ? toPersianDigits(scanResult?.points ?? 10) : (scanResult?.points ?? 10)} XP!
               </p>
@@ -403,7 +417,7 @@ export default function QRScanPage() {
           </div>
 
           <div className="flex items-center gap-2 text-white/40 text-sm">
-            <div className="w-4 h-4 rounded-full border-2 border-white/20 border-t-[#00ffb3] animate-spin" />
+            <div className="w-4 h-4 rounded-full border-2 border-white/20 animate-spin" style={{ borderTopColor: "var(--accent)" }} />
             <span>{t(lang, "scan_returning")}</span>
           </div>
         </div>
