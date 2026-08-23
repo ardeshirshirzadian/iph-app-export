@@ -208,7 +208,13 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en, 
           </button>
 
           <div className="flex items-center gap-4 mb-4">
-            <div className="w-16 h-16 rounded-full bg-[#00ffb3]/10 border border-[#00ffb3]/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden"
+              style={{
+                background: "color-mix(in srgb, var(--accent) 10%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)",
+              }}
+            >
               {attendeeData?.profile?.jpg?.["128"] ? (
                 <img
                   src={`${RASAYESH_BASE}${attendeeData.profile.jpg["128"]}`}
@@ -348,7 +354,7 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en, 
             </p>
             <p
               className="font-medium text-sm"
-              style={{ color: attendeeData.todayEventPresence ? "#00ffb3" : "var(--text)" }}
+              style={{ color: attendeeData.todayEventPresence ? "var(--accent)" : "var(--text)" }}
             >
               {attendeeData.todayEventPresence
                 ? t(lang, "profile_present")

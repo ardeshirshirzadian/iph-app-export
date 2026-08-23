@@ -287,7 +287,7 @@ function getElementEmoji(el) {
   return el.icon_value || "📍";
 }
 function getHallColor(hall, hallColors) {
-  return hallColors[hall.name] || hall.color || "#00ffb3";
+  return hallColors[hall.name] || hall.color || "var(--accent)";
 }
 
 // Zone fill when its hall_name has no entry in hallColors -- should only

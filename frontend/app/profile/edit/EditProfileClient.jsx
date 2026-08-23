@@ -652,7 +652,7 @@ export default function EditProfileClient() {
             >
               <div
                 className="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center border-2"
-                style={{ background: "var(--surface)", borderColor: "rgba(0,255,179,0.3)" }}
+                style={{ background: "var(--surface)", borderColor: "color-mix(in srgb, var(--accent) 30%, transparent)" }}
               >
                 {profileUrl ? (
                   <img src={profileUrl} alt="profile" className="w-full h-full object-cover" />
@@ -812,7 +812,7 @@ export default function EditProfileClient() {
                     type="button"
                     onClick={() => { setPhoneStep("input"); setPhoneSendError(""); setPhoneSuccess(""); }}
                     className="text-xs px-3 py-2 rounded-xl font-bold whitespace-nowrap"
-                    style={{ background: "rgba(0,255,179,0.1)", color: "var(--accent)", border: "1px solid rgba(0,255,179,0.2)" }}
+                    style={{ background: "color-mix(in srgb, var(--accent) 10%, transparent)", color: "var(--accent)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
                   >
                     تغییر شماره
                   </button>

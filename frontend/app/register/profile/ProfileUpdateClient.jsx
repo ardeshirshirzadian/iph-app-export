@@ -87,7 +87,7 @@ function SectionCard({ title, children }) {
   return (
     <div
       className="rounded-3xl p-5 backdrop-blur-xl border space-y-4"
-      style={{ background: "var(--surface)", borderColor: "rgba(0,255,179,0.2)" }}
+      style={{ background: "var(--surface)", borderColor: "color-mix(in srgb, var(--accent) 20%, transparent)" }}
     >
       <p className="text-xs font-bold tracking-wide" style={{ color: "var(--text-dim)" }}>
         {title}

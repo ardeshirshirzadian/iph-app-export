@@ -24,13 +24,13 @@ export default async function CartCallbackAuthorityPage({ params, searchParams }
         className="relative max-w-sm w-full rounded-3xl p-8 text-center backdrop-blur-xl"
         style={{
           background: "rgba(5,64,65,0.4)",
-          border: `1px solid ${isOk ? "rgba(0,255,179,0.3)" : "rgba(239,68,68,0.3)"}`,
+          border: `1px solid ${isOk ? "color-mix(in srgb, var(--accent) 30%, transparent)" : "rgba(239,68,68,0.3)"}`,
         }}
       >
         <div className="text-5xl mb-4">{isOk ? '🎉' : '❌'}</div>
         <h1
           className="text-xl font-black mb-2 leading-8"
-          style={{ color: isOk ? "#00ffb3" : "#ef4444" }}
+          style={{ color: isOk ? "var(--accent)" : "#ef4444" }}
         >
           {isOk ? 'پرداخت با موفقیت انجام شد 🎉' : 'پرداخت انجام نشد'}
         </h1>
@@ -51,7 +51,7 @@ export default async function CartCallbackAuthorityPage({ params, searchParams }
             <Link
               href="/cart"
               className="inline-block px-6 py-2.5 rounded-xl font-medium text-sm"
-              style={{ border: "1px solid rgba(0,255,179,0.2)", color: "var(--accent)" }}
+              style={{ border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)", color: "var(--accent)" }}
             >
               بازگشت به سبد خرید
             </Link>

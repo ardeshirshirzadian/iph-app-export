@@ -219,7 +219,7 @@ export default function BookClient({ title, subtitle, title_en, subtitle_en }) {
         {!loading && !enabled && (
           <div
             className="rounded-3xl p-10 text-center"
-            style={{ background: "rgba(5,64,65,0.4)", border: "1px solid rgba(0,255,179,0.2)" }}
+            style={{ background: "rgba(5,64,65,0.4)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
           >
             <div className="text-4xl mb-3">📚</div>
             <p className="text-sm font-medium" style={{ color: "var(--text)" }}>
@@ -231,7 +231,7 @@ export default function BookClient({ title, subtitle, title_en, subtitle_en }) {
         {!loading && enabled && !book && (
           <div
             className="rounded-3xl p-10 text-center"
-            style={{ background: "rgba(5,64,65,0.4)", border: "1px solid rgba(0,255,179,0.2)" }}
+            style={{ background: "rgba(5,64,65,0.4)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
           >
             <div className="text-4xl mb-3">📚</div>
             <p className="text-sm font-medium" style={{ color: "var(--text)" }}>
@@ -255,7 +255,7 @@ export default function BookClient({ title, subtitle, title_en, subtitle_en }) {
                 </div>
               )}
               {!coverUrl && (
-                <div className="w-full flex items-center justify-center" style={{ height: 180, background: "rgba(0,255,179,0.06)" }}>
+                <div className="w-full flex items-center justify-center" style={{ height: 180, background: "color-mix(in srgb, var(--accent) 6%, transparent)" }}>
                   <span style={{ fontSize: 72 }}>📚</span>
                 </div>
               )}
@@ -282,17 +282,17 @@ export default function BookClient({ title, subtitle, title_en, subtitle_en }) {
 
                 <div className="flex flex-wrap gap-2 mb-3">
                   {showBookRow && (
-                    <span className="text-xs px-2.5 py-1 rounded-full font-medium" style={{ background: "rgba(0,255,179,0.1)", color: "var(--accent)", border: "1px solid rgba(0,255,179,0.2)" }}>
+                    <span className="text-xs px-2.5 py-1 rounded-full font-medium" style={{ background: "color-mix(in srgb, var(--accent) 10%, transparent)", color: "var(--accent)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}>
                       📚 {formatPrice(book.book_price, lang)}
                     </span>
                   )}
                   {showCdRow && (
-                    <span className="text-xs px-2.5 py-1 rounded-full font-medium" style={{ background: "rgba(0,255,179,0.1)", color: "var(--accent)", border: "1px solid rgba(0,255,179,0.2)" }}>
+                    <span className="text-xs px-2.5 py-1 rounded-full font-medium" style={{ background: "color-mix(in srgb, var(--accent) 10%, transparent)", color: "var(--accent)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}>
                       💿 {formatPrice(book.cd_price, lang)}
                     </span>
                   )}
                   {showPdfRow && (
-                    <span className="text-xs px-2.5 py-1 rounded-full font-medium" style={{ background: "rgba(0,255,179,0.1)", color: "var(--accent)", border: "1px solid rgba(0,255,179,0.2)" }}>
+                    <span className="text-xs px-2.5 py-1 rounded-full font-medium" style={{ background: "color-mix(in srgb, var(--accent) 10%, transparent)", color: "var(--accent)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}>
                       📄 {formatPrice(book.pdf_price, lang)}
                     </span>
                   )}
@@ -320,7 +320,7 @@ export default function BookClient({ title, subtitle, title_en, subtitle_en }) {
             {/* Order selection card */}
             <div
               className="rounded-3xl p-5 backdrop-blur-xl"
-              style={{ background: "rgba(5,64,65,0.4)", border: "1px solid rgba(0,255,179,0.2)" }}
+              style={{ background: "rgba(5,64,65,0.4)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
             >
               <h3 className="text-sm font-bold mb-4" style={{ color: "var(--accent)" }}>
                 {t(lang, "book_select_product")}

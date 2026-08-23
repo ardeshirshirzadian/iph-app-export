@@ -130,7 +130,7 @@ export default function ConfirmClient() {
             {/* User info card */}
             <div
               className="rounded-3xl p-5 backdrop-blur-xl border"
-              style={{ background: "rgba(5,64,65,0.4)", borderColor: "rgba(0,255,179,0.2)" }}
+              style={{ background: "rgba(5,64,65,0.4)", borderColor: "color-mix(in srgb, var(--accent) 20%, transparent)" }}
             >
               <p className="text-xs font-bold mb-3" style={{ color: "var(--text-dim)" }}>
                 {lang === "fa" ? "اطلاعات شما" : "Your Information"}
@@ -163,7 +163,7 @@ export default function ConfirmClient() {
             {/* Selected plans */}
             <div
               className="rounded-3xl p-5 backdrop-blur-xl border"
-              style={{ background: "rgba(5,64,65,0.4)", borderColor: "rgba(0,255,179,0.2)" }}
+              style={{ background: "rgba(5,64,65,0.4)", borderColor: "color-mix(in srgb, var(--accent) 20%, transparent)" }}
             >
               <p className="text-xs font-bold mb-3" style={{ color: "var(--text-dim)" }}>
                 {lang === "fa" ? "پلن‌های انتخاب‌شده" : "Selected Plans"}
@@ -182,7 +182,7 @@ export default function ConfirmClient() {
                       <div
                         key={plan.id}
                         className="flex items-center justify-between gap-3 rounded-xl px-4 py-3"
-                        style={{ background: "rgba(0,255,179,0.06)", border: "1px solid rgba(0,255,179,0.15)" }}
+                        style={{ background: "color-mix(in srgb, var(--accent) 6%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 15%, transparent)" }}
                       >
                         <p className="text-sm font-medium" style={{ color: "var(--text)" }}>
                           {title}
@@ -201,7 +201,7 @@ export default function ConfirmClient() {
             {selectedPlans.length > 0 && (
               <div
                 className="rounded-2xl px-5 py-3 flex items-center justify-between"
-                style={{ background: isFree ? "rgba(34,197,94,0.08)" : "rgba(0,255,179,0.06)", border: `1px solid ${isFree ? "rgba(34,197,94,0.2)" : "rgba(0,255,179,0.2)"}` }}
+                style={{ background: isFree ? "rgba(34,197,94,0.08)" : "color-mix(in srgb, var(--accent) 6%, transparent)", border: `1px solid ${isFree ? "rgba(34,197,94,0.2)" : "color-mix(in srgb, var(--accent) 20%, transparent)"}` }}
               >
                 <span className="text-sm font-bold" style={{ color: "var(--text)" }}>
                   {lang === "fa" ? "جمع کل" : "Total"}

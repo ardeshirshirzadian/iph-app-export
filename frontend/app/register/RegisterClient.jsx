@@ -56,11 +56,11 @@ function PlanCard({ plan, selected, onToggle, lang, isAutoIncluded }) {
       className="rounded-3xl p-5 backdrop-blur-xl transition-all"
       style={{
         background: selected
-          ? "rgba(0,255,179,0.08)"
+          ? "color-mix(in srgb, var(--accent) 8%, transparent)"
           : "rgba(5,64,65,0.4)",
         border: selected
-          ? "1px solid rgba(0,255,179,0.4)"
-          : "1px solid rgba(0,255,179,0.2)",
+          ? "1px solid color-mix(in srgb, var(--accent) 40%, transparent)"
+          : "1px solid color-mix(in srgb, var(--accent) 20%, transparent)",
         cursor: isSelectable ? "pointer" : "default",
         opacity: isDisabled ? 0.5 : 1,
       }}
@@ -69,7 +69,7 @@ function PlanCard({ plan, selected, onToggle, lang, isAutoIncluded }) {
         <div className="flex items-center gap-3 min-w-0">
           <div
             className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center"
-            style={{ background: "rgba(0,255,179,0.1)", border: "1px solid rgba(0,255,179,0.15)" }}
+            style={{ background: "color-mix(in srgb, var(--accent) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 15%, transparent)" }}
           >
             <PlanIcon icon={plan.icon} />
           </div>
@@ -87,7 +87,7 @@ function PlanCard({ plan, selected, onToggle, lang, isAutoIncluded }) {
         {isAutoIncluded ? (
           <span
             className="flex-shrink-0 text-xs px-2.5 py-1 rounded-full font-bold"
-            style={{ background: "rgba(0,255,179,0.12)", color: "var(--accent)", border: "1px solid rgba(0,255,179,0.25)", whiteSpace: "nowrap" }}
+            style={{ background: "color-mix(in srgb, var(--accent) 12%, transparent)", color: "var(--accent)", border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)", whiteSpace: "nowrap" }}
           >
             {lang === "fa" ? "✓ شامل این پکیج" : "✓ Included"}
           </span>
@@ -253,7 +253,7 @@ export default function RegisterClient({ title, subtitle, title_en, subtitle_en 
         {!loading && alreadyRegistered && (
           <div
             className="rounded-3xl p-8 flex flex-col items-center gap-4 text-center mb-4"
-            style={{ background: "rgba(5,64,65,0.4)", border: "1px solid rgba(0,255,179,0.2)" }}
+            style={{ background: "rgba(5,64,65,0.4)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
           >
             <div style={{ fontSize: 48 }}>🪪</div>
             <p className="text-sm font-bold" style={{ color: "var(--text)" }}>
@@ -273,7 +273,7 @@ export default function RegisterClient({ title, subtitle, title_en, subtitle_en 
         {!loading && !enabled && (
           <div
             className="rounded-3xl p-10 flex flex-col items-center gap-4 text-center"
-            style={{ background: "rgba(5,64,65,0.4)", border: "1px solid rgba(0,255,179,0.2)" }}
+            style={{ background: "rgba(5,64,65,0.4)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
           >
             <div style={{ fontSize: 56 }}>🗓️</div>
             <p className="text-sm font-bold leading-7" style={{ color: "var(--text)" }}>
@@ -322,7 +322,7 @@ export default function RegisterClient({ title, subtitle, title_en, subtitle_en 
         {!loading && enabled && !alreadyRegistered && plans.length === 0 && (
           <div
             className="rounded-3xl p-10 text-center"
-            style={{ background: "rgba(5,64,65,0.4)", border: "1px solid rgba(0,255,179,0.2)" }}
+            style={{ background: "rgba(5,64,65,0.4)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
           >
             <p className="text-sm" style={{ color: "var(--text-muted)" }}>
               {lang === "fa" ? "پلنی برای نمایش وجود ندارد" : "No plans available"}

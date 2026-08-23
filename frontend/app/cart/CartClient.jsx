@@ -251,7 +251,7 @@ export default function CartClient() {
         {!loading && !hasCart && (
           <div
             className="rounded-3xl p-12 flex flex-col items-center gap-5"
-            style={{ background: "rgba(5,64,65,0.4)", border: "1px solid rgba(0,255,179,0.2)" }}
+            style={{ background: "rgba(5,64,65,0.4)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
           >
             <div style={{ lineHeight: 1 }}>
               {config.logo_icon_type === 'emoji' ? (
@@ -294,11 +294,11 @@ export default function CartClient() {
                   <div
                     key={item.id}
                     className="rounded-3xl p-4 flex items-center gap-4 backdrop-blur-xl"
-                    style={{ background: "rgba(5,64,65,0.4)", border: "1px solid rgba(0,255,179,0.2)" }}
+                    style={{ background: "rgba(5,64,65,0.4)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
                   >
                     <div
                       className="flex-shrink-0 rounded-xl flex items-center justify-center"
-                      style={{ width: 56, height: 56, background: "rgba(0,255,179,0.08)", border: "1px solid rgba(0,255,179,0.15)" }}
+                      style={{ width: 56, height: 56, background: "color-mix(in srgb, var(--accent) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 15%, transparent)" }}
                     >
                       <span style={{ fontSize: 28 }}>🛍️</span>
                     </div>
@@ -345,7 +345,7 @@ export default function CartClient() {
             {/* Coupon section */}
             <div
               className="rounded-3xl p-5 backdrop-blur-xl"
-              style={{ background: "rgba(5,64,65,0.4)", border: "1px solid rgba(0,255,179,0.2)" }}
+              style={{ background: "rgba(5,64,65,0.4)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
             >
               <div className="flex gap-2">
                 <input
@@ -389,7 +389,7 @@ export default function CartClient() {
             {/* Price summary */}
             <div
               className="rounded-3xl p-5 backdrop-blur-xl"
-              style={{ background: "rgba(5,64,65,0.4)", border: "1px solid rgba(0,255,179,0.2)" }}
+              style={{ background: "rgba(5,64,65,0.4)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
             >
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between">

@@ -180,9 +180,9 @@ function PanelCard({ panel, visibleFields, logoBaseUrl, lang }) {
                 style={{
                   background: panel.kind === "workshop"
                     ? "rgba(139,92,246,0.15)"
-                    : "rgba(0,255,179,0.1)",
+                    : "color-mix(in srgb, var(--accent) 10%, transparent)",
                   color: panel.kind === "workshop" ? "#c4b5fd" : "var(--accent)",
-                  border: `1px solid ${panel.kind === "workshop" ? "rgba(139,92,246,0.3)" : "rgba(0,255,179,0.2)"}`,
+                  border: `1px solid ${panel.kind === "workshop" ? "rgba(139,92,246,0.3)" : "color-mix(in srgb, var(--accent) 20%, transparent)"}`,
                 }}
               >
                 {label}
@@ -522,7 +522,7 @@ export default function PanelsClient({ title, subtitle, title_en, subtitle_en, i
             className="rounded-3xl p-10 text-center mt-6"
             style={{
               background: "rgba(5,64,65,0.4)",
-              border: "1px solid rgba(0,255,179,0.2)",
+              border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)",
               backdropFilter: "blur(12px)",
             }}
           >

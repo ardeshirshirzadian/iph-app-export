@@ -467,7 +467,7 @@ export default function CompaniesClient({ title, subtitle, title_en, subtitle_en
             className="rounded-3xl p-10 text-center mt-6"
             style={{
               background: "rgba(5,64,65,0.4)",
-              border: "1px solid rgba(0,255,179,0.2)",
+              border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)",
               backdropFilter: "blur(12px)",
             }}
           >
