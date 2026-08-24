@@ -142,7 +142,7 @@ const getCachedMapWalls = unstable_cache(
   { tags: ['map-walls'], revalidate: 300 }
 );
 
-const NAV_CAMERA_DEFAULTS = { distance: 220, height: 90, walk_speed: 75, stair_transition_duration: 0.8, arrival_fov_gain: 0 };
+const NAV_CAMERA_DEFAULTS = { distance: 220, height: 90, walk_speed: 75, stair_transition_duration: 0.8 };
 const getCachedNavCameraConfig = unstable_cache(
   async (eventId) => {
     const r = await query("SELECT value FROM app_settings WHERE event_id = $1 AND key = 'nav_camera_config'", [eventId]);

@@ -27,24 +27,6 @@ const GAP_HALF = 2;
 // sides, so it closes real seams without narrowing any real aisle found in
 // the data.
 const MIN_BOOTH_GAP = 24;
-// Corridor-centering post-process (see centerPathInCorridors): a softer
-// preference layered on top of aStarGrid's shortest-path result, nudging
-// interior waypoints toward whichever side has more clearance so routes stop
-// hugging booth/wall edges when there's open space to spare. aStarGrid itself
-// is untouched -- it only distinguishes blocked vs free, no cost weighting by
-// distance from obstacles, and stays that way; this runs strictly after it as
-// an independent, easily-disabled step.
-// Max perpendicular nudge per waypoint (SVG units). Deliberately conservative
-// (0.5 cells, ~0.65m) -- validated safe (respects WALL_BUF, never crosses a
-// wall) against a narrow L-corridor, a wide open hall, and real IranPharma
-// door->booth data before landing here; dial up if it reads as too subtle live.
-const CORRIDOR_CENTER_MAX_OFFSET = CELL * 0.5;
-// Fraction of the clearance imbalance between a waypoint's two perpendicular
-// sides closed per nudge (0-1). Imbalance-based rather than a flat fraction
-// of one side's headroom so it's self-damping: as a point approaches the
-// true center the imbalance shrinks toward zero and so does the nudge,
-// converging instead of being able to overshoot past center.
-const CORRIDOR_CENTER_STRENGTH = 0.5;
 
 // ── Outer-wall helpers ─────────────────────────────────────────────────────────
 
@@ -144,26 +126,6 @@ function _ptSegDist(px, py, ax, ay, bx, by) {
   if (len2 < 1e-10) return Math.hypot(px - ax, py - ay);
   const t = Math.max(0, Math.min(1, ((px - ax) * abx + (py - ay) * aby) / len2));
   return Math.hypot(px - (ax + t * abx), py - (ay + t * aby));
-}
-
-// Builds a (ax,ay,bx,by) -> boolean segment-crossing check against a grid's
-// manually-drawn map_walls polylines. Shared by findGridRoute's post-RDP
-// wall-crossing repair and centerPathInCorridors's nudge validation, so both
-// use the exact same geometric check rather than two copies drifting apart.
-function buildWallCrosser(walls) {
-  const wallFlat = [];
-  for (const w of (walls ?? [])) {
-    const pts = Array.isArray(w.points) ? w.points : [];
-    for (let i = 0; i < pts.length - 1; i++)
-      wallFlat.push(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y);
-  }
-  return (ax, ay, bx, by) => {
-    for (let i = 0; i < wallFlat.length; i += 4) {
-      if (_segmentsIntersect(ax, ay, bx, by, wallFlat[i], wallFlat[i + 1], wallFlat[i + 2], wallFlat[i + 3]))
-        return true;
-    }
-    return false;
-  };
 }
 
 // Returns { blocked: Uint8Array, cols, rows, cellSize, forbiddenEdges: Map }.
@@ -761,93 +723,6 @@ function rdp(pts, eps) {
   return [pts[0], pts[pts.length - 1]];
 }
 
-// ── Corridor centering ────────────────────────────────────────────────────────
-
-// Nudges each interior waypoint of a finalized path perpendicular to its local
-// travel direction, toward whichever side has more clearance from blocked
-// cells. path[0] and path[last] (booth/entrance endpoints) are never touched.
-// Purely cosmetic post-processing: never changes which cells were searched or
-// how many waypoints exist, only where interior ones sit -- so it composes
-// safely after aStarGrid, RDP simplification, and the wall-crossing repair
-// loop without needing to know about any of them.
-//
-// To disable entirely, comment out its call site in findGridRoute below.
-function centerPathInCorridors(path, grid) {
-  if (path.length < 3) return path; // nothing but start/end -- no interior points
-
-  const { blocked, cols, rows, cellSize } = grid;
-  const crossesWall = buildWallCrosser(grid.walls);
-
-  const isBlockedAt = (x, y) => {
-    const c = Math.floor(x / cellSize), r = Math.floor(y / cellSize);
-    if (c < 0 || c >= cols || r < 0 || r >= rows) return true;
-    return !!blocked[r * cols + c];
-  };
-
-  // Ray-march from (x,y) along unit direction (dx,dy), returning the distance
-  // to the first blocked cell (or maxDist if none found within range).
-  function clearance(x, y, dx, dy, maxDist) {
-    const step = cellSize / 2;
-    for (let d = step; d <= maxDist; d += step) {
-      if (isBlockedAt(x + dx * d, y + dy * d)) return d - step;
-    }
-    return maxDist;
-  }
-
-  // Cap the ray-march at just beyond what a max-strength nudge could ever
-  // need -- no reason to search further than that.
-  const searchCap = CORRIDOR_CENTER_MAX_OFFSET + WALL_BUF + cellSize;
-
-  const out = [path[0]];
-  for (let i = 1; i < path.length - 1; i++) {
-    const prevOut = out[out.length - 1]; // already-finalized (possibly nudged)
-    const prevOrig = path[i - 1];
-    const nextOrig = path[i + 1];
-    const cur = path[i];
-
-    // Local direction from the original (pre-nudge) neighbors -- stable,
-    // doesn't depend on nudge history.
-    let ddx = nextOrig.x - prevOrig.x, ddy = nextOrig.y - prevOrig.y;
-    const len = Math.hypot(ddx, ddy);
-    if (len < 1e-6) { out.push(cur); continue; } // degenerate, leave as-is
-    ddx /= len; ddy /= len;
-    const px = -ddy, py = ddx; // perpendicular unit vector
-
-    const cPlus  = clearance(cur.x, cur.y,  px,  py, searchCap);
-    const cMinus = clearance(cur.x, cur.y, -px, -py, searchCap);
-    const imbalance = cPlus - cMinus;
-    if (Math.abs(imbalance) < 1) { out.push(cur); continue; } // already balanced
-
-    const dir = imbalance > 0 ? 1 : -1;
-    const sideClearance = dir > 0 ? cPlus : cMinus;
-    // Never eat into the far side's WALL_BUF margin, regardless of how large
-    // the imbalance or MAX_OFFSET would otherwise allow.
-    const offset = Math.min(
-      CORRIDOR_CENTER_MAX_OFFSET,
-      CORRIDOR_CENTER_STRENGTH * Math.abs(imbalance) / 2,
-      Math.max(0, sideClearance - WALL_BUF),
-    );
-    if (offset < 1) { out.push(cur); continue; }
-
-    const nx = cur.x + px * dir * offset;
-    const ny = cur.y + py * dir * offset;
-
-    // Validate against the actual segments this nudge would produce: the
-    // incoming one from the already-finalized previous output point, and the
-    // outgoing one to the next original point (re-validated again, against
-    // this point's now-finalized position, when that next point is processed).
-    // Reject and keep the original point on any wall-crossing or blocked-cell hit.
-    if (crossesWall(prevOut.x, prevOut.y, nx, ny) || crossesWall(nx, ny, nextOrig.x, nextOrig.y) || isBlockedAt(nx, ny)) {
-      out.push(cur);
-      continue;
-    }
-
-    out.push({ x: nx, y: ny });
-  }
-  out.push(path[path.length - 1]);
-  return out;
-}
-
 // ── Multi-floor support ────────────────────────────────────────────────────────
 
 // Build one walkable grid per floor.
@@ -1033,7 +908,21 @@ export function findGridRoute(grid, startX, startY, destX, destY) {
   // Zones/outer-wall-ring don't need this because they mark cells blocked[],
   // so A* can never place waypoints straddling them.
   if (grid.walls?.length > 0) {
-    const crossesWall = buildWallCrosser(grid.walls);
+    // Flat array of wall segment coords: [x1,y1,x2,y2, x1,y1,x2,y2, ...]
+    const wallFlat = [];
+    for (const w of grid.walls) {
+      const pts = Array.isArray(w.points) ? w.points : [];
+      for (let i = 0; i < pts.length - 1; i++)
+        wallFlat.push(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y);
+    }
+
+    const crossesWall = (ax, ay, bx, by) => {
+      for (let i = 0; i < wallFlat.length; i += 4) {
+        if (_segmentsIntersect(ax, ay, bx, by, wallFlat[i], wallFlat[i + 1], wallFlat[i + 2], wallFlat[i + 3]))
+          return true;
+      }
+      return false;
+    };
 
     let repaired = true;
     while (repaired) {
@@ -1056,10 +945,6 @@ export function findGridRoute(grid, startX, startY, destX, destY) {
     }
 
   }
-
-  // Corridor-centering: nudge interior waypoints toward corridor/aisle
-  // centers. Independent post-process -- comment out this one line to disable.
-  simplified = centerPathInCorridors(simplified, grid);
 
   // Strip the internal index tags before returning.
   for (const p of simplified) delete p._i;
