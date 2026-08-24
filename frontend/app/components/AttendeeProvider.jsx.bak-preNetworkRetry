@@ -2,16 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { gql } from "@apollo/client";
-import { getApolloClient, NetworkRetryError } from "@/lib/apolloClient";
+import { getApolloClient } from "@/lib/apolloClient";
 import { useAuth } from "@/hooks/useAuth";
-
-// Bounded retry schedule for a NetworkRetryError (a transient network
-// failure on the post-refresh retry request -- see apolloClient.js). Not
-// used for a confirmed unauthorized/expired-token response, which signOut()
-// already handles via its own redirect. 2 retries (3 attempts total),
-// delays chosen to ride out a typical few-second mobile network blip
-// without leaving the user waiting too long: 2s, then 5s (~7s worst case).
-const ATTENDEE_RETRY_DELAYS_MS = [2000, 5000];
 
 // Superset of every field any current consumer (AppHeader photo, ProfilePhotoGuard,
 // ProfileCompletionBar, ProfileClient, EditProfileClient) reads from getAttendee.
@@ -72,27 +64,14 @@ export default function AttendeeProvider({ children }) {
     const client = getApolloClient();
     if (!client) { setLoading(false); return; }
     setLoading(true);
-    // `errorPolicy: 'all'` (set on this client) means client.query() resolves
-    // normally even on error -- it never rejects for either a confirmed
-    // unauthorized response or a NetworkRetryError, both land in `error`.
-    // `loading` intentionally stays true across the whole retry sequence --
-    // set false exactly once, after the loop, so the UI doesn't flicker
-    // between attempts.
-    for (let attempt = 0; attempt <= ATTENDEE_RETRY_DELAYS_MS.length; attempt++) {
-      try {
-        const { data, error } = await client.query({ query: ATTENDEE_QUERY, fetchPolicy: "network-only" });
-        if (data?.getAttendee) { setAttendee(data.getAttendee); break; }
-        // Not a NetworkRetryError (e.g. confirmed auth failure, already
-        // handled by signOut()'s own redirect) or retries exhausted --
-        // leave previous attendee state as-is, matching prior behavior.
-        if (!(error instanceof NetworkRetryError) || attempt === ATTENDEE_RETRY_DELAYS_MS.length) break;
-      } catch {
-        // leave previous attendee state as-is on an unexpected throw
-        break;
-      }
-      await new Promise((r) => setTimeout(r, ATTENDEE_RETRY_DELAYS_MS[attempt]));
+    try {
+      const { data } = await client.query({ query: ATTENDEE_QUERY, fetchPolicy: "network-only" });
+      if (data?.getAttendee) setAttendee(data.getAttendee);
+    } catch {
+      // leave previous attendee state as-is on transient failure
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   useEffect(() => {

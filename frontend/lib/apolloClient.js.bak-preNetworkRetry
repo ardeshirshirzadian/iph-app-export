@@ -4,18 +4,6 @@ const RASAYESH_URL = 'https://api.rasayesh.com/graphql';
 const REFRESH_URL = 'https://api.rasayesh.com/refresh-token';
 const ATTENDEE_ORIGIN = 'https://attendee.rasayesh.com';
 
-// Thrown specifically when the post-refresh retry request fails at the
-// network level (dropped connection, timeout) -- distinct from a confirmed
-// unauthorized/expired-token response, which still goes through signOut()
-// below unchanged. Callers (see AttendeeProvider.jsx) use this to retry the
-// whole query with backoff instead of treating a transient blip as a logout.
-export class NetworkRetryError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = 'NetworkRetryError';
-  }
-}
-
 let refreshPromise = null;
 
 async function doRefresh() {
@@ -76,27 +64,11 @@ function createRasayeshFetch() {
 
     if (!isUnauthorizedResponse(data)) return response;
 
-    // Refresh -- a failure here (bad/expired refresh token, or a network
-    // error trying to reach REFRESH_URL) means the session itself can't be
-    // recovered, so this still goes straight to signOut(), unchanged.
+    // Refresh and retry once
     try {
       await doRefresh();
-    } catch {
-      signOut();
-      return response;
-    }
-
-    // Retry the original request with the new token. This fetch is
-    // deliberately awaited INSIDE this try -- `return fetch(...)` without
-    // await would let a later rejection escape this catch entirely (adopted
-    // promise, not a synchronous throw within the try body) and propagate as
-    // a raw, unclassified rejection instead. A failure here means the
-    // refresh itself succeeded (a real session), so a dropped connection on
-    // this specific request is a transient network issue, not a reason to
-    // sign the user out -- thrown as NetworkRetryError so callers can retry.
-    const newToken = localStorage.getItem('access_token');
-    try {
-      return await fetch(uri, {
+      const newToken = localStorage.getItem('access_token');
+      return fetch(uri, {
         ...options,
         headers: {
           ...options.headers,
@@ -107,8 +79,9 @@ function createRasayeshFetch() {
           authorization: `Bearer ${newToken}`,
         },
       });
-    } catch (err) {
-      throw new NetworkRetryError(`retry after refresh failed: ${err.message}`);
+    } catch {
+      signOut();
+      return response;
     }
   };
 }
