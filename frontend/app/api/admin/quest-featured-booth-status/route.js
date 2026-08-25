@@ -51,10 +51,14 @@ export async function GET() {
     // unlike the old single-row companies table, so without it a company
     // shared between events would join to multiple rows and fan out
     // duplicate mission/badge entries in the response -- a regression this
-    // migration must not introduce. s.current_company_id still holds the OLD
-    // global company id until sub-phase 4's remap runs; join on company_id,
-    // not id, until then (MUST flip to co.id = s.current_company_id in that
-    // same deploy).
+    // migration must not introduce.
+    //
+    // quest_featured_booth_state.current_company_id is intentionally excluded
+    // from the sub-phase 4 remap: it's regenerated on every rotation by
+    // featuredBoothHelper.js, which always sources a fresh pick from
+    // featured_booth_pool (a jsonb array that is also never remapped) -- so
+    // it permanently holds the global company id, not companies_placement.id.
+    // This join stays on company_id forever; do NOT flip it.
     const { rows: missionRows } = await query(`
       SELECT
         qc.id, qc.title_fa, qc.featured_booth_rotation_hours,
