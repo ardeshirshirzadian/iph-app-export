@@ -19,9 +19,13 @@ export async function GET(request) {
     );
     const eventId = settingsResult.rows[0]?.value?.event_id;
 
+    // company_id AS id (global company id, not companies_placement's own
+    // surrogate id) -- see reader 9/15 (scan route) for why. booth_uuid is
+    // shared across a company's event rows post sub-phase-1, so event_id is
+    // added alongside rasayesh_event_id to disambiguate.
     const r = await query(
-      'SELECT id, brand_name_fa, brand_name_en FROM companies WHERE booth_uuid = $1 AND rasayesh_event_id = $2',
-      [uuid, Number(eventId)]
+      'SELECT company_id AS id, brand_name_fa, brand_name_en FROM companies_placement WHERE booth_uuid = $1 AND rasayesh_event_id = $2 AND event_id = $3',
+      [uuid, Number(eventId), currentEventId]
     );
     if (!r.rows.length) return NextResponse.json({ error: 'not_found' }, { status: 404 });
     return NextResponse.json({ company: r.rows[0] });
