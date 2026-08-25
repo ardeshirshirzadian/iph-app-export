@@ -1088,7 +1088,14 @@ export function findGridRoute(grid, startX, startY, destX, destY) {
 
   // Corridor-centering: nudge interior waypoints toward corridor/aisle
   // centers. Independent post-process -- comment out this one line to disable.
-  simplified = centerPathInCorridors(simplified, grid);
+  // DISABLED 2026-08-25: even after the segmentBlocked fix, still cut through
+  // a wall on the booth immediately after the destination per live testing.
+  // Reverting to the plain A*/RDP-simplified path (pre-corridor-centering
+  // behavior) rather than debugging further. centerPathInCorridors and
+  // segmentBlocked are left intact below -- re-enable this line once the
+  // underlying booth-blindness in crossesWall is properly fixed (see
+  // project memory: iph-app RDP booth-crossing bug).
+  // simplified = centerPathInCorridors(simplified, grid);
 
   // Strip the internal index tags before returning.
   for (const p of simplified) delete p._i;
