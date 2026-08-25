@@ -74,13 +74,12 @@ async function calcProgress(mission, userUuid, eventId, currentEventId) {
       }
       case 'hall_scan': {
         if (!mission.target_hall_name) return 0;
-        // qs.company_id still holds the OLD global company id until
-        // sub-phase 4's remap runs; join on company_id, not id, until then
-        // (MUST flip to c.id = qs.company_id in that same deploy).
+        // sub-phase 4: qs.company_id now holds companies_placement.id --
+        // join on id, not company_id.
         const r = await query(
           `SELECT COUNT(DISTINCT qs.company_id) AS cnt
            FROM quest_scans qs
-           JOIN companies_placement c ON c.company_id = qs.company_id
+           JOIN companies_placement c ON c.id = qs.company_id
            WHERE qs.user_uuid = $1 AND c.hall_name = $2 AND c.rasayesh_event_id = $3
              AND qs.event_id = $4 AND c.event_id = $4`,
           [userUuid, mission.target_hall_name, Number(eventId), currentEventId]
@@ -196,12 +195,12 @@ export async function GET() {
           // Resolve company details for every pool member (no golden booth revealed).
           const pool = m.featured_booth_pool;
           if (Array.isArray(pool) && pool.length > 0) {
-            // pool holds global Rasayesh company ids (admin-picked); select
-            // company_id directly rather than aliasing companies_placement's
-            // own surrogate id -- external callers/quest_scans still key off
-            // the global id pre-sub-phase-4.
+            // pool holds global Rasayesh company ids (admin-picked); company_id
+            // is kept in the response for external callers (unchanged
+            // contract), but sub-phase 4 also needs each row's own id
+            // (placement id) to match against quest_scans.company_id below.
             const { rows: poolRows } = await query(
-              `SELECT company_id, brand_name_fa, brand_name_en, logo, hall_name, booth_no
+              `SELECT id, company_id, brand_name_fa, brand_name_en, logo, hall_name, booth_no
                FROM companies_placement WHERE company_id = ANY($1::int[]) AND rasayesh_event_id = $2 AND event_id = $3
                ORDER BY hall_name ASC NULLS LAST, booth_no ASC NULLS LAST`,
               [pool, Number(eventId), currentEventId]
@@ -209,11 +208,10 @@ export async function GET() {
             // Per-company scan status for the authenticated user.
             let scanMap = {};
             if (userUuid && poolRows.length > 0) {
-              const ids = poolRows.map(r => r.company_id);
-              // quest_scans.company_id still holds the OLD global company id
-              // until sub-phase 4's remap runs; ids above are global ids too,
-              // so this still matches. MUST switch ids to companies_placement's
-              // surrogate id once quest_scans.company_id is remapped.
+              // sub-phase 4: quest_scans.company_id now holds companies_placement.id
+              // (the surrogate id), not the global company id -- match on
+              // each pool row's own id, not its company_id.
+              const ids = poolRows.map(r => r.id);
               const { rows: scanRows } = await query(
                 `SELECT company_id, bool_or(is_featured_booth_bonus) AS got_bonus
                  FROM quest_scans
@@ -222,13 +220,16 @@ export async function GET() {
                 [userUuid, ids, currentEventId]
               ).catch(() => ({ rows: [] }));
               for (const sr of scanRows) {
+                // sr.company_id is quest_scans' column, which now holds a
+                // placement id (see comment above) -- keying scanMap by it
+                // directly, so the lookup below must use c.id, not c.company_id.
                 scanMap[sr.company_id] = { got_bonus: sr.got_bonus };
               }
             }
             featured_booth_pool_companies = poolRows.map(c => ({
               ...c,
-              user_scanned: !!scanMap[c.company_id],
-              user_got_bonus: !!(scanMap[c.company_id]?.got_bonus),
+              user_scanned: !!scanMap[c.id],
+              user_got_bonus: !!(scanMap[c.id]?.got_bonus),
             }));
           } else {
             featured_booth_pool_companies = [];
