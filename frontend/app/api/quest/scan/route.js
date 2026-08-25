@@ -119,17 +119,19 @@ export async function POST(request) {
     );
     const eventId = settingsResult.rows[0]?.value?.event_id;
 
-    // company_id AS id -- callers throughout this handler (quest_scans.company_id
-    // writes, target_company_id/featured_booth_pool comparisons, the response
-    // body) all still key off the global Rasayesh company id, not
-    // companies_placement's own surrogate id, since quest_scans.company_id
-    // stays on old-global-id semantics until sub-phase 4 (see decision below).
+    // company_id AS id -- the response body, target_company_id comparisons,
+    // and featured_booth_pool/current_company_id checks all key off the
+    // global Rasayesh company id permanently (pool and current_company_id
+    // are excluded from the sub-phase 4 remap, see featuredBoothHelper.js).
+    // id AS placement_id -- quest_scans.company_id and quest_content/quest_badges
+    // .target_company_id key off companies_placement's own surrogate id as of
+    // the sub-phase 4 remap; this is the value to use for both.
     // booth_uuid is shared across a company's event rows (see sub-phase 1), so
     // rasayesh_event_id alone already disambiguates which row this scan
     // belongs to; event_id is added too for defense-in-depth, matching the
     // rest of this codebase's pattern of filtering by both.
     const companyResult = await query(
-      `SELECT company_id AS id, brand_name_fa, brand_name_en, logo, hall_name, booth_no,
+      `SELECT company_id AS id, id AS placement_id, brand_name_fa, brand_name_en, logo, hall_name, booth_no,
               is_sponsor, website, booth_uuid, booth_xp,
               is_manual, linked_mission_id, linked_badge_id,
               repeatable_scan, repeatable_scan_hours,
@@ -161,7 +163,7 @@ export async function POST(request) {
         `SELECT scanned_at FROM quest_scans
          WHERE user_uuid = $1 AND company_id = $2 AND event_id = $3
          ORDER BY scanned_at DESC LIMIT 1`,
-        [userUuid, company.id, currentEventId]
+        [userUuid, company.placement_id, currentEventId]
       );
       if (lastScanResult.rows.length > 0) {
         const elapsedMs = Date.now() - new Date(lastScanResult.rows[0].scanned_at).getTime();
@@ -182,7 +184,7 @@ export async function POST(request) {
         `SELECT id FROM quest_scans
          WHERE user_uuid = $1 AND company_id = $2 AND event_id = $3
            AND scanned_at > NOW() - INTERVAL '24 hours'`,
-        [userUuid, company.id, currentEventId]
+        [userUuid, company.placement_id, currentEventId]
       );
       if (existingResult.rows.length > 0) {
         return NextResponse.json({ already_scanned: true, company });
@@ -239,17 +241,15 @@ export async function POST(request) {
     const baseXp    = company.booth_xp ?? 10;
     const xpEarned  = baseXp + bonusXp;
 
-    // Deliberately still the global company id, not companies_placement's
-    // surrogate id -- quest_badges.target_company_id, quest_content.target_company_id,
-    // and quest_featured_booth_state.current_company_id all still hold global
-    // ids too, and switching quest_scans alone now would break every join
-    // that compares quest_scans.company_id against those (see readers 4/5/7/8).
-    // All four FK columns flip together in sub-phase 4's coordinated remap +
-    // reader-JOIN deploy, not one at a time.
+    // sub-phase 4: quest_scans.company_id now stores companies_placement.id
+    // (placement_id), not the global company id, matching quest_badges/
+    // quest_content.target_company_id post-remap. Deployed together with
+    // that remap and the paired reader-JOIN flips (quest-dashboard, this
+    // file's own hall_scan JOIN below).
     await query(
       `INSERT INTO quest_scans (user_uuid, company_id, booth_uuid, xp_earned, is_featured_booth_bonus, event_id)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [userUuid, company.id, uuid, xpEarned, bonusXp > 0, currentEventId]
+      [userUuid, company.placement_id, uuid, xpEarned, bonusXp > 0, currentEventId]
     );
 
     // Cache user display name so leaderboard doesn't need live Rasayesh calls
@@ -282,16 +282,13 @@ export async function POST(request) {
 
         } else if (m.mission_type === 'hall_scan') {
           if (!m.target_hall_name) continue;
-          // qs.company_id still holds the OLD global company id until
-          // sub-phase 4's remap runs; join on company_id, not id, until then
-          // (MUST flip to c.id = qs.company_id in that same deploy).
-          // c.event_id added -- companies_placement has one row per event per
-          // company, unlike the old single-row companies table, so without it
-          // a shared company would join to multiple rows here.
+          // sub-phase 4: qs.company_id now holds companies_placement.id --
+          // join on id, not company_id. c.event_id scope still required
+          // (companies_placement has one row per event per company).
           const { rows } = await query(
             `SELECT COUNT(DISTINCT qs.company_id) AS cnt
              FROM quest_scans qs
-             JOIN companies_placement c ON c.company_id = qs.company_id AND c.event_id = $4
+             JOIN companies_placement c ON c.id = qs.company_id AND c.event_id = $4
              WHERE qs.user_uuid = $1 AND c.hall_name = $2 AND c.rasayesh_event_id = $3`,
             [userUuid, m.target_hall_name, Number(eventId), currentEventId]
           );
@@ -299,7 +296,9 @@ export async function POST(request) {
           completed = m.hall_match_mode === 'any' ? scanned >= 1 : scanned >= m.total;
 
         } else if (m.mission_type === 'special_booth') {
-          if (!m.target_company_id || company.id !== m.target_company_id) continue;
+          // sub-phase 4: target_company_id is companies_placement.id;
+          // compare against company.placement_id, not the global company.id.
+          if (!m.target_company_id || company.placement_id !== m.target_company_id) continue;
           completed = true;
         }
 
