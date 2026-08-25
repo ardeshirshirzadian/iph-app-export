@@ -97,6 +97,13 @@ function AppHeader(props) {
 const RASAYESH_BASE = "https://api.rasayesh.com/";
 const DRAG_THRESHOLD = 6; // px movement before a touch is treated as a drag (not a tap)
 
+// Default is the new 3dplan.rasayesh.com iframe embed (see the proxy route
+// at app/api/proxy/3dplan/[...path]/route.js). Set NEXT_PUBLIC_USE_LEGACY_MAP=true
+// to fall back to the original Three.js/WebGL Map3DView if the 3dplan
+// subdomain has problems -- that code is untouched below, just no longer
+// the default render path.
+const USE_LEGACY_MAP = process.env.NEXT_PUBLIC_USE_LEGACY_MAP === "true";
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getLogoUrl(logo) {
@@ -2115,8 +2122,32 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
 
         {mapData && (
           <>
-          {/* ── 3D mode: Three.js canvas fills container independently ── */}
-          {view3D && (
+          {/* ── 3D mode: iframe embed of 3dplan.rasayesh.com by default, ── */}
+          {/* ── through the same-origin proxy (X-Frame-Options: DENY on   */}
+          {/* the upstream blocks direct framing). Legacy Three.js canvas */}
+          {/* behind NEXT_PUBLIC_USE_LEGACY_MAP for quick rollback.       */}
+          {view3D && !USE_LEGACY_MAP && (
+            mapData.rasayeshEventId ? (
+              <iframe
+                key={mapData.rasayeshEventId}
+                src={`/api/proxy/3dplan/plan/${mapData.rasayeshEventId}/224`}
+                title={isEN ? "3D exhibition floor plan" : "نقشه سه‌بعدی نمایشگاه"}
+                loading="lazy"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                allow="fullscreen"
+                className="absolute inset-0 w-full h-full"
+                style={{ border: 0 }}
+              />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center" style={{ background: "var(--bg)" }}>
+                <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                  {isEN ? "3D plan unavailable for this event." : "نقشه سه‌بعدی برای این رویداد در دسترس نیست."}
+                </p>
+              </div>
+            )
+          )}
+
+          {view3D && USE_LEGACY_MAP && (
             <Map3DView
               halls={hallGroups}
               hallColors={hallColors}

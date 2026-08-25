@@ -326,12 +326,14 @@ export async function GET() {
       [currentEventId]
     );
     let eventOrigin = mapResult.rows[0]?.value?.event_origin;
-    if (!eventOrigin) {
+    let rasayeshEventId = mapResult.rows[0]?.value?.event_id;
+    if (!eventOrigin || !rasayeshEventId) {
       const fallback = await query(
         "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'companies_config'",
         [currentEventId]
       );
-      eventOrigin = fallback.rows[0]?.value?.event_origin ?? 'https://2025.iphexpo.com';
+      eventOrigin = eventOrigin ?? fallback.rows[0]?.value?.event_origin ?? 'https://2025.iphexpo.com';
+      rasayeshEventId = rasayeshEventId ?? fallback.rows[0]?.value?.event_id ?? null;
     }
 
     // Preserves the original control flow exactly: Rasayesh is fetched and
@@ -377,6 +379,7 @@ export async function GET() {
 
     return NextResponse.json({
       websiteEvent,
+      rasayeshEventId,
       hallColors,
       mapElements,
       mapDoors,
