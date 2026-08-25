@@ -17,11 +17,13 @@ export async function GET(request, { params }) {
     );
     const eventId = settingsResult.rows[0]?.value?.event_id;
 
+    // company_id AS id, event_id added -- same reasoning as reader 9/15 (scan
+    // route) and reader 11/15 (booth-by-qr).
     const result = await query(
-      `SELECT id, slug, brand_name_fa, brand_name_en, logo,
+      `SELECT company_id AS id, slug, brand_name_fa, brand_name_en, logo,
               hall_name, booth_no, is_sponsor, website, booth_uuid
-       FROM companies WHERE booth_uuid = $1 AND rasayesh_event_id = $2`,
-      [uuid, Number(eventId)]
+       FROM companies_placement WHERE booth_uuid = $1 AND rasayesh_event_id = $2 AND event_id = $3`,
+      [uuid, Number(eventId), currentEventId]
     );
 
     if (result.rows.length === 0) {
