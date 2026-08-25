@@ -16,12 +16,15 @@ export async function GET(request, { params }) {
     const logoBaseUrl = config.logo_base_url ?? '';
     const eventId = config.event_id;
 
+    // company_id AS id -- see reader 9/15. slug is company-level (same value
+    // on both a shared company's event rows), so rasayesh_event_id alone
+    // still disambiguates unambiguously here, same as reader 13/15.
     const result = await query(
-      `SELECT id, slug, brand_name_fa, brand_name_en, legal_name_fa, legal_name_en,
+      `SELECT company_id AS id, slug, brand_name_fa, brand_name_en, legal_name_fa, legal_name_en,
               logo, website, description_fa, description_en,
               phones, emails, address_fa, address_en, industry_id,
               hall_name, booth_no, is_sponsor, sponsor_level
-       FROM companies
+       FROM companies_placement
        WHERE slug = $1 AND rasayesh_event_id = $2
        LIMIT 1`,
       [slug, Number(eventId)]
