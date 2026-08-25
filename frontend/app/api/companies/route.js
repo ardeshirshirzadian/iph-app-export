@@ -50,7 +50,7 @@ export async function GET(request) {
     // always set correctly by the sync process, unlike the config value
     // which could be unset/stale.
     const hallsResult = await query(
-      `SELECT DISTINCT hall_name FROM companies
+      `SELECT DISTINCT hall_name FROM companies_placement
        WHERE hall_name IS NOT NULL AND event_id = $1
        ORDER BY hall_name ASC`,
       [currentEventId]
@@ -62,7 +62,7 @@ export async function GET(request) {
     // Phase 3 notes), but with a second real event now live it meant BOTH
     // domains' company lists silently merged into one combined list/count.
     const countResult = await query(
-      `SELECT COUNT(*) FROM companies
+      `SELECT COUNT(*) FROM companies_placement
        WHERE event_id = $1
          AND ($2 = '' OR brand_name_fa ILIKE $3 OR brand_name_en ILIKE $3)
          AND ($4 = '' OR hall_name = $4)`,
@@ -70,11 +70,13 @@ export async function GET(request) {
     );
     const total = parseInt(countResult.rows[0].count, 10);
 
+    // company_id AS id -- see reader 9/15. orderClause may reference "id"
+    // (ALLOWED_SORT above), which resolves fine against this output alias.
     const rows = await query(
-      `SELECT id, slug, brand_name_fa, brand_name_en, legal_name_fa, logo,
+      `SELECT company_id AS id, slug, brand_name_fa, brand_name_en, legal_name_fa, logo,
               website, description_fa, description_en, hall_name, booth_no,
               is_sponsor, sponsor_level
-       FROM companies
+       FROM companies_placement
        WHERE event_id = $1
          AND ($2 = '' OR brand_name_fa ILIKE $3 OR brand_name_en ILIKE $3)
          AND ($4 = '' OR hall_name = $4)
