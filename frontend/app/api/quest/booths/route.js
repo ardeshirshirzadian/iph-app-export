@@ -11,12 +11,16 @@ import { getCurrentEventId } from '@/lib/currentEvent';
 // completely live, computed fresh per request from the userUuid cookie.
 const getCachedBoothDefinitions = unstable_cache(
   async (eventId) => {
+    // company_id AS id -- see reader 9/15. rasayesh_event_id alone still
+    // disambiguates correctly here: each companies_placement row stores its
+    // own literal rasayesh_event_id, so this filter is unambiguous per row
+    // without needing a separate local event_id param on this cached fn.
     const companiesResult = await query(
-      `SELECT id, brand_name_fa, brand_name_en, hall_name, booth_no,
+      `SELECT company_id AS id, brand_name_fa, brand_name_en, hall_name, booth_no,
               booth_uuid, logo, is_sponsor, booth_xp,
               repeatable_scan, repeatable_scan_hours,
               repeatable_start_hour, repeatable_end_hour
-       FROM companies
+       FROM companies_placement
        WHERE hall_name IS NOT NULL AND booth_uuid IS NOT NULL AND rasayesh_event_id = $1
        ORDER BY repeatable_scan DESC, hall_name ASC, booth_no ASC`,
       [eventId]
