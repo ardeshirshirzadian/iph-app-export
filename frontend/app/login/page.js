@@ -7,7 +7,7 @@ import LoginForm from './LoginForm';
 const DEFAULTS = {
   logo_path: '/logo/logo-l.png',
   logo_path_light_theme: '/logo/logo.png',
-  logo_size: '80',
+  logo_height: '80',
   title: 'ایران فارما',
   subtitle: 'ورود به حساب کاربری',
   mobile_label: 'شماره موبایل',

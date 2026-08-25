@@ -482,11 +482,21 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
         {/* Header */}
         <div className="text-center mb-8">
           {(() => {
-            const sz = parseInt(settings.logo_size ?? "80", 10) || 80;
+            // Fixed height, width auto -- same technique AppHeader.js's Logo
+            // uses (h-8 w-auto object-contain) for its non-square logo+wordmark
+            // lockup: one controlled dimension, the other derived from the
+            // image's own aspect ratio, so a rectangular logo isn't squashed
+            // or letterboxed into a forced square.
+            const height = parseInt(settings.logo_height ?? "80", 10) || 80;
             return (
-              <div style={{ width: sz, height: sz }} className="mx-auto mb-4 flex items-center justify-center">
+              <div className="mx-auto mb-4 flex items-center justify-center">
                 {logoSrc && (
-                  <img src={logoSrc} alt={t(lang, "app_name")} className="w-full h-full object-contain" />
+                  <img
+                    src={logoSrc}
+                    alt={t(lang, "app_name")}
+                    style={{ height, width: "auto" }}
+                    className="object-contain"
+                  />
                 )}
               </div>
             );
