@@ -97,10 +97,13 @@ async function calcEarned(badge, userUuid, eventId, currentEventId) {
       }
       case 'hall_scan': {
         if (!badge.target_hall_name) return false;
+        // qs.company_id still holds the OLD global company id until
+        // sub-phase 4's remap runs; join on company_id, not id, until then
+        // (MUST flip to c.id = qs.company_id in that same deploy).
         const r = await query(
           `SELECT COUNT(DISTINCT qs.company_id) AS cnt
            FROM quest_scans qs
-           JOIN companies c ON c.id = qs.company_id
+           JOIN companies_placement c ON c.company_id = qs.company_id
            WHERE qs.user_uuid = $1 AND c.hall_name = $2 AND c.rasayesh_event_id = $3
              AND qs.event_id = $4 AND c.event_id = $4`,
           [userUuid, badge.target_hall_name, Number(eventId), currentEventId]
@@ -214,9 +217,13 @@ export async function GET() {
           }
           const pool = b.featured_booth_pool;
           if (Array.isArray(pool) && pool.length > 0) {
+            // pool holds global Rasayesh company ids (admin-picked); select
+            // company_id directly rather than aliasing companies_placement's
+            // own surrogate id -- external callers/quest_scans still key off
+            // the global id pre-sub-phase-4.
             const { rows: poolRows } = await query(
-              `SELECT id AS company_id, brand_name_fa, brand_name_en, logo, hall_name, booth_no
-               FROM companies WHERE id = ANY($1::int[]) AND rasayesh_event_id = $2 AND event_id = $3
+              `SELECT company_id, brand_name_fa, brand_name_en, logo, hall_name, booth_no
+               FROM companies_placement WHERE company_id = ANY($1::int[]) AND rasayesh_event_id = $2 AND event_id = $3
                ORDER BY hall_name ASC NULLS LAST, booth_no ASC NULLS LAST`,
               [pool, Number(eventId), currentEventId]
             ).catch(() => ({ rows: [] }));
@@ -224,6 +231,10 @@ export async function GET() {
             let scanMap = {};
             if (userUuid && poolRows.length > 0) {
               const ids = poolRows.map(r => r.company_id);
+              // quest_scans.company_id still holds the OLD global company id
+              // until sub-phase 4's remap runs; ids above are global ids too,
+              // so this still matches. MUST switch ids to companies_placement's
+              // surrogate id once quest_scans.company_id is remapped.
               const { rows: scanRows } = await query(
                 `SELECT company_id, bool_or(is_featured_booth_bonus) AS got_bonus
                  FROM quest_scans
