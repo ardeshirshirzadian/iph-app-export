@@ -112,6 +112,8 @@ export async function ensureQuestBadgesTable(eventId) {
   }
 
   await query(CREATE_BADGES_TABLE);
+  await query(`ALTER TABLE quest_badges ADD COLUMN IF NOT EXISTS icon_color_dark TEXT`);
+  await query(`ALTER TABLE quest_badges ADD COLUMN IF NOT EXISTS icon_color_light TEXT`);
 
   if (globalThis._questBadgesInitializedEvents.has(eventId)) return;
 

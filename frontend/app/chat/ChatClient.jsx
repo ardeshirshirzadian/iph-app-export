@@ -60,7 +60,7 @@ function clearHistory() {
   sessionStorage.removeItem(STORAGE_KEY);
 }
 
-export default function ChatClient({ title, subtitle, title_en, subtitle_en, isHomeContext = false }) {
+export default function ChatClient({ title, subtitle, title_en, subtitle_en, isHomeContext = false, showBack = true }) {
   const [messages, setMessages] = useState(loadHistory);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -255,7 +255,7 @@ export default function ChatClient({ title, subtitle, title_en, subtitle_en, isH
 
       {/* Content column — fills viewport minus BottomNav spacer */}
       <div className="relative flex flex-col flex-1 min-h-0 max-w-md mx-auto w-full px-4">
-        <PageHeader title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={isHomeContext} />
+        <PageHeader title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={isHomeContext} showBack={showBack} />
 
         {/* Chat panel — fills remaining height; only the message list scrolls */}
         <div

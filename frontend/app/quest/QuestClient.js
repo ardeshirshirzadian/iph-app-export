@@ -10,6 +10,51 @@ import PageHeader from "@/components/PageHeader";
 import { useLang } from "@/lib/useLang";
 import { toPersianDigits } from "@/lib/utils";
 
+function isSvgIconPath(path) {
+  return typeof path === "string" && path.startsWith("/") && path.toLowerCase().endsWith(".svg");
+}
+
+// Per-theme colorable SVG icon. Uses a CSS mask-image + backgroundColor
+// (the same technique BottomNav.js already uses for its own nav icons)
+// instead of fetching and inlining the SVG markup -- no fetch, no injected
+// markup, so there's nothing here that needs sanitizing. Trade-off: this
+// paints the whole icon a single flat color, which is fine for the
+// monochrome icons this app uploads but won't preserve multi-color art.
+function QuestIcon({ path, size, colorDark, colorLight }) {
+  const [isLight, setIsLight] = useState(false);
+
+  useEffect(() => {
+    setIsLight(document.documentElement.classList.contains("light"));
+    const observer = new MutationObserver(() => {
+      setIsLight(document.documentElement.classList.contains("light"));
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  const color = isLight ? (colorLight || "#0f172a") : (colorDark || "#ffffff");
+
+  return (
+    <span
+      style={{
+        display: "block",
+        width: size,
+        height: size,
+        flexShrink: 0,
+        backgroundColor: color,
+        WebkitMaskImage: `url('${path}')`,
+        WebkitMaskSize: "contain",
+        WebkitMaskRepeat: "no-repeat",
+        WebkitMaskPosition: "center",
+        maskImage: `url('${path}')`,
+        maskSize: "contain",
+        maskRepeat: "no-repeat",
+        maskPosition: "center",
+      }}
+    />
+  );
+}
+
 // ── Appearance config defaults (matched to current hardcoded values) ───────
 
 const APPEARANCE_DEFAULTS = {
@@ -80,6 +125,7 @@ const FALLBACK_BADGES = [
 
 function iconOf(v) { return typeof v === 'object' && v ? (v.icon || '') : (v || ''); }
 function iconSizeOf(v, def) { return typeof v === 'object' && v ? (v.icon_size ?? def) : def; }
+function iconColorOf(v, key) { return typeof v === 'object' && v ? v[key] : undefined; }
 
 function getXpProgress(xp, thresholds) {
   const idx = thresholds.findIndex((l) => xp >= l.min && xp < l.max);
@@ -373,7 +419,7 @@ function featuredBoothCountdownText(nextRotationIso, lang, now) {
     : `⟳ Next rotation: ${minutes} min`;
 }
 
-function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyClick, onSocialShareClick, lang: langProp }) {
+function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyClick, onSocialShareClick, lang: langProp, logoBaseUrl }) {
   const pct = useMemo(
     () => (mission.total > 0 ? Math.round((mission.progress / mission.total) * 100) : 0),
     [mission.progress, mission.total]
@@ -425,7 +471,11 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
         style={{ width: iconBoxSize, height: iconBoxSize, background: done ? "var(--quest-active-icon-bg)" : "var(--surface-2)" }}
       >
         {mission.icon && mission.icon.startsWith('/') ? (
-          <img src={mission.icon} alt="" style={{ width: mission.icon_size ?? 36, height: mission.icon_size ?? 36, objectFit: 'contain' }} />
+          isSvgIconPath(mission.icon) ? (
+            <QuestIcon path={mission.icon} size={mission.icon_size ?? 36} colorDark={mission.icon_color_dark} colorLight={mission.icon_color_light} />
+          ) : (
+            <img src={mission.icon} alt="" style={{ width: mission.icon_size ?? 36, height: mission.icon_size ?? 36, objectFit: 'contain' }} />
+          )
         ) : (
           <span style={{ fontSize: mission.icon_size ?? 36, lineHeight: 1 }}>{mission.icon}</span>
         )}
@@ -445,6 +495,20 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
               : (<>+{dNum(isFeaturedBooth ? (mission.featuredBoothBonusXp ?? mission.xpReward) : mission.xpReward, langProp)} {xpUnit || "XP"}</>)}
           </span>
         </div>
+        {mission.sponsor && (
+          <div className="flex items-center gap-1.5 mb-1">
+            <BoothLogo
+              logoUrl={getLogoUrl(mission.sponsor.logo, logoBaseUrl)}
+              firstLetter={(mission.sponsor.brand_name_fa || mission.sponsor.brand_name_en || '?').charAt(0)}
+              size={16}
+            />
+            <span className="text-[11px]" style={{ color: "var(--quest-subtitle-color)" }}>
+              {langProp === 'en'
+                ? (mission.sponsor.brand_name_en || mission.sponsor.brand_name_fa)
+                : (mission.sponsor.brand_name_fa || mission.sponsor.brand_name_en)}
+            </span>
+          </div>
+        )}
         <p className="leading-6 mb-1.5 truncate" style={{ fontSize: "var(--quest-subtitle-size)", color: "var(--quest-subtitle-color)" }}>
           {dNum(mission.description, langProp)}
         </p>
@@ -832,7 +896,11 @@ function BadgeCard({ badge, onQuizClick, onFeaturedClick, onSurveyClick, onSocia
         style={{ background: badge.earned ? "var(--quest-active-icon-bg)" : "var(--surface-hover)" }}
       >
         {badge.icon && badge.icon.startsWith('/') ? (
-          <img src={badge.icon} alt="" style={{ width: badge.icon_size ?? 36, height: badge.icon_size ?? 36, objectFit: 'contain' }} />
+          isSvgIconPath(badge.icon) ? (
+            <QuestIcon path={badge.icon} size={badge.icon_size ?? 36} colorDark={badge.icon_color_dark} colorLight={badge.icon_color_light} />
+          ) : (
+            <img src={badge.icon} alt="" style={{ width: badge.icon_size ?? 36, height: badge.icon_size ?? 36, objectFit: 'contain' }} />
+          )
         ) : (
           <span style={{ fontSize: badge.icon_size ?? 36, lineHeight: 1 }}>{badge.icon}</span>
         )}
@@ -968,11 +1036,11 @@ function getLogoUrl(logo, baseUrl) {
 
 // Per-item component so each booth logo tracks its own load error independently.
 // On 404 (image exists in DB but missing on server), falls back to letter avatar.
-function BoothLogo({ logoUrl, firstLetter }) {
+function BoothLogo({ logoUrl, firstLetter, size = 32 }) {
   const [err, setErr] = useState(false);
   if (!logoUrl || err) {
     return (
-      <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--surface-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, fontWeight: 700, color: 'var(--text-dim)' }}>
+      <div style={{ width: size, height: size, borderRadius: '50%', background: 'var(--surface-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: Math.max(9, Math.round(size * 0.4)), fontWeight: 700, color: 'var(--text-dim)' }}>
         {firstLetter}
       </div>
     );
@@ -982,7 +1050,7 @@ function BoothLogo({ logoUrl, firstLetter }) {
       src={logoUrl}
       alt=""
       onError={() => setErr(true)}
-      style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'contain', background: '#fff', flexShrink: 0, border: '1px solid rgba(255,255,255,0.1)' }}
+      style={{ width: size, height: size, borderRadius: '50%', objectFit: 'contain', background: '#fff', flexShrink: 0, border: '1px solid rgba(255,255,255,0.1)' }}
     />
   );
 }
@@ -1990,7 +2058,7 @@ function SocialShareModal({ share, onClose, onComplete, lang }) {
 
 // ── Main client component ───────────────────────────────────────────────────
 
-export default function QuestClient({ content, title, subtitle, title_en, subtitle_en, isHomeContext = false, appearanceConfig = {} }) {
+export default function QuestClient({ content, title, subtitle, title_en, subtitle_en, isHomeContext = false, showBack = true, appearanceConfig = {} }) {
   const [boothsOpen, setBoothsOpen] = useState(false);
   const [openFeaturedPool, setOpenFeaturedPool] = useState(null);
   const [activeTab, setActiveTab] = useState("missions");
@@ -2175,9 +2243,12 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
   }, [liveBadges, content?.badges, badgesReady, lang]);
 
   const tabs = useMemo(() => [
-    { id: "missions",    icon: iconOf(c.icon_tab_missions)    || "🎯", iconSize: iconSizeOf(c.icon_tab_missions,    18), text: c.tab_missions    || "مأموریت‌ها" },
-    { id: "leaderboard", icon: iconOf(c.icon_tab_leaderboard) || "🏅", iconSize: iconSizeOf(c.icon_tab_leaderboard, 18), text: c.tab_leaderboard || "لیدربورد"   },
-    { id: "badges",      icon: iconOf(c.icon_tab_badges)      || "🎖️", iconSize: iconSizeOf(c.icon_tab_badges,      18), text: c.tab_badges      || "بج‌ها"      },
+    { id: "missions",    icon: iconOf(c.icon_tab_missions)    || "🎯", iconSize: iconSizeOf(c.icon_tab_missions,    18), text: c.tab_missions    || "مأموریت‌ها",
+      colorDark: iconColorOf(c.icon_tab_missions, 'color_dark'),    colorLight: iconColorOf(c.icon_tab_missions, 'color_light') },
+    { id: "leaderboard", icon: iconOf(c.icon_tab_leaderboard) || "🏅", iconSize: iconSizeOf(c.icon_tab_leaderboard, 18), text: c.tab_leaderboard || "لیدربورد",
+      colorDark: iconColorOf(c.icon_tab_leaderboard, 'color_dark'), colorLight: iconColorOf(c.icon_tab_leaderboard, 'color_light') },
+    { id: "badges",      icon: iconOf(c.icon_tab_badges)      || "🎖️", iconSize: iconSizeOf(c.icon_tab_badges,      18), text: c.tab_badges      || "بج‌ها",
+      colorDark: iconColorOf(c.icon_tab_badges, 'color_dark'),      colorLight: iconColorOf(c.icon_tab_badges, 'color_light') },
   ], [c]);
 
   const labels = useMemo(() => ({
@@ -2221,6 +2292,9 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     // pass as missions/badges — this is called right after a quiz/survey/social-share
     // action completes, not just from the 45s poll, so it must carry XP too.
     fetch('/api/quest/stats').then(r => r.json()).then(d => setQuestStats(prev => (prev ? { ...prev, ...d } : d))).catch(() => {});
+    // rankOnly=true skips the top-N leaderboard query server-side — this call only
+    // needs currentUser.rank, same as /api/quest/stats never populates rank itself.
+    fetch('/api/quest/leaderboard?rankOnly=true').then(r => r.json()).then(d => { if (d.currentUser) setCurrentUserRank(d.currentUser.rank); }).catch(() => {});
     fetch('/api/quest').then(r => r.json()).then(d => { if (Array.isArray(d.missions)) setLiveMissions(d.missions); }).catch(() => {});
     fetch('/api/quest/badges').then(r => r.json()).then(d => { if (Array.isArray(d.badges)) setLiveBadges(d.badges); }).catch(() => {});
   }, []);
@@ -2229,7 +2303,9 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
   // Uses Page Visibility API to pause when tab is hidden and immediately re-fetch
   // when the user returns, so stale data is never shown on tab switch-back.
   // Polls /api/quest/stats (lightweight: 3 DB queries) to detect XP/scan changes;
-  // triggers refreshQuest() (missions + badges) whenever something changed.
+  // triggers refreshQuest() (missions + badges + currentUserRank) whenever something
+  // changed. /api/quest/stats itself never computes rank (always null) — rank comes
+  // from refreshQuest's rankOnly leaderboard fetch instead.
   useEffect(() => {
     let mounted = true;
     let timerId = null;
@@ -2290,13 +2366,14 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         mission={m}
         xpUnit={labels.xpUnit}
         lang={lang}
+        logoBaseUrl={logoBaseUrl}
         onQuizClick={m.mission_type === 'quiz' ? () => setOpenQuiz({ ...m, isBadge: false }) : undefined}
         onSurveyClick={m.mission_type === 'survey' ? () => setOpenSurvey({ ...m, isBadge: false }) : undefined}
         onSocialShareClick={m.mission_type === 'social_share' ? () => setOpenSocialShare({ ...m, isBadge: false }) : undefined}
         onFeaturedClick={m.mission_type === 'featured_booth' ? () => setOpenFeaturedPool(m) : undefined}
       />
     )),
-    [missions, labels.xpUnit, lang]
+    [missions, labels.xpUnit, lang, logoBaseUrl]
   );
 
   const ea = effectiveAppearance;
@@ -2332,7 +2409,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
 
       <div className="relative max-w-md mx-auto px-4 pb-32">
 
-        <PageHeader title={title || c.title || "Booth Quest"} subtitle={subtitle || c.subtitle || ""} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={isHomeContext} />
+        <PageHeader title={title || c.title || "Booth Quest"} subtitle={subtitle || c.subtitle || ""} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={isHomeContext} showBack={showBack} />
 
         {questStats && levelThresholds ? (
           <UserCard
@@ -2371,7 +2448,11 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
                 }}
               >
                 {tab.icon && tab.icon.startsWith('/') ? (
-                  <img src={tab.icon} alt="" style={{ width: tab.iconSize, height: tab.iconSize, objectFit: 'contain', flexShrink: 0 }} />
+                  isSvgIconPath(tab.icon) ? (
+                    <QuestIcon path={tab.icon} size={tab.iconSize} colorDark={tab.colorDark} colorLight={tab.colorLight} />
+                  ) : (
+                    <img src={tab.icon} alt="" style={{ width: tab.iconSize, height: tab.iconSize, objectFit: 'contain', flexShrink: 0 }} />
+                  )
                 ) : (
                   <span style={{ fontSize: tab.iconSize, lineHeight: 1 }}>{tab.icon}</span>
                 )}
@@ -2386,7 +2467,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
             <div className="grid grid-cols-3 gap-3 mb-6">
               {(() => {
                 return [
-                  { label: labels.statXpLabel,      value: questStats ? dNum(questStats.xp, lang) : "—",          unit: labels.xpUnit, icon: "⚡", onClick: null,                      highlight: false },
+                  { label: labels.statXpLabel,      value: questStats ? dNum(questStats.today_xp, lang) : "—",     unit: labels.xpUnit, icon: "⚡", onClick: null,                      highlight: false },
                   { label: labels.statScannedLabel, value: questStats ? dNum(questStats.total_scans, lang) : "—", unit: "غرفه", icon: "📍", onClick: () => setBoothsOpen(true), highlight: true  },
                   { label: labels.statRankLabel,    value: currentUserRank ? dNum(currentUserRank, lang) : "—", unit: "", icon: "🏅", onClick: null, highlight: false },
                 ];

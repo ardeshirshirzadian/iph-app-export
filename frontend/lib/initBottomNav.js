@@ -48,6 +48,10 @@ export async function ensureBottomNavTable(eventId) {
   }
 
   await query(CREATE_TABLE);
+  await query(`ALTER TABLE bottom_nav_items ADD COLUMN IF NOT EXISTS is_coming_soon BOOLEAN DEFAULT false`);
+  await query(`ALTER TABLE bottom_nav_items ADD COLUMN IF NOT EXISTS coming_soon_badge_fa TEXT`);
+  await query(`ALTER TABLE bottom_nav_items ADD COLUMN IF NOT EXISTS coming_soon_badge_en TEXT`);
+  await query(`ALTER TABLE bottom_nav_items ADD COLUMN IF NOT EXISTS coming_soon_no_badge BOOLEAN DEFAULT false`);
 
   if (globalThis._bottomNavInitializedEvents.has(eventId)) return;
 

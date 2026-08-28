@@ -335,6 +335,12 @@ export async function GET() {
       eventOrigin = eventOrigin ?? fallback.rows[0]?.value?.event_origin ?? 'https://2025.iphexpo.com';
       rasayeshEventId = rasayeshEventId ?? fallback.rows[0]?.value?.event_id ?? null;
     }
+    // Admin-configured per-event override (iph-apn map settings tab) -- when
+    // set, MapClient embeds this URL instead of deriving /plan/<id>/224 from
+    // rasayeshEventId above. Same uncached row as event_origin/rasayeshEventId,
+    // no separate query needed.
+    const external3dEnabled = mapResult.rows[0]?.value?.external_3d_enabled === true;
+    const external3dUrl = mapResult.rows[0]?.value?.external_3d_url || null;
 
     // Preserves the original control flow exactly: Rasayesh is fetched and
     // checked FIRST, with an early return on error, before any local config
@@ -380,6 +386,8 @@ export async function GET() {
     return NextResponse.json({
       websiteEvent,
       rasayeshEventId,
+      external_3d_enabled: external3dEnabled,
+      external_3d_url: external3dUrl,
       hallColors,
       mapElements,
       mapDoors,

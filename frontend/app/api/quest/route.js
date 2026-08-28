@@ -5,6 +5,13 @@ import { query } from '@/lib/db';
 import { ensureFeaturedBoothState, getFeaturedBoothCountdown } from '@/lib/featuredBoothHelper';
 import { getCurrentEventId } from '@/lib/currentEvent';
 
+// Same default pair used across quest icon theming (AppearanceTab's
+// defaultText in iph-apn's app/quest/page.js) -- kept in sync by value,
+// not import, matching how this codebase already re-declares shared
+// per-theme defaults locally in each file that needs them.
+const QUEST_ICON_DEFAULT_COLOR_DARK = '#ffffff';
+const QUEST_ICON_DEFAULT_COLOR_LIGHT = '#0f172a';
+
 // Mission DEFINITIONS only (admin-curated: title/description/xp/icon/quiz
 // question/survey fields/etc, quest_content table) — cached. Every per-user
 // field (progress, quiz_attempted, survey_submitted, social_share_status,
@@ -12,8 +19,16 @@ import { getCurrentEventId } from '@/lib/currentEvent';
 // friends, per request, per user, completely untouched by this change.
 const getCachedMissionDefinitions = unstable_cache(
   async (currentEventId) => {
+    // LEFT JOIN: sponsor_company_id is optional (nullable) -- resolves the
+    // sponsor's display fields here so callers don't need a second lookup.
     const { rows } = await query(
-      `SELECT * FROM quest_content WHERE is_active = true AND event_id = $1 ORDER BY sort_order ASC, id ASC`,
+      `SELECT qc.*,
+              cp.brand_name_fa AS sponsor_brand_name_fa,
+              cp.brand_name_en AS sponsor_brand_name_en,
+              cp.logo AS sponsor_logo
+       FROM quest_content qc
+       LEFT JOIN companies_placement cp ON cp.id = qc.sponsor_company_id
+       WHERE qc.is_active = true AND qc.event_id = $1 ORDER BY qc.sort_order ASC, qc.id ASC`,
       [currentEventId]
     );
     return rows;
@@ -244,6 +259,8 @@ export async function GET() {
           description_en: m.description_en,
           icon: m.icon_value,
           icon_size: m.icon_size ?? 36,
+          icon_color_dark: m.icon_color_dark ?? QUEST_ICON_DEFAULT_COLOR_DARK,
+          icon_color_light: m.icon_color_light ?? QUEST_ICON_DEFAULT_COLOR_LIGHT,
           xpReward: m.xp_reward,
           featuredBoothBonusXp: m.mission_type === 'featured_booth' ? (m.featured_booth_bonus_xp ?? 500) : undefined,
           mission_type: m.mission_type,
@@ -265,6 +282,11 @@ export async function GET() {
           social_share_note: m.mission_type === 'social_share' ? (social_share_note ?? null) : undefined,
           featured_booth_next_rotation,
           featured_booth_pool_companies,
+          sponsor: m.sponsor_company_id ? {
+            brand_name_fa: m.sponsor_brand_name_fa,
+            brand_name_en: m.sponsor_brand_name_en,
+            logo: m.sponsor_logo,
+          } : null,
         };
       })
     );

@@ -5,18 +5,17 @@ import { getCurrentEventId } from '@/lib/currentEvent';
 import LoginForm from './LoginForm';
 
 const DEFAULTS = {
-  logo_path: '/logo/logo-l.png',
-  logo_path_light_theme: '/logo/logo.png',
+  logo_path_dark_fa: '/logo/logo-l-fa.png',
+  logo_path_dark_en: '/logo/logo-l-en.png',
+  logo_path_light_fa: '/logo/logo-fa.png',
+  logo_path_light_en: '/logo/logo-en.png',
   logo_height: '80',
-  title: 'ایران فارما',
   subtitle: 'ورود به حساب کاربری',
   mobile_label: 'شماره موبایل',
   mobile_placeholder: '۰۹xxxxxxxxx',
   submit_button_text: 'دریافت کد تأیید',
   sending_text: 'در حال ارسال...',
-  otp_title: 'کد تأیید را وارد کنید',
   otp_subtitle: 'کد تأیید ارسال شده به',
-  otp_code_label: 'کد تأیید ۵ رقمی',
   verify_button_text: 'ورود',
   verifying_text: 'در حال تأیید...',
   resend_otp_text: 'ارسال مجدد کد',

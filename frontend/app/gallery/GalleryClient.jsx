@@ -128,7 +128,7 @@ function Lightbox({ photos, index, onClose, onPrev, onNext }) {
   );
 }
 
-export default function GalleryClient({ title, subtitle, title_en, subtitle_en, isHomeContext = false }) {
+export default function GalleryClient({ title, subtitle, title_en, subtitle_en, isHomeContext = false, showBack = true }) {
   const { lang, isRTL } = useLang();
 
   const [categories, setCategories] = useState([]);
@@ -233,6 +233,7 @@ export default function GalleryClient({ title, subtitle, title_en, subtitle_en, 
           title_en={title_en}
           subtitle_en={subtitle_en}
           isHomeContext={isHomeContext}
+          showBack={showBack}
         />
 
         {/* ── Edition row (level 1) ── */}

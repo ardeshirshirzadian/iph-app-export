@@ -4,6 +4,7 @@ import { unstable_cache } from 'next/cache';
 import { query } from '@/lib/db';
 import { getCachedCompaniesConfig } from '@/lib/getCompaniesConfig';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { logRasayeshDriftIfAny } from '@/lib/checkRasayeshDrift';
 
 // Booth/company DEFINITIONS only (admin/Rasayesh-sourced via the local
 // companies table -- brand name, hall, booth number, logo, booth_xp,
@@ -45,6 +46,11 @@ export async function GET() {
     const config = await getCachedCompaniesConfig(currentEventId);
     const logoBaseUrl = config.logoBaseUrl || 'https://api.rasayesh.com/';
     const eventId = config.eventId;
+
+    // Fire-and-forget -- pure observability, must never add latency or
+    // failure risk to the actual booths response (errors are already
+    // caught inside the helper itself).
+    logRasayeshDriftIfAny(currentEventId, eventId, 'quest/booths');
 
     const booths = await getCachedBoothDefinitions(Number(eventId));
 

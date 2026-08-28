@@ -15,8 +15,17 @@ const ATTENDEE_RETRY_DELAYS_MS = [2000, 5000];
 
 // Superset of every field any current consumer (AppHeader photo, ProfilePhotoGuard,
 // ProfileCompletionBar, ProfileClient, EditProfileClient) reads from getAttendee.
+//
+// todayEventPresence(eventId: $eventId) -- eventId must be the CURRENT
+// Rasayesh event id (companies_config.event_id, passed down from
+// app/layout.js as the rasayeshEventId prop), never hardcoded. Rasayesh's
+// schema has todayEventPresence as Boolean! with a required Int! eventId
+// arg and getAttendee as nullable -- confirmed via introspection -- so a
+// resolver error on a stale/wrong eventId nulls out the ENTIRE getAttendee
+// object via standard GraphQL null-propagation, not just this one field.
+// That's what caused the intermittent empty profile box before this fix.
 const ATTENDEE_QUERY = gql`
-  query GetAttendee {
+  query GetAttendee($eventId: Int!) {
     getAttendee {
       id
       firstname_fa
@@ -40,7 +49,7 @@ const ATTENDEE_QUERY = gql`
       occupation_id
       education_level_id
       field_of_activities { id title_fa title_en }
-      todayEventPresence(eventId: 18)
+      todayEventPresence(eventId: $eventId)
     }
   }
 `;
@@ -52,7 +61,7 @@ const AttendeeContext = createContext({
   refetch: async () => {},
 });
 
-export default function AttendeeProvider({ children }) {
+export default function AttendeeProvider({ children, rasayeshEventId }) {
   const { user, isLoggedIn } = useAuth();
   // useAuth() resolves the iph_user cookie via queueMicrotask, so `user` is
   // `null` both before it resolves AND when genuinely logged out — those two
@@ -80,8 +89,25 @@ export default function AttendeeProvider({ children }) {
     // between attempts.
     for (let attempt = 0; attempt <= ATTENDEE_RETRY_DELAYS_MS.length; attempt++) {
       try {
-        const { data, error } = await client.query({ query: ATTENDEE_QUERY, fetchPolicy: "network-only" });
-        if (data?.getAttendee) { setAttendee(data.getAttendee); break; }
+        const { data, error } = await client.query({
+          query: ATTENDEE_QUERY,
+          variables: { eventId: rasayeshEventId },
+          fetchPolicy: "network-only",
+        });
+        if (data?.getAttendee) {
+          setAttendee(data.getAttendee);
+          // Fire-and-forget: keeps app_users.profile_image (the leaderboard's
+          // primary photo source, see leaderboard/route.js's resolvePhotoUrl)
+          // fresh even when the photo changed mid-session -- e.g.
+          // EditProfileClient's upload flow calls refetch() (this function)
+          // but only updates local state, never the server, on its own.
+          fetch("/api/auth/sync-profile-photo", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ profile: data.getAttendee.profile }),
+          }).catch(() => {});
+          break;
+        }
         // Not a NetworkRetryError (e.g. confirmed auth failure, already
         // handled by signOut()'s own redirect) or retries exhausted --
         // leave previous attendee state as-is, matching prior behavior.
@@ -93,7 +119,7 @@ export default function AttendeeProvider({ children }) {
       await new Promise((r) => setTimeout(r, ATTENDEE_RETRY_DELAYS_MS[attempt]));
     }
     setLoading(false);
-  }, []);
+  }, [rasayeshEventId]);
 
   useEffect(() => {
     if (!authChecked) return; // still resolving the iph_user cookie
@@ -104,12 +130,17 @@ export default function AttendeeProvider({ children }) {
       fetchedForUser.current = null;
       return;
     }
+    // rasayeshEventId comes from layout.js (server-resolved companies_config,
+    // always present in practice) -- guard anyway since todayEventPresence's
+    // eventId arg is non-null: sending eventId: null/undefined would itself
+    // be a GraphQL variable-coercion error, worse than just waiting one tick.
+    if (rasayeshEventId == null) return;
     // Fetch once per login session — a remount (e.g. route change) with the
     // same logged-in user must not re-trigger the network request.
     if (fetchedForUser.current === user.id) return;
     fetchedForUser.current = user.id;
     fetchAttendee();
-  }, [authChecked, isLoggedIn, user?.id, fetchAttendee]);
+  }, [authChecked, isLoggedIn, user?.id, rasayeshEventId, fetchAttendee]);
 
   return (
     <AttendeeContext.Provider value={{ attendee, loading, isLoggedIn, refetch: fetchAttendee }}>

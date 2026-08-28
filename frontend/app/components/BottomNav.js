@@ -3,14 +3,33 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useLang } from "@/lib/useLang";
 
 // Module-level cache: survives component unmount/remount across navigations.
 // Populated on first mount, reused on all subsequent mounts — zero re-fetches.
 // Resets to null on every fresh page load (new JS execution context).
 let _navCache = null;
 
+function iconMaskStyle(iconPath, size) {
+  return {
+    display: "block",
+    width: size,
+    height: size,
+    backgroundColor: "currentColor",
+    WebkitMaskImage: `url('${iconPath}')`,
+    WebkitMaskSize: "contain",
+    WebkitMaskRepeat: "no-repeat",
+    WebkitMaskPosition: "center",
+    maskImage: `url('${iconPath}')`,
+    maskSize: "contain",
+    maskRepeat: "no-repeat",
+    maskPosition: "center",
+  };
+}
+
 export default function BottomNav() {
   const pathname = usePathname();
+  const { lang } = useLang();
   // Initialise directly from cache so the component renders correctly on
   // remount without waiting for a new fetch.
   const [navItems, setNavItems] = useState(_navCache);
@@ -30,8 +49,20 @@ export default function BottomNav() {
 
   // Render nothing until the first real fetch resolves — avoids flashing
   // hardcoded icon paths that may differ from what admin has configured.
+  // is_active=false items are already excluded server-side (app/api/nav/route.js
+  // filters WHERE is_active = true) -- is_coming_soon never affects that filter.
   const items = navItems
-    ? navItems.map((item) => ({ href: item.href, icon_path: item.icon_path, icon_size: item.icon_size ?? 28 }))
+    ? navItems.map((item) => ({
+        href: item.href,
+        icon_path: item.icon_path,
+        icon_size: item.icon_size ?? 28,
+        is_coming_soon: !!item.is_coming_soon,
+        no_badge: !!item.coming_soon_no_badge,
+        badge:
+          lang === "en"
+            ? item.coming_soon_badge_en || item.coming_soon_badge_fa || "Coming soon"
+            : item.coming_soon_badge_fa || "به زودی",
+      }))
     : [];
 
   return (
@@ -45,6 +76,34 @@ export default function BottomNav() {
     >
       <div className="flex">
         {items.map((item) => {
+          // Coming-soon items are rendered visible but fully inert: a plain
+          // div (no Link, no onClick), never navigable, never clickable.
+          if (item.is_coming_soon) {
+            return (
+              <div
+                key={item.href}
+                className="relative flex-1 flex items-center justify-center py-3 select-none"
+                style={{ color: "var(--text-dim)", opacity: 0.55, cursor: "default" }}
+                aria-disabled="true"
+              >
+                <span style={iconMaskStyle(item.icon_path, item.icon_size)} />
+                {!item.no_badge && (
+                  <span
+                    className="absolute top-0.5 rounded-full text-[9px] font-bold leading-none whitespace-nowrap"
+                    style={{
+                      background: "var(--accent)",
+                      color: "var(--btn-primary-text)",
+                      padding: "2px 6px",
+                      insetInlineEnd: "10%",
+                    }}
+                  >
+                    {item.badge}
+                  </span>
+                )}
+              </div>
+            );
+          }
+
           const active =
             item.href === "/"
               ? pathname === "/"
@@ -56,22 +115,7 @@ export default function BottomNav() {
               className="flex-1 flex items-center justify-center py-3 transition-colors"
               style={{ color: active ? "var(--accent)" : "var(--text-dim)" }}
             >
-              <span
-                style={{
-                  display: "block",
-                  width: item.icon_size,
-                  height: item.icon_size,
-                  backgroundColor: "currentColor",
-                  WebkitMaskImage: `url('${item.icon_path}')`,
-                  WebkitMaskSize: "contain",
-                  WebkitMaskRepeat: "no-repeat",
-                  WebkitMaskPosition: "center",
-                  maskImage: `url('${item.icon_path}')`,
-                  maskSize: "contain",
-                  maskRepeat: "no-repeat",
-                  maskPosition: "center",
-                }}
-              />
+              <span style={iconMaskStyle(item.icon_path, item.icon_size)} />
             </Link>
           );
         })}

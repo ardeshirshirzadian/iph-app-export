@@ -189,7 +189,7 @@ async function downloadCard() {
   }
 }
 
-export default function BadgeClient({ title, subtitle, title_en, subtitle_en, badgeSettings = {}, isHomeContext = false }) {
+export default function BadgeClient({ title, subtitle, title_en, subtitle_en, badgeSettings = {}, isHomeContext = false, showBack = true }) {
   const { isLoggedIn } = useAuth();
   const [authReady, setAuthReady] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -286,7 +286,7 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
       </div>
 
       <div className="relative max-w-md mx-auto px-4 pb-32">
-        <PageHeader title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={isHomeContext} />
+        <PageHeader title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={isHomeContext} showBack={showBack} />
 
         {loading && (
           <div

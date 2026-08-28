@@ -427,16 +427,6 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
       carveGap(door.x, door.y, halfW, door.door_type ?? 'entrance');
     }
 
-    if (typeof window !== "undefined") {
-      console.info(
-        `[mapPathfinding] ${buildings.length} building(s), ` +
-        `${entrancesFromSigns.length} sign entrance(s), ` +
-        `${activeDoors.filter(d => d.door_type !== 'exit' && d.door_type !== 'entrance_only').length} admin bidir, ` +
-        `${activeDoors.filter(d => d.door_type === 'entrance_only').length} admin entrance-only, ` +
-        `${activeDoors.filter(d => d.door_type === 'exit').length} admin exit-only.`
-      );
-    }
-
     // ── Step 4: block only the wall ring (outer bbox minus inner bbox) ────
     //
     // IMPORTANT: exterior cells (outside ALL building bboxes) are intentionally
@@ -534,19 +524,6 @@ export function buildWalkableGrid(mapW, mapH, allBooths, mapSigns = [], halls = 
         }
       }
     }
-  } else if (typeof window !== "undefined") {
-    // This fires when BOTH entrance signs AND admin doors are absent for this map.
-    // Consequence: Steps 3-5 (outer-wall ring blocking) are completely inactive —
-    // the gap between the building exterior and the back of perimeter booths is
-    // walkable and A* can route through it unchecked.
-    // FIX: add at least one door via the admin Doors tab for the relevant hall,
-    // or ensure at least one map_sign with title containing "ورودی" / "entrance".
-    console.info(
-      `[mapPathfinding] OUTER-WALL BLOCKING SKIPPED — ` +
-      `entrance signs: ${entrancesFromSigns.length} (of ${(mapSigns ?? []).length} total signs), ` +
-      `active admin doors: ${activeDoors.length} — ` +
-      `add at least one door or entrance sign to activate outer-wall ring blocking.`
-    );
   }
 
   // ── Step 6: wall buffer (blocked cells) + wall-crossing forbidden edges ──

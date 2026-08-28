@@ -325,7 +325,7 @@ function FilterPill({ label, active, onClick }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default function PanelsClient({ title, subtitle, title_en, subtitle_en, isHomeContext = false }) {
+export default function PanelsClient({ title, subtitle, title_en, subtitle_en, isHomeContext = false, showBack = true }) {
   const [config, setConfig] = useState(null);
   const [allPanels, setAllPanels] = useState([]);
   const [configLoading, setConfigLoading] = useState(true);
@@ -449,7 +449,7 @@ export default function PanelsClient({ title, subtitle, title_en, subtitle_en, i
       />
 
       <div className="relative z-10 max-w-lg mx-auto px-4 pt-4">
-        <PageHeader title={title} subtitle={subtitle} title_en={eventNameEn || title_en} subtitle_en={subtitle_en} isHomeContext={isHomeContext} />
+        <PageHeader title={title} subtitle={subtitle} title_en={eventNameEn || title_en} subtitle_en={subtitle_en} isHomeContext={isHomeContext} showBack={showBack} />
 
         <input
           type="search"

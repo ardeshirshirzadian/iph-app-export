@@ -5,6 +5,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      network: host
     container_name: iph-superapp-frontend
     ports:
       - "3002:3000"

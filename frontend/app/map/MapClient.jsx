@@ -97,11 +97,12 @@ function AppHeader(props) {
 const RASAYESH_BASE = "https://api.rasayesh.com/";
 const DRAG_THRESHOLD = 6; // px movement before a touch is treated as a drag (not a tap)
 
-// Default is the new 3dplan.rasayesh.com iframe embed (see the proxy route
-// at app/api/proxy/3dplan/[...path]/route.js). Set NEXT_PUBLIC_USE_LEGACY_MAP=true
-// to fall back to the original Three.js/WebGL Map3DView if the 3dplan
-// subdomain has problems -- that code is untouched below, just no longer
-// the default render path.
+// UNUSED as of the external_3d_enabled toggle (iph-apn map/settings tab):
+// Three.js/WebGL Map3DView is now the unconditional default whenever
+// external_3d_enabled is false, and no longer reads this at all -- see the
+// render logic below. Left declared, not wired to anything, per an explicit
+// decision not to touch the env var plumbing in the same change that
+// stopped consuming it; a real kill switch may replace this later.
 const USE_LEGACY_MAP = process.env.NEXT_PUBLIC_USE_LEGACY_MAP === "true";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1310,7 +1311,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
         if (!d.websiteEvent) { setError("no_data"); return; }
         const dim = getMapDim(d.websiteEvent.map_bounds);
         dimRef.current = dim;
-        setMapData(d.websiteEvent);
+        setMapData({ ...d.websiteEvent, external_3d_enabled: d.external_3d_enabled, external_3d_url: d.external_3d_url });
         if (d.hallColors) setHallColors(d.hallColors);
         if (d.hallFloors) setHallFloors(d.hallFloors);
         if (d.mapElements) setMapElements(d.mapElements);
@@ -1363,8 +1364,12 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
     try { localStorage.setItem('iph_map3d_hint_seen', '1'); } catch {}
   }
   useEffect(() => {
-    if (!view3D) {
+    if (!view3D || externalPlanActive) {
       // Allow hint to show again next time 3D mode is entered (for 'always' mode).
+      // externalPlanActive is folded in here too: while the admin-configured external
+      // 3D embed is showing, this app's own gesture-based pan/zoom/rotate hint is
+      // irrelevant (same reasoning as the search bar / zoom button stack above), so
+      // it's treated the same as not being in 3D mode at all -- no fire, no timer.
       if ((gestureHintConfig?.display_mode ?? 'once') === 'always') {
         hintShownRef.current = false;
         setShowGestureHint(false);
@@ -1838,15 +1843,6 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
           // floor-connection message (which is only correct for the multi-floor case).
           setNavRoute({ type: "no_route" });
         } else {
-          if (route.type === "no_connection" && startFloor !== destFloor) {
-            // Cross-floor failure — emit details so misconfigured stairs are easy to spot
-            console.warn(
-              `[map] No cross-floor route: floor ${startFloor} → ${destFloor}.`,
-              `Stairs on floor ${startFloor}:`,
-              stairs.filter(e => (e.floor ?? 0) === startFloor)
-                .map(e => `id=${e.id} linked_to=${e.linked_element_id ?? "null"}`),
-            );
-          }
           setNavRoute(route);
         }
 
@@ -1922,6 +1918,34 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const signR = mapW / 70;
   const signFs = mapW / 55;
 
+  // Admin-configured external 3D embed (iph-apn map/settings tab). externalPlanPath
+  // is derived from the stored URL (validated server-side to be under
+  // https://3dplan.rasayesh.com) so it routes through app/plan/[...path]/route.js
+  // exactly like Map3DView's own asset loading is same-origin -- never the raw
+  // external_3d_url directly in the iframe src. externalPlanActive only goes true
+  // once the URL actually parses, so a malformed stored value falls through to
+  // Map3DView (search bar and the circular buttons included) instead of hiding
+  // them for a URL that won't render.
+  //
+  // externalPlanConfigured is the same "URL actually parses" check WITHOUT the
+  // `view3D &&` gate -- it must stay true even while view3D is (momentarily)
+  // false, because it's what guards 2D from ever being reachable below. Gating
+  // it on view3D too would make it self-defeating: the instant 2D is entered,
+  // externalPlanConfigured would flip false and nothing would force 3D back.
+  let externalPlanConfiguredPath = null;
+  if (mapData?.external_3d_enabled === true && mapData?.external_3d_url) {
+    try {
+      const u = new URL(mapData.external_3d_url);
+      externalPlanConfiguredPath = u.pathname + u.search;
+    } catch {
+      externalPlanConfiguredPath = null;
+    }
+  }
+  const externalPlanConfigured = !!externalPlanConfiguredPath;
+
+  const externalPlanPath = view3D ? externalPlanConfiguredPath : null;
+  const externalPlanActive = !!externalPlanPath;
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -1964,22 +1988,29 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
 
             {mapData && (
               <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => {
-                    const next = !view3D;
-                    view3DRef.current = next;
-                    setView3D(next);
-                    if (!next) requestAnimationFrame(() => resetView()); // only reset 2D on switch back
-                  }}
-                  aria-label="Toggle 3D view"
-                  className="h-9 px-3 rounded-xl flex items-center justify-center text-xs font-bold transition-all active:scale-90"
-                  style={{
-                    background: view3D ? "var(--accent)" : "var(--surface)",
-                    border: "1px solid var(--border)",
-                    color: view3D ? "var(--bg)" : "var(--text)",
-                    fontFamily: "inherit", cursor: "pointer",
-                  }}
-                >{view3D ? "2D" : "3D"}</button>
+                {/* Hidden entirely while an external 3D embed is configured -- 2D must
+                    stay unreachable, not just default-off. See externalPlanConfigured
+                    above; the onClick guard is defense-in-depth in case this ever
+                    renders from another path, since it's otherwise unreachable here. */}
+                {!externalPlanConfigured && (
+                  <button
+                    onClick={() => {
+                      if (externalPlanConfigured) return;
+                      const next = !view3D;
+                      view3DRef.current = next;
+                      setView3D(next);
+                      if (!next) requestAnimationFrame(() => resetView()); // only reset 2D on switch back
+                    }}
+                    aria-label="Toggle 3D view"
+                    className="h-9 px-3 rounded-xl flex items-center justify-center text-xs font-bold transition-all active:scale-90"
+                    style={{
+                      background: view3D ? "var(--accent)" : "var(--surface)",
+                      border: "1px solid var(--border)",
+                      color: view3D ? "var(--bg)" : "var(--text)",
+                      fontFamily: "inherit", cursor: "pointer",
+                    }}
+                  >{view3D ? "2D" : "3D"}</button>
+                )}
                 <Link
                   href="/companies"
                   aria-label={isEN ? "Companies list" : "لیست شرکت‌ها"}
@@ -1994,10 +2025,17 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
       </div>
 
       {/* ── Map container ── */}
+      {/* marginBottom reserves space for the fixed BottomNav below: BottomNav is
+          position:fixed (out of flow) so flex-1 alone would let this container's
+          box (and every absolute inset-0 child -- 2D img/svg, iframe, Map3DView's
+          Three.js mount div -- all of which size off this container's clientHeight)
+          extend under it. Margin (not padding) is required: abs-positioned inset-0
+          children are contained by the padding box of their positioned ancestor, so
+          padding here would be ignored by them. */}
       <div
         ref={containerRef}
         className="flex-1 relative overflow-hidden"
-        style={{ touchAction: "none", cursor: "grab", userSelect: "none" }}
+        style={{ touchAction: "none", cursor: "grab", userSelect: "none", marginBottom: "calc(53px + env(safe-area-inset-bottom))" }}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
         onClick={(e) => {
@@ -2031,8 +2069,9 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
           </div>
         )}
 
-        {/* Search bar — visible in both 2D and 3D modes */}
-        {mapData && (
+        {/* Search bar — visible in both 2D and 3D modes, except the admin-configured */}
+        {/* external 3D embed (map/settings tab in iph-apn), which has its own UI. */}
+        {mapData && !externalPlanActive && (
           <MapSearchBar
             query={searchQuery}
             setQuery={setSearchQuery}
@@ -2049,7 +2088,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
         )}
 
         {/* Floating zoom + reset-view buttons — hidden during first-person walkthrough */}
-        {mapData && !(view3D && walkActive) && (
+        {/* and during the admin-configured external 3D embed (its own UI handles this). */}
+        {mapData && !(view3D && walkActive) && !externalPlanActive && (
           <div
             className="absolute z-[24] flex flex-col gap-2"
             style={{ right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
@@ -2122,32 +2162,23 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
 
         {mapData && (
           <>
-          {/* ── 3D mode: iframe embed of 3dplan.rasayesh.com by default, ── */}
-          {/* ── through the same-origin proxy (X-Frame-Options: DENY on   */}
-          {/* the upstream blocks direct framing). Legacy Three.js canvas */}
-          {/* behind NEXT_PUBLIC_USE_LEGACY_MAP for quick rollback.       */}
-          {view3D && !USE_LEGACY_MAP && (
-            mapData.rasayeshEventId ? (
+          {/* ── 3D mode: admin-configured external embed (iph-apn map/settings   ── */}
+          {/* ── tab) when set, proxied same-origin -- see app/plan/[...path]/       */}
+          {/* route.js. Otherwise the internal Three.js render below, now the real  */}
+          {/* default (unconditional, not gated on NEXT_PUBLIC_USE_LEGACY_MAP --    */}
+          {/* see that const's declaration comment near the top of this file).      */}
+          {view3D && (
+            externalPlanActive ? (
               <iframe
-                key={mapData.rasayeshEventId}
-                src={`/api/proxy/3dplan/plan/${mapData.rasayeshEventId}/224`}
+                key={mapData.external_3d_url}
+                src={externalPlanPath}
                 title={isEN ? "3D exhibition floor plan" : "نقشه سه‌بعدی نمایشگاه"}
                 loading="lazy"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                 allow="fullscreen"
                 className="absolute inset-0 w-full h-full"
                 style={{ border: 0 }}
               />
             ) : (
-              <div className="absolute inset-0 flex items-center justify-center" style={{ background: "var(--bg)" }}>
-                <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-                  {isEN ? "3D plan unavailable for this event." : "نقشه سه‌بعدی برای این رویداد در دسترس نیست."}
-                </p>
-              </div>
-            )
-          )}
-
-          {view3D && USE_LEGACY_MAP && (
             <Map3DView
               halls={hallGroups}
               hallColors={hallColors}
@@ -2191,12 +2222,13 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                 });
               }}
             />
+            )
           )}
 
           {/* ── One-time gesture hint (3D mode, first visit) ─────────────── */}
           {/* RULE 4 compliance: no backdrop-filter — uses solid rgba background  */}
           {/* so it stays crisp during gestures without extra GPU compositing.   */}
-          {view3D && showGestureHint && (
+          {view3D && showGestureHint && !externalPlanActive && (
             <div
               onClick={dismissGestureHint}
               style={{

@@ -13,6 +13,7 @@ import { getActiveFont, getActiveFontEn } from "@/lib/getActiveFont";
 import { getThemeColors } from "@/lib/getThemeColors";
 import { getThemeMode } from "@/lib/getThemeMode";
 import { getAppIdentity } from "@/lib/getAppIdentity";
+import { getCachedCompaniesConfig } from "@/lib/getCompaniesConfig";
 import { getCurrentEventId } from "@/lib/currentEvent";
 import { existsSync } from "fs";
 import { join } from "path";
@@ -146,12 +147,18 @@ function buildFontEnStyle(activeFontEn) {
 
 export default async function RootLayout({ children }) {
   const currentEventId = await getCurrentEventId();
-  const [activeFont, activeFontEn, themeColors, themeMode] = await Promise.all([
+  const [activeFont, activeFontEn, themeColors, themeMode, companiesConfig] = await Promise.all([
     getCachedActiveFont(currentEventId),
     getCachedActiveFontEn(currentEventId),
     getCachedThemeColors(currentEventId),
     getCachedThemeMode(currentEventId),
+    // Same source map/route.js and quest/booths/route.js already use for the
+    // current Rasayesh event id -- passed down so AttendeeProvider's
+    // todayEventPresence(eventId: ...) query never hardcodes a stale id
+    // (see project memory on the rasayesh_event_id drift bug).
+    getCachedCompaniesConfig(currentEventId),
   ]);
+  const rasayeshEventId = companiesConfig.eventId;
   const fontStyle = buildFontStyle(activeFont);
   const fontEnStyle = buildFontEnStyle(activeFontEn);
   const isGoogleFont = activeFont.source === 'google';
@@ -197,7 +204,7 @@ export default async function RootLayout({ children }) {
         <LangSync />
         <ServiceWorkerRegistrar />
         <SessionExpiredToast />
-        <ApolloClientProvider><AttendeeProvider><CartProvider><ProfilePhotoGuard /><PageWrapper>{children}</PageWrapper></CartProvider></AttendeeProvider></ApolloClientProvider>
+        <ApolloClientProvider><AttendeeProvider rasayeshEventId={rasayeshEventId}><CartProvider><ProfilePhotoGuard /><PageWrapper>{children}</PageWrapper></CartProvider></AttendeeProvider></ApolloClientProvider>
       </body>
     </html>
   );

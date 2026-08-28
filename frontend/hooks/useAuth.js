@@ -20,6 +20,20 @@ export function useAuth() {
 
   useEffect(() => {
     queueMicrotask(() => setUser(readUserCookie()));
+
+    // useAuth() is a plain hook -- every call site (AttendeeProvider,
+    // ProfileClient, AppHeader, CartProvider, ...) owns its own independent
+    // `user` state. A client-side router.push() after login/logout never
+    // remounts the root layout (login and profile share it -- no route
+    // group boundary), so a call site mounted before the cookie changed
+    // would otherwise never re-read it. Same fix as lib/useLang.js's
+    // switchLang(): dispatch a synthetic event, every instance listens and
+    // resyncs immediately instead of waiting for a full page reload.
+    function onAuthChanged() {
+      setUser(readUserCookie());
+    }
+    window.addEventListener("iph-auth-changed", onAuthChanged);
+    return () => window.removeEventListener("iph-auth-changed", onAuthChanged);
   }, []);
 
   const logout = useCallback(async () => {
@@ -28,6 +42,11 @@ export function useAuth() {
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
     setUser(null);
+    // Sync every OTHER useAuth() instance too (e.g. AttendeeProvider's, if
+    // logout was triggered from a different component's hook instance) --
+    // without this, those instances keep serving stale logged-in state
+    // until a full reload, mirroring the login-direction bug this fixes.
+    window.dispatchEvent(new Event("iph-auth-changed"));
     router.push("/login");
   }, [router]);
 

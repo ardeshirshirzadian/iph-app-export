@@ -135,17 +135,17 @@ export default async function Home() {
         // Fall back to defaults in QuestClient
       }
       const { title, subtitle, title_en, subtitle_en } = await getCachedQuestPageTitle(currentEventId);
-      return <HomeVariantRenderer route="/quest" content={content} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} appearanceConfig={appearanceConfig} isHomeContext={true} />;
+      return <HomeVariantRenderer route="/quest" content={content} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} appearanceConfig={appearanceConfig} isHomeContext={false} showBack={false} />;
     }
 
     case '/companies': {
       const { title, subtitle, title_en, subtitle_en } = await getCachedCompaniesPageTitle(currentEventId);
-      return <HomeVariantRenderer route="/companies" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
+      return <HomeVariantRenderer route="/companies" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
     }
 
     case '/panels': {
       const { title, subtitle, title_en, subtitle_en } = await getCachedPanelsPageTitle(currentEventId);
-      return <HomeVariantRenderer route="/panels" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
+      return <HomeVariantRenderer route="/panels" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
     }
 
     case '/badge': {
@@ -158,39 +158,40 @@ export default async function Home() {
           title_en={settings.title_en}
           subtitle_en={settings.subtitle_en}
           badgeSettings={settings}
-          isHomeContext={true}
+          isHomeContext={false}
+          showBack={false}
         />
       );
     }
 
     case '/map': {
       const { title, subtitle, title_en, subtitle_en } = await getCachedMapPageTitle(currentEventId);
-      return <HomeVariantRenderer route="/map" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
+      return <HomeVariantRenderer route="/map" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
     }
 
     case '/chat': {
       const { title, subtitle, title_en, subtitle_en } = await getCachedChatPageTitle(currentEventId);
-      return <HomeVariantRenderer route="/chat" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
+      return <HomeVariantRenderer route="/chat" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
     }
 
     case '/notifications': {
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('notifications', currentEventId);
-      return <HomeVariantRenderer route="/notifications" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
+      return <HomeVariantRenderer route="/notifications" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
     }
 
     case '/gallery': {
       const { title, subtitle, title_en, subtitle_en } = await getCachedGalleryPageTitle(currentEventId);
-      return <HomeVariantRenderer route="/gallery" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
+      return <HomeVariantRenderer route="/gallery" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
     }
 
     case '/news': {
       const { title, subtitle, title_en, subtitle_en } = await getCachedNewsPageTitle(currentEventId);
-      return <HomeVariantRenderer route="/news" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
+      return <HomeVariantRenderer route="/news" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
     }
 
     case '/profile': {
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('profile', currentEventId);
-      return <HomeVariantRenderer route="/profile" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={true} />;
+      return <HomeVariantRenderer route="/profile" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
     }
 
     default: {

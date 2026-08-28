@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { STRIPPED_PROXY_RESPONSE_HEADERS, applyFramingHeaders } from '@/lib/proxy3dplanHeaders';
 
 // Reverse proxy for embedding https://3dplan.rasayesh.com in an <iframe> on
 // /map. The upstream sends X-Frame-Options: DENY, which blocks top-level
@@ -16,29 +17,15 @@ import { NextResponse } from 'next/server';
 // embedded plan is missing data or images, check the browser's Network tab
 // for 404s to OUR domain (not 3dplan.rasayesh.com) first; that would mean
 // something references a root-relative path this proxy doesn't rewrite.
+//
+// Update (2026-08-25): the plan's root-relative /static/* asset requests
+// (JS chunks, CSS, fonts -- webpack publicPath is hardcoded to "/" upstream)
+// are NOT handled by this proxy's HTML rewrite below, since they're
+// runtime-computed in JS rather than literal HTML text. See
+// app/static/[...path]/route.js, which mirrors 3dplan's /static/* tree at
+// our own domain root to serve those.
 const UPSTREAM = 'https://3dplan.rasayesh.com';
 const PROXY_PREFIX = '/api/proxy/3dplan';
-
-// Headers we deliberately do not forward from the upstream response:
-// - x-frame-options / content-security-policy(-report-only): the entire
-//   reason this proxy exists is to not carry these forward.
-// - content-encoding / content-length / transfer-encoding: fetch() already
-//   transparently decoded the body: forwarding the original encoding
-//   label would mismatch what we're actually sending (and HTML responses
-//   are rewritten below, changing the byte length anyway).
-// - set-cookie: an upstream cookie relayed through our own Set-Cookie would
-//   appear to the browser as if issued by us -- not needed for a read-only
-//   plan viewer, so dropped rather than forwarded unexamined.
-const STRIPPED_RESPONSE_HEADERS = new Set([
-  'x-frame-options',
-  'content-security-policy',
-  'content-security-policy-report-only',
-  'content-encoding',
-  'content-length',
-  'transfer-encoding',
-  'connection',
-  'set-cookie',
-]);
 
 export async function GET(request, { params }) {
   const { path } = await params;
@@ -59,16 +46,10 @@ export async function GET(request, { params }) {
 
   const headers = new Headers();
   for (const [key, value] of upstreamRes.headers.entries()) {
-    if (STRIPPED_RESPONSE_HEADERS.has(key.toLowerCase())) continue;
+    if (STRIPPED_PROXY_RESPONSE_HEADERS.has(key.toLowerCase())) continue;
     headers.set(key, value);
   }
-  // Re-assert framing policy rather than leave it unset: this content
-  // SHOULD be embeddable (that's the point of this route), but only from
-  // our own app -- not by any third party who discovers this proxy URL and
-  // points their own iframe at it, which would let them bypass 3dplan's
-  // original DENY via us as an unwitting relay.
-  headers.set('x-frame-options', 'SAMEORIGIN');
-  headers.set('content-security-policy', "frame-ancestors 'self'");
+  applyFramingHeaders(headers);
 
   const contentType = upstreamRes.headers.get('content-type') || '';
   if (contentType.includes('text/html')) {

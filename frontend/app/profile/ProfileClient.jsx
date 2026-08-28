@@ -103,7 +103,7 @@ function GearIcon({ lang }) {
   );
 }
 
-export default function ProfileClient({ title, subtitle, title_en, subtitle_en, isHomeContext = false }) {
+export default function ProfileClient({ title, subtitle, title_en, subtitle_en, isHomeContext = false, showBack = true }) {
   const { logout } = useAuth();
   const router = useRouter();
   const { attendee: attendeeData, loading: profileLoading } = useAttendee();
@@ -136,7 +136,7 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en, 
       </div>
 
       <div className="relative max-w-md mx-auto px-4 pb-32">
-        <PageHeader title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} leftActions={<GearIcon lang={lang} />} isHomeContext={isHomeContext} />
+        <PageHeader title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} leftActions={<GearIcon lang={lang} />} isHomeContext={isHomeContext} showBack={showBack} />
 
         {/* Mandatory photo banner — shown when attendee data is loaded and no photo exists */}
         {attendeeData && !attendeeData.profile?.jpg?.["128"] && (

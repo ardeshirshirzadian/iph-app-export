@@ -94,7 +94,7 @@ function NewsCard({ post, lang }) {
   );
 }
 
-export default function NewsClient({ title, subtitle, title_en, subtitle_en, isHomeContext = false }) {
+export default function NewsClient({ title, subtitle, title_en, subtitle_en, isHomeContext = false, showBack = true }) {
   const { lang, isRTL } = useLang();
   const [posts, setPosts] = useState([]);
   const [total, setTotal] = useState(0);
@@ -159,7 +159,7 @@ export default function NewsClient({ title, subtitle, title_en, subtitle_en, isH
       </div>
 
       <div className="relative max-w-2xl mx-auto px-4">
-        <PageHeader title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={isHomeContext} />
+        <PageHeader title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={isHomeContext} showBack={showBack} />
 
         {/* Search + sort */}
         <div className="flex gap-2 mb-5">

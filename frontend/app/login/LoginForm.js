@@ -150,7 +150,12 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
   }, [step]);
 
   const otpValue = otpDigits.join("");
-  const logoSrc = isLight ? settings.logo_path_light_theme : settings.logo_path;
+  // theme x lang, same selection logic components/Logo.jsx uses for the
+  // header logo (variantKey = `${theme}_${lang}`). Falls back to that exact
+  // variant's own static default (DEFAULTS in page.js) when nothing's been
+  // uploaded yet -- never borrows a different theme/lang's upload, since a
+  // logo optimized for the wrong theme (e.g. light-on-light) can be illegible.
+  const logoSrc = settings[`logo_path_${isLight ? "light" : "dark"}_${lang}`];
 
   async function sendOtpCore() {
     setError("");
@@ -223,6 +228,14 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user: u }),
       });
+
+      // The iph_user cookie is now set (finalize-login's Set-Cookie header
+      // already applied by the time this fetch resolves). router.push()
+      // below is a client-side transition -- it does NOT remount the root
+      // layout (login and profile share it), so components mounted before
+      // login (AttendeeProvider, in particular) would otherwise never know
+      // the cookie changed. See hooks/useAuth.js's matching listener.
+      window.dispatchEvent(new Event('iph-auth-changed'));
 
       // Auto-enroll in free plan if admin has enabled it and user has no plan.
       // Fire-and-forget: a failure here MUST NOT block login.
@@ -502,13 +515,10 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
             );
           })()}
           <h1 className="text-2xl font-black" style={{ color: "var(--text)" }}>
-            {isEmail ? (settings.title_en || t(lang, "app_name")) : settings.title}
-          </h1>
-          <p className="text-sm mt-1" style={{ color: "var(--text-dim)" }}>
             {quickMode
               ? (isEmail ? "Enter the verification code to continue" : "برای ادامه کد تأیید را وارد کنید")
-              : (isEmail ? (settings.subtitle_en || t(lang, "login_subtitle")) : settings.subtitle)}
-          </p>
+              : (isEmail ? (settings.subtitle_en || t(lang, "login_subtitle")) : (settings.subtitle || t(lang, "login_subtitle")))}
+          </h1>
         </div>
 
         {/* Card */}
@@ -588,25 +598,14 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
             </form>
           ) : step === 2 ? (
             <form onSubmit={handleVerifyOtp}>
-              <p className="text-sm font-bold mb-4" style={{ color: "var(--text)" }}>
-                {isEmail ? (settings.otp_title_en || t(lang, "otp_title")) : settings.otp_title}
-              </p>
-
-              <div className="mb-4">
-                <p className="text-xs mb-0.5" style={{ color: "var(--text-dim)" }}>
+              <div className="mb-4 flex flex-wrap items-baseline justify-center gap-1">
+                <p className="text-xs" style={{ color: "var(--text-dim)" }}>
                   {isEmail ? (settings.otp_subtitle_en || t(lang, "otp_subtitle")) : settings.otp_subtitle}
                 </p>
-                <p
-                  className="text-sm font-bold"
-                  style={{ color: "var(--text)", direction: "ltr", textAlign: isRTL ? "right" : "left" }}
-                >
+                <p className="text-sm font-bold" style={{ color: "var(--text)", direction: "ltr" }}>
                   {isEmail ? contact : toPersianDigits(contact)}
                 </p>
               </div>
-
-              <label className="block text-sm font-medium mb-3" style={{ color: "var(--text-dim)" }}>
-                {isEmail ? (settings.otp_code_label_en || t(lang, "otp_code_label")) : settings.otp_code_label}
-              </label>
 
               <div dir="ltr" className="flex gap-2 justify-center">
                 {otpDigits.map((digit, index) => (
@@ -653,7 +652,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                   : (isEmail ? (settings.verify_button_text_en || t(lang, "verify_button")) : settings.verify_button_text)}
               </Button>
 
-              <div className="mt-4 text-center">
+              <div className="mt-4 flex items-center justify-between">
                 <button
                   type="button"
                   onClick={handleResend}
@@ -665,9 +664,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                     ? `${isEmail ? (settings.resend_otp_text_en || t(lang, "resend_otp")) : settings.resend_otp_text} (${isRTL ? toPersianDigits(resendCooldown) : resendCooldown}${isRTL ? " ثانیه" : t(lang, "resend_seconds")})`
                     : (isEmail ? (settings.resend_otp_text_en || t(lang, "resend_otp")) : settings.resend_otp_text)}
                 </button>
-              </div>
 
-              <div className="mt-2 text-center">
                 <button
                   type="button"
                   onClick={() => {

@@ -6,6 +6,13 @@ import { ensureQuestBadgesTable, ensureAttendanceLogTable, ensureBadgeProgressTa
 import { ensureFeaturedBoothState, getFeaturedBoothCountdown } from '@/lib/featuredBoothHelper';
 import { getCurrentEventId } from '@/lib/currentEvent';
 
+// Same default pair used across quest icon theming (AppearanceTab's
+// defaultText in iph-apn's app/quest/page.js) -- kept in sync by value,
+// not import, matching how this codebase already re-declares shared
+// per-theme defaults locally in each file that needs them.
+const QUEST_ICON_DEFAULT_COLOR_DARK = '#ffffff';
+const QUEST_ICON_DEFAULT_COLOR_LIGHT = '#0f172a';
+
 // Badge DEFINITIONS only (admin-curated, quest_badges table) — cached.
 // `earned` and every other per-user field is computed below via
 // calcEarned() and friends, per request, per user, untouched.
@@ -266,6 +273,8 @@ export async function GET() {
           description_en: b.description_en,
           icon: b.icon_value,
           icon_size: b.icon_size ?? 36,
+          icon_color_dark: b.icon_color_dark ?? QUEST_ICON_DEFAULT_COLOR_DARK,
+          icon_color_light: b.icon_color_light ?? QUEST_ICON_DEFAULT_COLOR_LIGHT,
           earned,
           quiz_question_fa: b.badge_type === 'quiz' ? (b.quiz_question_fa ?? null) : undefined,
           quiz_question_en: b.badge_type === 'quiz' ? (b.quiz_question_en ?? null) : undefined,

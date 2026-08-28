@@ -21,15 +21,24 @@ async function ensureQuestUserNamesTable() {
   globalThis._questUserNamesReady = true;
 }
 
+// profileImage (app_users.profile_image) is refreshed on every login AND
+// on every AttendeeProvider fetchAttendee resolution (see
+// app/api/auth/sync-profile-photo/route.js) -- profilePhotoUrl
+// (quest_user_names.profile_photo_url) is only ever a snapshot COPIED FROM
+// app_users at the user's last booth scan (see cacheUserName() in
+// scan/route.js, which reads app_users itself, not Rasayesh live). It can
+// therefore never be fresher than profileImage, only staler or equal.
+// Check the fresher source first; quest_user_names is now purely a
+// fallback for the rare case a current-event app_users row doesn't exist.
 function resolvePhotoUrl(profilePhotoUrl, profileImage, hideLeaderboardPhoto) {
   if (hideLeaderboardPhoto) return null;
-  if (profilePhotoUrl) {
-    return profilePhotoUrl.startsWith('http') ? profilePhotoUrl : RASAYESH_BASE + profilePhotoUrl;
-  }
   if (profileImage) {
     const raw = typeof profileImage === 'string' ? profileImage : null;
     if (raw && raw.startsWith('/')) return RASAYESH_BASE + raw;
     if (raw && raw.startsWith('http')) return raw;
+  }
+  if (profilePhotoUrl) {
+    return profilePhotoUrl.startsWith('http') ? profilePhotoUrl : RASAYESH_BASE + profilePhotoUrl;
   }
   return null;
 }
@@ -94,6 +103,10 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const levelParam = searchParams.get('level');
   const levelId = levelParam ? parseInt(levelParam, 10) : null;
+  // Skips the top-N leaderboard query (JOINs + ORDER BY + LIMIT) when the
+  // caller only needs currentUser.rank -- e.g. QuestClient's live-XP poll,
+  // which refetches on every XP change purely to keep the rank stat current.
+  const rankOnly = searchParams.get('rankOnly') === 'true';
 
   try {
     await ensureQuestUserNamesTable();
@@ -112,51 +125,54 @@ export async function GET(request) {
       const limit = (Number.isFinite(leaderboard_limit) && leaderboard_limit >= 1) ? leaderboard_limit : 20;
       const maxXpFilter = max_xp !== null && max_xp !== undefined;
 
-      // event_id is always $1 (bound by XP_CTE itself); every param below is
-      // shifted +1 to make room for it.
-      const { rows: topRows } = await query(`
-        ${XP_CTE},
-        in_level AS (
-          SELECT user_uuid, total_xp, scan_count
-          FROM combined
-          WHERE total_xp >= $2
-            ${maxXpFilter ? 'AND total_xp < $3' : ''}
-        ),
-        ranked AS (
-          SELECT user_uuid, total_xp, scan_count,
-                 RANK() OVER (ORDER BY total_xp DESC)::int AS rank
-          FROM in_level
-        )
-        SELECT
-          r.user_uuid, r.total_xp, r.scan_count, r.rank,
-          COALESCE(
-            qn.display_name_fa,
-            NULLIF(TRIM(COALESCE(au.firstname_fa, '') || ' ' || COALESCE(au.lastname_fa, '')), ''),
-            'شرکت‌کننده'
-          ) AS display_name_fa,
-          COALESCE(
-            qn.display_name_en,
-            NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), '')
-          ) AS display_name_en,
-          qn.profile_photo_url,
-          au.profile_image,
-          au.hide_leaderboard_photo
-        FROM ranked r
-        LEFT JOIN quest_user_names qn ON r.user_uuid = qn.user_uuid
-        LEFT JOIN app_users        au ON r.user_uuid = au.uuid AND au.event_id = $1
-        ORDER BY r.rank
-        LIMIT $${maxXpFilter ? '4' : '3'}
-      `, maxXpFilter ? [currentEventId, min_xp, max_xp, limit] : [currentEventId, min_xp, limit]);
+      let leaderboard = [];
+      if (!rankOnly) {
+        // event_id is always $1 (bound by XP_CTE itself); every param below is
+        // shifted +1 to make room for it.
+        const { rows: topRows } = await query(`
+          ${XP_CTE},
+          in_level AS (
+            SELECT user_uuid, total_xp, scan_count
+            FROM combined
+            WHERE total_xp >= $2
+              ${maxXpFilter ? 'AND total_xp < $3' : ''}
+          ),
+          ranked AS (
+            SELECT user_uuid, total_xp, scan_count,
+                   RANK() OVER (ORDER BY total_xp DESC)::int AS rank
+            FROM in_level
+          )
+          SELECT
+            r.user_uuid, r.total_xp, r.scan_count, r.rank,
+            COALESCE(
+              qn.display_name_fa,
+              NULLIF(TRIM(COALESCE(au.firstname_fa, '') || ' ' || COALESCE(au.lastname_fa, '')), ''),
+              'شرکت‌کننده'
+            ) AS display_name_fa,
+            COALESCE(
+              qn.display_name_en,
+              NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), '')
+            ) AS display_name_en,
+            qn.profile_photo_url,
+            au.profile_image,
+            au.hide_leaderboard_photo
+          FROM ranked r
+          LEFT JOIN quest_user_names qn ON r.user_uuid = qn.user_uuid
+          LEFT JOIN app_users        au ON r.user_uuid = au.uuid AND au.event_id = $1
+          ORDER BY r.rank
+          LIMIT $${maxXpFilter ? '4' : '3'}
+        `, maxXpFilter ? [currentEventId, min_xp, max_xp, limit] : [currentEventId, min_xp, limit]);
 
-      const leaderboard = topRows.map(row => ({
-        rank:              row.rank,
-        user_uuid:         row.user_uuid,
-        display_name_fa:   row.display_name_fa,
-        display_name_en:   row.display_name_en || null,
-        total_xp:          row.total_xp,
-        scan_count:        row.scan_count,
-        profile_photo_url: resolvePhotoUrl(row.profile_photo_url, row.profile_image, row.hide_leaderboard_photo),
-      }));
+        leaderboard = topRows.map(row => ({
+          rank:              row.rank,
+          user_uuid:         row.user_uuid,
+          display_name_fa:   row.display_name_fa,
+          display_name_en:   row.display_name_en || null,
+          total_xp:          row.total_xp,
+          scan_count:        row.scan_count,
+          profile_photo_url: resolvePhotoUrl(row.profile_photo_url, row.profile_image, row.hide_leaderboard_photo),
+        }));
+      }
 
       // Current user's rank within this level
       let currentUser = null;
@@ -207,42 +223,45 @@ export async function GET(request) {
     }
 
     // ── OVERALL LEADERBOARD (original behavior) ────────────────────────────
-    const limit = await getLeaderboardLimit(currentEventId);
+    let leaderboard = [];
+    if (!rankOnly) {
+      const limit = await getLeaderboardLimit(currentEventId);
 
-    const { rows: leaderboardRows } = await query(`
-      ${XP_CTE}
-      SELECT
-        c.user_uuid,
-        COALESCE(
-          qn.display_name_fa,
-          NULLIF(TRIM(COALESCE(au.firstname_fa, '') || ' ' || COALESCE(au.lastname_fa, '')), ''),
-          'شرکت‌کننده'
-        ) AS display_name_fa,
-        COALESCE(
-          qn.display_name_en,
-          NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), '')
-        ) AS display_name_en,
-        qn.profile_photo_url,
-        au.profile_image,
-        au.hide_leaderboard_photo,
-        c.total_xp,
-        c.scan_count
-      FROM combined c
-      LEFT JOIN quest_user_names qn ON c.user_uuid = qn.user_uuid
-      LEFT JOIN app_users        au ON c.user_uuid = au.uuid AND au.event_id = $1
-      ORDER BY c.total_xp DESC
-      LIMIT $2
-    `, [currentEventId, limit]);
+      const { rows: leaderboardRows } = await query(`
+        ${XP_CTE}
+        SELECT
+          c.user_uuid,
+          COALESCE(
+            qn.display_name_fa,
+            NULLIF(TRIM(COALESCE(au.firstname_fa, '') || ' ' || COALESCE(au.lastname_fa, '')), ''),
+            'شرکت‌کننده'
+          ) AS display_name_fa,
+          COALESCE(
+            qn.display_name_en,
+            NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), '')
+          ) AS display_name_en,
+          qn.profile_photo_url,
+          au.profile_image,
+          au.hide_leaderboard_photo,
+          c.total_xp,
+          c.scan_count
+        FROM combined c
+        LEFT JOIN quest_user_names qn ON c.user_uuid = qn.user_uuid
+        LEFT JOIN app_users        au ON c.user_uuid = au.uuid AND au.event_id = $1
+        ORDER BY c.total_xp DESC
+        LIMIT $2
+      `, [currentEventId, limit]);
 
-    const leaderboard = leaderboardRows.map((row, idx) => ({
-      rank:              idx + 1,
-      user_uuid:         row.user_uuid,
-      display_name_fa:   row.display_name_fa,
-      display_name_en:   row.display_name_en || null,
-      total_xp:          row.total_xp,
-      scan_count:        row.scan_count,
-      profile_photo_url: resolvePhotoUrl(row.profile_photo_url, row.profile_image, row.hide_leaderboard_photo),
-    }));
+      leaderboard = leaderboardRows.map((row, idx) => ({
+        rank:              idx + 1,
+        user_uuid:         row.user_uuid,
+        display_name_fa:   row.display_name_fa,
+        display_name_en:   row.display_name_en || null,
+        total_xp:          row.total_xp,
+        scan_count:        row.scan_count,
+        profile_photo_url: resolvePhotoUrl(row.profile_photo_url, row.profile_image, row.hide_leaderboard_photo),
+      }));
+    }
 
     // Current user's overall rank (may be outside top-N)
     let currentUser = null;
