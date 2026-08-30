@@ -2,7 +2,9 @@
 import { useLang } from '@/lib/useLang';
 
 export default function LangToggle({ className = '' }) {
-  const { lang, switchLang } = useLang();
+  const { lang, switchLang, langLocked } = useLang();
+
+  if (langLocked) return null;
 
   return (
     <button

@@ -52,10 +52,10 @@
 // ║    [ ] Does it need pathfinding? → add to buildFloorGrids once, cache it.    ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 
-import { Suspense, useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import AppHeaderRaw from "@/app/components/AppHeader";
+import PageHeader from "@/components/PageHeader";
 import BottomNav from "../components/BottomNav";
 import { useLang } from "@/lib/useLang";
 import { toPersianDigits } from "@/lib/utils";
@@ -81,19 +81,6 @@ function Map3DViewLoading() {
   );
 }
 
-// AppHeader calls useSearchParams() internally (see components/PageHeader.jsx
-// for the full rationale) -- needs a Suspense boundary to allow this route to
-// be statically/ISR-prerendered. This file imports AppHeader directly
-// (bypassing PageHeader), so it needs its own wrapper. Unrelated to
-// Map3DView/WebGL -- no change to that lazy-load block above.
-function AppHeader(props) {
-  return (
-    <Suspense fallback={null}>
-      <AppHeaderRaw {...props} />
-    </Suspense>
-  );
-}
-
 const RASAYESH_BASE = "https://api.rasayesh.com/";
 const DRAG_THRESHOLD = 6; // px movement before a touch is treated as a drag (not a tap)
 
@@ -115,6 +102,38 @@ function getLogoUrl(logo) {
     logo?.webp?.["64"] || logo?.webp?.["32"] ||
     logo?.["64"] || logo?.["32"];
   return src ? RASAYESH_BASE + src : null;
+}
+
+function isSvgIconPath(path) {
+  return typeof path === "string" && path.startsWith("/") && path.toLowerCase().endsWith(".svg");
+}
+
+// Per-theme colorable SVG icon for header controls (companies-list button,
+// etc.) -- same CSS mask-image + backgroundColor technique as BottomNav.js's
+// nav icons and QuestClient.js's QuestIcon. Takes isLight as a prop instead
+// of running its own theme MutationObserver: this file already tracks theme
+// via the mapTheme state, so a second observer here would be redundant.
+function HeaderIcon({ path, size, colorDark, colorLight, isLight }) {
+  const color = isLight ? (colorLight || "#0f172a") : (colorDark || "#ffffff");
+  return (
+    <span
+      style={{
+        display: "block",
+        width: size,
+        height: size,
+        flexShrink: 0,
+        backgroundColor: color,
+        WebkitMaskImage: `url('${path}')`,
+        WebkitMaskSize: "contain",
+        WebkitMaskRepeat: "no-repeat",
+        WebkitMaskPosition: "center",
+        maskImage: `url('${path}')`,
+        maskSize: "contain",
+        maskRepeat: "no-repeat",
+        maskPosition: "center",
+      }}
+    />
+  );
 }
 
 function getPlanUrl(bare_plan) {
@@ -1029,6 +1048,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
   const [showGestureHint, setShowGestureHint] = useState(false);
   const [routeAppearanceConfig, setRouteAppearanceConfig] = useState(null);
   const [mapLabelsConfig, setMapLabelsConfig] = useState(null);
+  const [headerIconsConfig, setHeaderIconsConfig] = useState(null);
   const [navMarkerIcons, setNavMarkerIcons] = useState({
     route_start: { type: 'builtin', value: '🏁' },
     route_end: { type: 'builtin', value: '📍' },
@@ -1326,6 +1346,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
         if (d.gestureHintImagesConfig) setGestureHintImagesConfig(d.gestureHintImagesConfig);
         if (d.routeAppearanceConfig)  setRouteAppearanceConfig(d.routeAppearanceConfig);
         if (d.mapLabelsConfig)        setMapLabelsConfig(d.mapLabelsConfig);
+        if (d.headerIconsConfig)      setHeaderIconsConfig(d.headerIconsConfig);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -1961,33 +1982,23 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
         className="flex-shrink-0"
         style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)", zIndex: 20 }}
       >
-        {/* Standard app header: logo + notifications + cart */}
-        <div className="px-4">
-          <AppHeader />
-        </div>
-
-        {/* Map controls row: title/subtitle + 3D/zoom/companies buttons.
-            Shown whenever there is something to display (title when not home
-            context, zoom buttons once mapData has loaded). */}
-        {(!isHomeContext || mapData) && (
-          <div className="flex items-center justify-between px-4 pb-3">
-            {!isHomeContext ? (
-              <div>
-                <h1 className="text-lg font-bold leading-tight" style={{ color: "var(--text)" }}>
-                  {(isEN ? title_en : title) || (isEN ? "Exhibition Map" : "نقشه نمایشگاه")}
-                </h1>
-                {(isEN ? subtitle_en : subtitle) && (
-                  <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-                    {isEN ? subtitle_en : subtitle}
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div /> /* spacer so justify-between pushes buttons to the end */
-            )}
-
-            {mapData && (
-              <div className="flex items-center gap-1.5">
+        {/* Single PageHeader call handles both the standard app header (logo +
+            notifications + cart) and the title/subtitle + 3D/zoom/companies
+            controls row, same as every other page -- previously this was a
+            bespoke duplicate of PageHeader's own markup (including its own
+            copy of the now-fixed empty-title-swallowed-by-hardcoded-default
+            bug). titleRowExtra carries the button group; showBack is false
+            to preserve this page's existing no-back-button behavior. */}
+        <div className="px-4 pb-3">
+          <PageHeader
+            title={title}
+            subtitle={subtitle}
+            title_en={title_en}
+            subtitle_en={subtitle_en}
+            isHomeContext={isHomeContext}
+            showBack={false}
+            titleRowExtra={mapData && (
+              <>
                 {/* Hidden entirely while an external 3D embed is configured -- 2D must
                     stay unreachable, not just default-off. See externalPlanConfigured
                     above; the onClick guard is defense-in-depth in case this ever
@@ -2017,11 +2028,21 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                   title={isEN ? "Companies" : "شرکت‌ها"}
                   className="w-9 h-9 rounded-xl flex items-center justify-center text-base transition-all active:scale-90"
                   style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", textDecoration: "none" }}
-                >🏢</Link>
-              </div>
+                >
+                  {(() => {
+                    const ci = headerIconsConfig?.companiesList || { icon: "🏢", icon_size: 20 };
+                    if (ci.icon && ci.icon.startsWith("/")) {
+                      return isSvgIconPath(ci.icon)
+                        ? <HeaderIcon path={ci.icon} size={ci.icon_size} colorDark={ci.color_dark} colorLight={ci.color_light} isLight={mapTheme === "light"} />
+                        : <img src={ci.icon} alt="" style={{ width: ci.icon_size, height: ci.icon_size, objectFit: "contain" }} />;
+                    }
+                    return <span style={{ fontSize: ci.icon_size, lineHeight: 1 }}>{ci.icon}</span>;
+                  })()}
+                </Link>
+              </>
             )}
-          </div>
-        )}
+          />
+        </div>
       </div>
 
       {/* ── Map container ── */}

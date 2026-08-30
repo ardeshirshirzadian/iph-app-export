@@ -30,7 +30,8 @@ const SEED_ROWS = [
   ['main', 'text', 'stat_scanned_label',  'غرفه اسکن‌شده',                  90],
   ['main', 'text', 'stat_rank_label',     'رتبه شما',                      100],
   ['main', 'text', 'view_list_label',     'مشاهده لیست',                   110],
-  ['main', 'text', 'missions_today_label','مأموریت‌های امروز',              120],
+  ['main', 'text', 'missions_today_label','ماموریت‌های فعال',               120],
+  ['main', 'text', 'missions_completed_label','ماموریت‌های انجام‌شده',      121],
   ['main', 'text', 'booths_sheet_title',  'غرفه‌های نمایشگاه',             130],
   ['main', 'text', 'tab_missions',        'مأموریت‌ها',                                    140],
   ['main', 'text', 'icon_tab_missions',   JSON.stringify({ icon: '🎯', icon_size: 18 }), 141],
@@ -124,6 +125,18 @@ export async function ensureQuestContentTable(eventId) {
       await query(
         `INSERT INTO quest_content_blocks (section, block_type, block_key, content, sort_order, event_id)
          VALUES ('main', 'text', 'xp_unit', 'XP', 75, $1)`,
+        [eventId]
+      );
+    }
+
+    const { rows: existingCompletedLabel } = await query(
+      "SELECT id FROM quest_content_blocks WHERE event_id = $1 AND section = 'main' AND block_key = 'missions_completed_label'",
+      [eventId]
+    );
+    if (existingCompletedLabel.length === 0) {
+      await query(
+        `INSERT INTO quest_content_blocks (section, block_type, block_key, content, sort_order, event_id)
+         VALUES ('main', 'text', 'missions_completed_label', 'ماموریت‌های انجام‌شده', 121, $1)`,
         [eventId]
       );
     }

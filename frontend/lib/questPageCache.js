@@ -43,6 +43,18 @@ export const getCachedQuestAppearanceConfig = unstable_cache(
   { tags: ["quest-appearance-config"], revalidate: 300 }
 );
 
+export const getCachedQuestSettings = unstable_cache(
+  async (eventId) => {
+    const result = await query(
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'quest_settings'",
+      [eventId]
+    );
+    return result.rows[0]?.value ?? {};
+  },
+  ["quest-settings"],
+  { tags: ["quest-settings"], revalidate: 300 }
+);
+
 export const getCachedQuestPageTitle = unstable_cache(
   (eventId) => getPageTitle('quest', eventId),
   ["quest-page-title"],

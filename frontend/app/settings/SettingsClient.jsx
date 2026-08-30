@@ -8,7 +8,7 @@ import { isPushSupported, requestNotificationPermission, subscribeToPush } from 
 
 export default function SettingsClient({ title, subtitle, title_en, subtitle_en, themeMode = "system" }) {
   const [isDark, setIsDark] = useState(true);
-  const { lang, switchLang, isRTL } = useLang();
+  const { lang, switchLang, isRTL, langLocked } = useLang();
   const [pushPermission, setPushPermission] = useState('loading');
   const [pushActionStatus, setPushActionStatus] = useState('idle'); // idle | loading | done | error
 
@@ -103,40 +103,44 @@ export default function SettingsClient({ title, subtitle, title_en, subtitle_en,
             </div>
           )}
 
-          {/* Language section */}
-          <div
-            className="backdrop-blur-xl border border-[var(--border)] rounded-3xl p-5"
-            style={{ background: "var(--surface)" }}
-          >
-            <p className="text-xs font-medium mb-4" style={{ color: "var(--text-dim)" }}>
-              {t(lang, "language_label")}
-            </p>
+          {/* Language section -- hidden entirely when single_language is
+              forced on (event-wide app-settings toggle): a heading with no
+              functional buttons under it would look broken, not just muted. */}
+          {!langLocked && (
+            <div
+              className="backdrop-blur-xl border border-[var(--border)] rounded-3xl p-5"
+              style={{ background: "var(--surface)" }}
+            >
+              <p className="text-xs font-medium mb-4" style={{ color: "var(--text-dim)" }}>
+                {t(lang, "language_label")}
+              </p>
 
-            <div className="flex gap-2">
-              <button
-                onClick={() => switchLang("fa")}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all"
-                style={{
-                  background: lang === "fa" ? "var(--accent)" : "var(--surface-2)",
-                  color: lang === "fa" ? "var(--btn-primary-text)" : "var(--text-dim)",
-                  border: lang === "fa" ? "none" : "1px solid var(--border)",
-                }}
-              >
-                {t(lang, "lang_fa")}
-              </button>
-              <button
-                onClick={() => switchLang("en")}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all"
-                style={{
-                  background: lang === "en" ? "var(--accent)" : "var(--surface-2)",
-                  color: lang === "en" ? "var(--btn-primary-text)" : "var(--text-dim)",
-                  border: lang === "en" ? "none" : "1px solid var(--border)",
-                }}
-              >
-                {t(lang, "lang_en")}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => switchLang("fa")}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all"
+                  style={{
+                    background: lang === "fa" ? "var(--accent)" : "var(--surface-2)",
+                    color: lang === "fa" ? "var(--btn-primary-text)" : "var(--text-dim)",
+                    border: lang === "fa" ? "none" : "1px solid var(--border)",
+                  }}
+                >
+                  {t(lang, "lang_fa")}
+                </button>
+                <button
+                  onClick={() => switchLang("en")}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all"
+                  style={{
+                    background: lang === "en" ? "var(--accent)" : "var(--surface-2)",
+                    color: lang === "en" ? "var(--btn-primary-text)" : "var(--text-dim)",
+                    border: lang === "en" ? "none" : "1px solid var(--border)",
+                  }}
+                >
+                  {t(lang, "lang_en")}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Push notifications section */}
           {pushPermission !== 'unsupported' && pushPermission !== 'loading' && (

@@ -21,7 +21,15 @@ body {
   --surface-hover: color-mix(in srgb, var(--text) 20%, transparent);
   --text-faint: color-mix(in srgb, var(--text) 25%, transparent);
   --border-accent: color-mix(in srgb, var(--accent) 20%, transparent);
-  --nav-bg: color-mix(in srgb, rgb(from var(--surface) r g b) 80%, transparent);
+  /* Hue anchored to --bg, not --surface: --surface can be tuned to any
+     translucent overlay tint for cards (e.g. a white glass effect inside
+     a dark theme) independent of the theme's actual light/dark identity --
+     deriving the nav bar's contrast-critical background from it risks
+     clashing with --text-dim. --bg is a much safer anchor since it's the
+     page's own background-color, so a bad value there is already visibly
+     broken everywhere, not just quietly in the nav bar. See project notes
+     on the Aug 23 regression this fixes. */
+  --nav-bg: color-mix(in srgb, rgb(from var(--bg) r g b) 80%, transparent);
   --sheet-bg: color-mix(in srgb, var(--bg) 95%, transparent);
   --overlay: color-mix(in srgb, var(--bg) 60%, transparent);
 }
@@ -35,7 +43,7 @@ html.light {
   --surface-hover: color-mix(in srgb, var(--text) 10%, transparent);
   --text-faint: color-mix(in srgb, var(--text) 35%, transparent);
   --border-accent: color-mix(in srgb, var(--accent) 20%, transparent);
-  --nav-bg: color-mix(in srgb, rgb(from var(--surface) r g b) 85%, transparent);
+  --nav-bg: color-mix(in srgb, rgb(from var(--bg) r g b) 85%, transparent);
   --sheet-bg: color-mix(in srgb, var(--bg) 98%, transparent);
   --overlay: color-mix(in srgb, var(--text) 40%, transparent);
 }

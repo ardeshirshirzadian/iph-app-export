@@ -232,6 +232,28 @@ const getCachedGestureHintImagesConfig = unstable_cache(
   { tags: ['map-gesture-hint-images'], revalidate: 300 }
 );
 
+// Keyed by icon name (not by theme, unlike CONTROL_ICONS/GESTURE_HINT_IMAGES
+// above) -- each icon carries its own {icon, icon_size, color_dark,
+// color_light}, same shape as quest_content_blocks' icon_tab_* blocks, so
+// the admin UI can offer emoji/upload/SVG-with-color instead of just two
+// raster uploads per theme.
+const HEADER_ICONS_DEFAULTS = {
+  companiesList: { icon: '🏢', icon_size: 20, color_dark: null, color_light: null },
+};
+const getCachedHeaderIconsConfig = unstable_cache(
+  async (eventId) => {
+    const r = await query("SELECT value FROM app_settings WHERE event_id = $1 AND key = 'map_header_icons_config'", [eventId]);
+    const stored = r.rows[0]?.value ?? {};
+    const config = {};
+    for (const name of Object.keys(HEADER_ICONS_DEFAULTS)) {
+      config[name] = { ...HEADER_ICONS_DEFAULTS[name], ...(stored[name] ?? {}) };
+    }
+    return config;
+  },
+  ['map-header-icons'],
+  { tags: ['map-header-icons'], revalidate: 300 }
+);
+
 const ROUTE_APPEARANCE_DEFAULTS = {
   dark: {
     primary: { routeLine: '#00ffb3', routeArrow: '#00ffb3', walkthroughHalo: '#00ffb3', walkthroughStripe: '#00ffb3' },
@@ -366,6 +388,7 @@ export async function GET() {
       gestureHintImagesConfig,
       routeAppearanceConfig,
       mapLabelsConfig,
+      headerIconsConfig,
     ] = await Promise.all([
       getCachedHallColors(currentEventId),
       getCachedMapElements(currentEventId),
@@ -381,6 +404,7 @@ export async function GET() {
       getCachedGestureHintImagesConfig(currentEventId),
       getCachedRouteAppearanceConfig(currentEventId),
       getCachedMapLabelsConfig(currentEventId),
+      getCachedHeaderIconsConfig(currentEventId),
     ]);
 
     return NextResponse.json({
@@ -402,6 +426,7 @@ export async function GET() {
       gestureHintImagesConfig,
       routeAppearanceConfig,
       mapLabelsConfig,
+      headerIconsConfig,
     });
   } catch (err) {
     console.error('[api/map]', err.message);

@@ -157,7 +157,7 @@ export const translations = {
     scan_requesting: 'درخواست دسترسی به دوربین',
     scan_confirm_access: 'لطفاً اجازه دسترسی را تأیید کنید',
     scan_instruction: 'QR کد غرفه را در کادر قرار دهید',
-    scan_rear_camera: 'دوربین عقب دستگاه استفاده می‌شود',
+    scan_rear_camera: 'دوربین پشت دستگاه استفاده می‌شود',
     scan_camera_access: 'دسترسی به دوربین',
     scan_back_to_missions: 'بازگشت به مأموریت‌ها',
     scan_success_title: 'غرفه با موفقیت اسکن شد',

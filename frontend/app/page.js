@@ -7,6 +7,7 @@ import { getPushPrompt } from '@/lib/getPushPrompt';
 import {
   getCachedQuestContentBlocks,
   getCachedQuestAppearanceConfig,
+  getCachedQuestSettings,
   getCachedQuestPageTitle,
   parseQuestBlocks,
 } from '@/lib/questPageCache';
@@ -134,8 +135,16 @@ export default async function Home() {
       } catch {
         // Fall back to defaults in QuestClient
       }
+      let questSettings = {};
+      try {
+        questSettings = await getCachedQuestSettings(currentEventId);
+      } catch {
+        // Fall back to defaults in QuestClient
+      }
+      // getPageTitle()'s own DEFAULTS merge already resolves 'never
+      // customized' vs 'explicitly cleared' -- see app/quest/page.js.
       const { title, subtitle, title_en, subtitle_en } = await getCachedQuestPageTitle(currentEventId);
-      return <HomeVariantRenderer route="/quest" content={content} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} appearanceConfig={appearanceConfig} isHomeContext={false} showBack={false} />;
+      return <HomeVariantRenderer route="/quest" content={content} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} appearanceConfig={appearanceConfig} questSettings={questSettings} isHomeContext={false} showBack={false} />;
     }
 
     case '/companies': {

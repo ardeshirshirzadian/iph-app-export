@@ -8,8 +8,13 @@ function applyLang(lang) {
   document.documentElement.classList.toggle('lang-en', lang === 'en');
 }
 
-export default function LangSync() {
+export default function LangSync({ singleLanguage = false }) {
   useEffect(() => {
+    if (singleLanguage) {
+      applyLang('fa');
+      return;
+    }
+
     applyLang(localStorage.getItem('iph-lang') || 'fa');
 
     function onStorage(e) {
@@ -17,7 +22,7 @@ export default function LangSync() {
     }
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
-  }, []);
+  }, [singleLanguage]);
 
   return null;
 }

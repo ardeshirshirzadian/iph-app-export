@@ -12,6 +12,7 @@ import ProfilePhotoGuard from "./components/ProfilePhotoGuard";
 import { getActiveFont, getActiveFontEn } from "@/lib/getActiveFont";
 import { getThemeColors } from "@/lib/getThemeColors";
 import { getThemeMode } from "@/lib/getThemeMode";
+import { getSingleLanguageMode } from "@/lib/getSingleLanguageMode";
 import { getAppIdentity } from "@/lib/getAppIdentity";
 import { getCachedCompaniesConfig } from "@/lib/getCompaniesConfig";
 import { getCurrentEventId } from "@/lib/currentEvent";
@@ -59,6 +60,11 @@ const getCachedThemeMode = unstable_cache(
   ["layout-theme-mode"],
   { tags: ["layout-theme-mode"], revalidate: 300 }
 );
+const getCachedSingleLanguageMode = unstable_cache(
+  (eventId) => getSingleLanguageMode(eventId),
+  ["layout-single-language"],
+  { tags: ["layout-single-language"], revalidate: 300 }
+);
 const getCachedAppIdentity = unstable_cache(
   (eventId) => getAppIdentity(eventId),
   ["layout-app-identity"],
@@ -94,7 +100,18 @@ export const viewport = {
   viewportFit: "cover",
 };
 
-const LANG_INIT_SCRIPT = `(function(){try{var l=localStorage.getItem("iph-lang")||"fa";if(l==="en"){document.documentElement.dir="ltr";document.documentElement.lang="en";document.documentElement.classList.add("lang-en");}else{document.documentElement.dir="rtl";document.documentElement.lang="fa";}}catch(e){}})();`;
+// singleLanguage: forced-fa mode skips the localStorage read entirely --
+// <html> is already hardcoded lang="fa" dir="rtl" by default below, so
+// there's nothing to override, just set the lock flag before hydration so
+// useLang()/LangSync (running post-hydration) know to ignore any stored
+// preference. window.__IPH_LANG_LOCKED__ is always defined either way, so
+// useLang() never has to guard against it being undefined.
+function buildLangInitScript(singleLanguage) {
+  if (singleLanguage) {
+    return `(function(){try{window.__IPH_LANG_LOCKED__=true;}catch(e){}})();`;
+  }
+  return `(function(){try{window.__IPH_LANG_LOCKED__=false;var l=localStorage.getItem("iph-lang")||"fa";if(l==="en"){document.documentElement.dir="ltr";document.documentElement.lang="en";document.documentElement.classList.add("lang-en");}else{document.documentElement.dir="rtl";document.documentElement.lang="fa";}}catch(e){}})();`;
+}
 
 function buildThemeInitScript(darkBg, lightBg, themeMode) {
   let modeSnippet;
@@ -147,11 +164,12 @@ function buildFontEnStyle(activeFontEn) {
 
 export default async function RootLayout({ children }) {
   const currentEventId = await getCurrentEventId();
-  const [activeFont, activeFontEn, themeColors, themeMode, companiesConfig] = await Promise.all([
+  const [activeFont, activeFontEn, themeColors, themeMode, singleLanguage, companiesConfig] = await Promise.all([
     getCachedActiveFont(currentEventId),
     getCachedActiveFontEn(currentEventId),
     getCachedThemeColors(currentEventId),
     getCachedThemeMode(currentEventId),
+    getCachedSingleLanguageMode(currentEventId),
     // Same source map/route.js and quest/booths/route.js already use for the
     // current Rasayesh event id -- passed down so AttendeeProvider's
     // todayEventPresence(eventId: ...) query never hardcodes a stale id
@@ -172,7 +190,7 @@ export default async function RootLayout({ children }) {
         <meta name="theme-color" content={themeColors.dark.bg} />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         {/* eslint-disable-next-line react/no-danger */}
-        <script dangerouslySetInnerHTML={{ __html: LANG_INIT_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: buildLangInitScript(singleLanguage) }} />
         {/* eslint-disable-next-line react/no-danger */}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         {/* apple-touch-icon: pre-baked 180×180 with dark bg so iOS never restyles it */}
@@ -201,7 +219,7 @@ export default async function RootLayout({ children }) {
       </head>
       <body>
         <ThemeSync themeMode={themeMode} />
-        <LangSync />
+        <LangSync singleLanguage={singleLanguage} />
         <ServiceWorkerRegistrar />
         <SessionExpiredToast />
         <ApolloClientProvider><AttendeeProvider rasayeshEventId={rasayeshEventId}><CartProvider><ProfilePhotoGuard /><PageWrapper>{children}</PageWrapper></CartProvider></AttendeeProvider></ApolloClientProvider>

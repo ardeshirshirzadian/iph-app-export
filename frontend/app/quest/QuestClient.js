@@ -1,14 +1,16 @@
-// TEMPORARY: Reads static content from DB (quest_content_blocks).
-// When real quest logic is added, replace content.missions / content.leaderboard
-// / content.badges with live API data. The `content` prop only drives copy & order.
+// Real quest logic (missions, leaderboard, badges) is live API data,
+// fetched below via /api/quest*. The `content` prop only drives static
+// page copy (content.main / content.main_en) — see questPageCache.js.
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import BottomNav from "../components/BottomNav";
 import PageHeader from "@/components/PageHeader";
+import { useAttendee } from "../components/AttendeeProvider";
 import { useLang } from "@/lib/useLang";
 import { toPersianDigits } from "@/lib/utils";
+
+const RASAYESH_BASE = "https://api.rasayesh.com/";
 
 function isSvgIconPath(path) {
   return typeof path === "string" && path.startsWith("/") && path.toLowerCase().endsWith(".svg");
@@ -64,11 +66,10 @@ const APPEARANCE_DEFAULTS = {
     leaderboard_size: 14,      leaderboard_color: '#ffffff',
     badge_title_size: 14,      badge_title_color: '#94a3b8',
     active_border_color: '#00ffb3',
-    // scan_glow_color intentionally has NO default here -- when the admin
-    // hasn't set one, ScanButton falls through to the event's live
-    // --accent CSS var via color-mix(), not a hardcoded hex (see
-    // ScanButton below). A static default here would reintroduce the
-    // wrong-fixed-color-on-every-other-event bug this field exists to fix.
+    // scan_glow_color is intentionally absent here -- ScanButton itself
+    // moved to components/ScanButton.js (now rendered from BottomNav.js,
+    // not this file); see its own module comment for why it must never
+    // get a hardcoded fallback color here.
     rotation_text_size: 11,    rotation_text_color: '#94a3b8',
   },
   light: {
@@ -80,6 +81,18 @@ const APPEARANCE_DEFAULTS = {
     // scan_glow_color: see comment in `dark` above -- same reasoning.
     rotation_text_size: 11,    rotation_text_color: '#475569',
   },
+};
+
+// Global (event-wide, not per-mission) styling for the sponsor logo+name row
+// shown under a sponsored mission's title. Lives in quest_settings (flat,
+// via questSettings prop), not appearanceConfig's dark/light-nested shape --
+// same defaults as mission_subtitle_color/size above since it's visually the
+// same kind of small muted label.
+const SPONSOR_STYLE_DEFAULTS = {
+  sponsor_logo_size: 16,
+  sponsor_name_color_dark: '#94a3b8',
+  sponsor_name_color_light: '#475569',
+  sponsor_name_size: 11,
 };
 
 function hexToRgba(hex, alpha) {
@@ -99,8 +112,6 @@ const FALLBACK_LEVELS = [
   { name_fa: "کاوشگر",    name_en: "Explorer", icon_value: "🕵️",  icon_size: 14, min_xp: 200, max_xp: 500,  color: "#22c55e" },
   { name_fa: "کاربلد",    name_en: "Expert",   icon_value: "😎",  icon_size: 14, min_xp: 500, max_xp: null, color: "#f59e0b" },
 ];
-
-const RANK_ICONS = { 1: "🥇", 2: "🥈", 3: "🥉" };
 
 // ── Fallback content (used only if /api/quest fails) ──────────────────────
 
@@ -216,8 +227,8 @@ function LevelTimeline({ currentLevel, thresholds, levelColors, showCircle = tru
   );
 }
 
-function UserCard({ user, thresholds, levelColors, labels, lang, showLevelCircle = true }) {
-  const { pct, current, currentIdx, next } = useMemo(
+function UserCard({ user, thresholds, levelColors, labels, lang, showLevelCircle = true, profilePhotoUrl = null, userPhotoSize = 32 }) {
+  const { pct, current, next } = useMemo(
     () => getXpProgress(user.xp, thresholds),
     [user.xp, thresholds]
   );
@@ -242,8 +253,6 @@ function UserCard({ user, thresholds, levelColors, labels, lang, showLevelCircle
     prevXpRef.current = user.xp;
   }, [user.xp]);
 
-  const color = levelColors[currentIdx] || levelColors[levelColors.length - 1];
-
   return (
     <div
       className="backdrop-blur-xl border rounded-3xl p-5"
@@ -251,24 +260,20 @@ function UserCard({ user, thresholds, levelColors, labels, lang, showLevelCircle
     >
       <div className="flex items-center justify-between mb-4">
         <div>
-          <p className="text-xs mb-1" style={{ color: "var(--text-muted)" }}>{labels.userCardLabel}</p>
+          <p className="text-xs mb-1" style={{ color: "var(--text-muted)" }}>{labels.userCardLabel} {current.name}</p>
           <h2 className="font-bold text-lg leading-7" style={{ color: "var(--text)" }}>{user.name}</h2>
         </div>
-        <div
-          className="px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5"
-          style={{
-            color,
-            borderColor: color + "40",
-            backgroundColor: color + "15",
-          }}
-        >
-          {current.icon && current.icon.startsWith('/') ? (
-            <img src={current.icon} alt="" style={{ width: current.iconSize ?? 14, height: current.iconSize ?? 14, objectFit: 'contain', flexShrink: 0 }} />
-          ) : (
-            <span style={{ fontSize: current.iconSize ?? 14, lineHeight: 1 }}>{current.icon}</span>
-          )}
-          <span>{current.name}</span>
-        </div>
+        {profilePhotoUrl ? (
+          <img
+            src={profilePhotoUrl}
+            alt=""
+            width={userPhotoSize} height={userPhotoSize}
+            className="flex-shrink-0 object-cover"
+            style={{ borderRadius: '50%', width: userPhotoSize, height: userPhotoSize }}
+          />
+        ) : (
+          <AvatarPlaceholder size={userPhotoSize} />
+        )}
       </div>
 
       <div className="flex items-center justify-between text-sm mb-2">
@@ -281,8 +286,8 @@ function UserCard({ user, thresholds, levelColors, labels, lang, showLevelCircle
           }}
         >
           {lang === 'fa'
-            ? `${dNum(animatedXp, lang)}+ ${labels.xpUnit}`
-            : (<>+{dNum(animatedXp, lang)} {labels.xpUnit}</>)}
+            ? `${dNum(animatedXp, lang)}${animatedXp > 0 ? '+' : ''} ${labels.xpUnit}`
+            : (<>{animatedXp > 0 ? '+' : ''}{dNum(animatedXp, lang)} {labels.xpUnit}</>)}
         </span>
       </div>
 
@@ -326,7 +331,7 @@ function UserCardSkeleton() {
           <div className="h-2.5 w-16 rounded-full" style={{ background: "var(--border)" }} />
           <div className="h-4 w-28 rounded-full" style={{ background: "var(--border)" }} />
         </div>
-        <div className="h-6 w-20 rounded-full" style={{ background: "var(--border)" }} />
+        <div className="rounded-full flex-shrink-0" style={{ width: 32, height: 32, background: "var(--border)" }} />
       </div>
       <div className="flex items-center justify-between mb-2">
         <div className="h-2.5 w-10 rounded-full" style={{ background: "var(--border)" }} />
@@ -339,63 +344,6 @@ function UserCardSkeleton() {
         ))}
       </div>
     </div>
-  );
-}
-
-function ScanButton({ isDark, label, glowColor }) {
-  // glowColor is only a real value once an admin explicitly sets
-  // scan_glow_color -- there's no static default for it (see
-  // APPEARANCE_DEFAULTS above). hexToRgba returns null for anything that
-  // isn't a literal #rrggbb (undefined, or an invalid string), so the
-  // fallback below is what actually runs for every event until an admin
-  // opts in: color-mix() against the live --accent CSS var (set per-event
-  // via the theme-colors settings), resolved by the browser at paint time --
-  // NOT a hardcoded hex, which is what caused this field to be added.
-  const shadowColor      = hexToRgba(glowColor, 0.5) || 'color-mix(in srgb, var(--accent) 50%, transparent)';
-  const shadowColorHover = hexToRgba(glowColor, 0.7) || 'color-mix(in srgb, var(--accent) 70%, transparent)';
-  const pingColor20      = hexToRgba(glowColor, 0.2) || 'color-mix(in srgb, var(--accent) 20%, transparent)';
-  const pingColor10      = hexToRgba(glowColor, 0.1) || 'color-mix(in srgb, var(--accent) 10%, transparent)';
-  return (
-    <Link href="/quest/scan" className="flex flex-col items-center gap-3 group">
-      <div
-        className="relative"
-        style={{ '--scan-glow-shadow': shadowColor, '--scan-glow-shadow-hover': shadowColorHover }}
-      >
-        {isDark && (
-          <>
-            <span className="absolute inset-0 rounded-full animate-ping" style={{ background: pingColor20 }} />
-            <span
-              className="absolute inset-[-6px] rounded-full animate-ping"
-              style={{ animationDelay: "0.3s", background: pingColor10 }}
-            />
-          </>
-        )}
-        <button
-          className="relative w-20 h-20 rounded-full flex items-center justify-center shadow-[0_0_30px_var(--scan-glow-shadow)] group-hover:shadow-[0_0_45px_var(--scan-glow-shadow-hover)] transition-shadow duration-300 group-hover:scale-105 active:scale-95 transition-transform"
-          style={{ background: "var(--accent)" }}
-        >
-          <svg
-            width="36"
-            height="36"
-            viewBox="0 0 24 24"
-            fill="none"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ stroke: "var(--bg)" }}
-          >
-            <rect x="3" y="3" width="7" height="7" rx="1" />
-            <rect x="14" y="3" width="7" height="7" rx="1" />
-            <rect x="3" y="14" width="7" height="7" rx="1" />
-            <path d="M14 14h2v2h-2z" />
-            <path d="M16 16h5v5h-2v-3h-3z" />
-          </svg>
-        </button>
-      </div>
-      <span className="font-bold text-sm tracking-wide" style={{ color: "var(--accent)" }}>
-        {label}
-      </span>
-    </Link>
   );
 }
 
@@ -419,19 +367,48 @@ function featuredBoothCountdownText(nextRotationIso, lang, now) {
     : `⟳ Next rotation: ${minutes} min`;
 }
 
-function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyClick, onSocialShareClick, lang: langProp, logoBaseUrl }) {
+// Completion = attempted/submitted, not "answered correctly" (per mission type):
+// - progress/total covers booth_scan, special_booth, hall_scan, manual, attendance,
+//   chat, featured_booth, correct quiz, and approved social_share.
+// - quiz locks after one attempt (right or wrong), so quiz_attempted alone is enough.
+// - social_share stays active while 'rejected' (the card still offers a resubmit CTA);
+//   only 'pending' (awaiting review, nothing left to do) counts as completed here.
+function isMissionCompleted(mission) {
+  if (mission.progress >= mission.total) return true;
+  if (mission.mission_type === 'quiz' && mission.quiz_attempted) return true;
+  if (mission.mission_type === 'social_share' && mission.social_share_status === 'pending') return true;
+  return false;
+}
+
+function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyClick, onSocialShareClick, lang: langProp, logoBaseUrl, sponsorLogoSize, sponsorNameColor, sponsorNameSize, missionIconColors }) {
   const pct = useMemo(
     () => (mission.total > 0 ? Math.round((mission.progress / mission.total) * 100) : 0),
     [mission.progress, mission.total]
   );
-  const done = mission.progress >= mission.total;
+  const done = isMissionCompleted(mission);
   const isQuiz = mission.mission_type === 'quiz';
   const isFeaturedBooth = mission.mission_type === 'featured_booth';
   const isSurvey = mission.mission_type === 'survey';
   const isSocialShare = mission.mission_type === 'social_share';
   const quizAttempted = isQuiz && !!mission.quiz_attempted;
+  // Wrong quiz answers ARE completed (isMissionCompleted treats any attempt
+  // as done, regardless of correctness -- see MissionCard's `done` above),
+  // but should render as muted/"just completed", not celebrated. progress
+  // stays 0 for an incorrect attempt (calcProgress only sets it to 1 when
+  // is_correct), so this is already exactly right, no new data needed.
+  const quizWrongAnswer = isQuiz && quizAttempted && mission.progress < mission.total;
   const surveySubmitted = isSurvey && !!mission.survey_submitted;
   const socialShareStatus = isSocialShare ? (mission.social_share_status || null) : null;
+  // Rejected social-share stays ACTIVE and clickable (resubmit CTA) -- unlike
+  // quizWrongAnswer this is NOT a terminal state and must NOT move into
+  // isMissionCompleted/the completed accordion. Only the icon/XP/label get
+  // the same muted treatment; `done` itself (row background/border, and
+  // whether this mission is even in the active vs completed list) is
+  // untouched by this flag.
+  const socialShareRejected = isSocialShare && socialShareStatus === 'rejected';
+  // Icon box + QuestIcon color specifically reuse the completed-mission look
+  // for a rejected submission too, even though the mission is still active.
+  const iconUsesCompletedStyle = done || socialShareRejected;
   const socialShareNote = isSocialShare ? (mission.social_share_note || null) : null;
   const quizClickable = isQuiz && !done && !quizAttempted && typeof onQuizClick === 'function';
   const surveyClickable = isSurvey && !done && !surveySubmitted && typeof onSurveyClick === 'function';
@@ -462,17 +439,30 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
         (quizClickable || surveyClickable || socialShareClickable || featuredClickable) ? "cursor-pointer active:scale-[0.98]" : ""
       }`}
       style={done
-        ? { borderColor: "var(--quest-active-border)", background: "var(--quest-active-bg)" }
-        : { background: "var(--surface-2)", borderColor: "var(--border)" }
+        ? { borderColor: "var(--quest-mission-completed-row-border)", background: "var(--quest-mission-completed-row-bg)" }
+        : { borderColor: "var(--quest-mission-active-row-border)", background: "var(--quest-mission-active-row-bg)" }
       }
     >
       <div
         className="rounded-xl flex-shrink-0 flex items-center justify-center"
-        style={{ width: iconBoxSize, height: iconBoxSize, background: done ? "var(--quest-active-icon-bg)" : "var(--surface-2)" }}
+        style={{
+          width: iconBoxSize, height: iconBoxSize,
+          background: iconUsesCompletedStyle ? "var(--quest-mission-completed-icon-bg)" : "var(--quest-mission-active-icon-bg)",
+          border: iconUsesCompletedStyle ? "1px solid var(--quest-mission-completed-icon-border)" : "1px solid var(--quest-mission-active-icon-border)",
+        }}
       >
         {mission.icon && mission.icon.startsWith('/') ? (
           isSvgIconPath(mission.icon) ? (
-            <QuestIcon path={mission.icon} size={mission.icon_size ?? 36} colorDark={mission.icon_color_dark} colorLight={mission.icon_color_light} />
+            <QuestIcon
+              path={mission.icon}
+              size={mission.icon_size ?? 36}
+              colorDark={mission.is_icon_color_unique
+                ? (iconUsesCompletedStyle ? mission.icon_color_dark_completed : mission.icon_color_dark_active)
+                : (iconUsesCompletedStyle ? missionIconColors?.completedDark : missionIconColors?.activeDark)}
+              colorLight={mission.is_icon_color_unique
+                ? (iconUsesCompletedStyle ? mission.icon_color_light_completed : mission.icon_color_light_active)
+                : (iconUsesCompletedStyle ? missionIconColors?.completedLight : missionIconColors?.activeLight)}
+            />
           ) : (
             <img src={mission.icon} alt="" style={{ width: mission.icon_size ?? 36, height: mission.icon_size ?? 36, objectFit: 'contain' }} />
           )
@@ -489,7 +479,7 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
           >
             {dNum(mission.title, langProp)}
           </span>
-          <span className="text-xs font-bold flex-shrink-0 mr-2" style={{ color: "var(--accent)" }}>
+          <span className="text-xs font-bold flex-shrink-0 mr-2" style={{ color: (quizWrongAnswer || socialShareRejected) ? "var(--text-dim)" : "var(--accent)" }}>
             {langProp === 'fa'
               ? `${dNum(isFeaturedBooth ? (mission.featuredBoothBonusXp ?? mission.xpReward) : mission.xpReward, langProp)}+ ${xpUnit || "XP"}`
               : (<>+{dNum(isFeaturedBooth ? (mission.featuredBoothBonusXp ?? mission.xpReward) : mission.xpReward, langProp)} {xpUnit || "XP"}</>)}
@@ -500,9 +490,9 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
             <BoothLogo
               logoUrl={getLogoUrl(mission.sponsor.logo, logoBaseUrl)}
               firstLetter={(mission.sponsor.brand_name_fa || mission.sponsor.brand_name_en || '?').charAt(0)}
-              size={16}
+              size={sponsorLogoSize}
             />
-            <span className="text-[11px]" style={{ color: "var(--quest-subtitle-color)" }}>
+            <span style={{ fontSize: sponsorNameSize, color: sponsorNameColor }}>
               {langProp === 'en'
                 ? (mission.sponsor.brand_name_en || mission.sponsor.brand_name_fa)
                 : (mission.sponsor.brand_name_fa || mission.sponsor.brand_name_en)}
@@ -528,10 +518,10 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
           </div>
         ) : isQuiz ? (
           <div className="flex items-center justify-between gap-2">
-            {done ? (
+            {quizWrongAnswer ? (
+              <span className="text-[11px] font-medium" style={{ color: "var(--text-dim)" }}>پاسخ داده شده</span>
+            ) : done ? (
               <span className="text-[11px] font-bold" style={{ color: "var(--accent)" }}>پاسخ صحیح ✓</span>
-            ) : quizAttempted ? (
-              <span className="text-[11px] font-medium" style={{ color: "#f87171" }}>پاسخ داده شده</span>
             ) : <span />}
             {quizClickable && (
               <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0"
@@ -556,11 +546,11 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center justify-between gap-2">
               {done || socialShareStatus === 'approved' ? (
-                <span className="text-[11px] font-bold" style={{ color: "var(--accent)" }}>تایید شد ✅</span>
+                <span className="text-[11px] font-bold" style={{ color: "var(--accent)" }}>تایید شد</span>
               ) : socialShareStatus === 'pending' ? (
                 <span className="text-[11px] font-medium" style={{ color: '#f59e0b' }}>در انتظار بررسی ⏳</span>
               ) : socialShareStatus === 'rejected' ? (
-                <span className="text-[11px] font-medium" style={{ color: '#f87171' }}>رد شد ❌</span>
+                <span className="text-[11px] font-medium" style={{ color: 'var(--text-dim)' }}>رد شد</span>
               ) : <span />}
               {socialShareClickable && (
                 <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0"
@@ -590,7 +580,7 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
         )}
       </div>
 
-      {done && (
+      {done && !quizWrongAnswer && (
         <div
           className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
           style={{ background: "var(--accent)" }}
@@ -615,7 +605,8 @@ function AvatarPlaceholder({ size = 32 }) {
   );
 }
 
-function LeaderboardRow({ user, isMe, badgeColor, badgeLabel, xpUnit, lang }) {
+function LeaderboardRow({ user, isMe, badgeColor, badgeLabel, xpUnit, lang, rankIcons }) {
+  const rankIcon = rankIcons?.[user.rank];
   return (
     <div
       className="flex items-center gap-3 rounded-2xl px-4 py-3 border transition-colors"
@@ -625,8 +616,16 @@ function LeaderboardRow({ user, isMe, badgeColor, badgeLabel, xpUnit, lang }) {
       }
     >
       <div className="w-8 text-center flex-shrink-0">
-        {RANK_ICONS[user.rank] ? (
-          <span className="text-lg">{RANK_ICONS[user.rank]}</span>
+        {rankIcon ? (
+          rankIcon.icon.startsWith('/') ? (
+            isSvgIconPath(rankIcon.icon) ? (
+              <QuestIcon path={rankIcon.icon} size={rankIcon.iconSize} colorDark={rankIcon.colorDark} colorLight={rankIcon.colorLight} />
+            ) : (
+              <img src={rankIcon.icon} alt="" style={{ width: rankIcon.iconSize, height: rankIcon.iconSize, objectFit: 'contain', margin: '0 auto' }} />
+            )
+          ) : (
+            <span style={{ fontSize: rankIcon.iconSize, lineHeight: 1 }}>{rankIcon.icon}</span>
+          )
         ) : (
           <span className="text-sm font-bold" style={{ color: isMe ? "var(--accent)" : "var(--text-dim)" }}>
             {dNum(user.rank, lang)}
@@ -674,7 +673,7 @@ function LeaderboardRow({ user, isMe, badgeColor, badgeLabel, xpUnit, lang }) {
   );
 }
 
-function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUnit, lang, levels }) {
+function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUnit, lang, levels, rankIcons }) {
   const [subTab, setSubTab] = useState('overall');
   const [levelCache, setLevelCache] = useState({});
 
@@ -758,7 +757,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
             const isMe = !!currentUserUuid && user.user_uuid === currentUserUuid;
             const color = levelNameToColor[user.level] || levelColors[0];
             return (
-              <LeaderboardRow key={user.rank} user={user} isMe={isMe} badgeColor={color} badgeLabel={user.level} xpUnit={xpUnit} lang={lang} />
+              <LeaderboardRow key={user.rank} user={user} isMe={isMe} badgeColor={color} badgeLabel={user.level} xpUnit={xpUnit} lang={lang} rankIcons={rankIcons} />
             );
           })
         )}
@@ -813,6 +812,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
             badgeLabel={levelName}
             xpUnit={xpUnit}
             lang={lang}
+            rankIcons={rankIcons}
           />
         ))
       )}
@@ -834,6 +834,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
             badgeLabel={levelName}
             xpUnit={xpUnit}
             lang={lang}
+            rankIcons={rankIcons}
           />
         </>
       )}
@@ -2058,12 +2059,17 @@ function SocialShareModal({ share, onClose, onComplete, lang }) {
 
 // ── Main client component ───────────────────────────────────────────────────
 
-export default function QuestClient({ content, title, subtitle, title_en, subtitle_en, isHomeContext = false, showBack = true, appearanceConfig = {} }) {
+export default function QuestClient({ content, title, subtitle, title_en, subtitle_en, isHomeContext = false, showBack = true, appearanceConfig = {}, questSettings = {} }) {
   const [boothsOpen, setBoothsOpen] = useState(false);
   const [openFeaturedPool, setOpenFeaturedPool] = useState(null);
   const [activeTab, setActiveTab] = useState("missions");
+  const [completedMissionsOpen, setCompletedMissionsOpen] = useState(false);
   const [isDark, setIsDark] = useState(true);
   const { lang, isRTL } = useLang();
+  const { attendee: attendeeData } = useAttendee();
+  const profilePhotoUrl = attendeeData?.profile?.jpg?.["128"]
+    ? RASAYESH_BASE + attendeeData.profile.jpg["128"]
+    : null;
   const [openQuiz, setOpenQuiz] = useState(null);
   const [openSurvey, setOpenSurvey] = useState(null);
   const [openSocialShare, setOpenSocialShare] = useState(null);
@@ -2139,6 +2145,31 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
       .catch(() => {});
   }, []);
 
+  // The mount-only fetch above (and refreshQuest's rankOnly poll) keep
+  // currentUserRank fresh for the missions tab's own stat row, but
+  // deliberately never refetch the full leaderboard list on a timer -- that's
+  // an expensive query we don't want running every 45s. Instead, refetch it
+  // on-demand right when the user actually looks at the tab, so it's never
+  // stale at the moment it matters. lastLeaderboardFetchRef just guards
+  // against re-fetching if someone flaps between tabs faster than 5s.
+  const lastLeaderboardFetchRef = useRef(0);
+  useEffect(() => {
+    if (activeTab !== 'leaderboard') return;
+    const now = Date.now();
+    if (now - lastLeaderboardFetchRef.current < 5000) return;
+    lastLeaderboardFetchRef.current = now;
+    fetch('/api/quest/leaderboard')
+      .then(r => r.json())
+      .then(d => {
+        if (Array.isArray(d.leaderboard)) setLiveLeaderboard(d.leaderboard);
+        if (d.currentUser) {
+          setCurrentUserUuid(d.currentUser.user_uuid);
+          setCurrentUserRank(d.currentUser.rank);
+        }
+      })
+      .catch(() => {});
+  }, [activeTab]);
+
   useEffect(() => {
     fetch('/api/quest/levels')
       .then(r => r.json())
@@ -2185,9 +2216,8 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     return ids;
   }, [liveMissions]);
 
-  // null = missions fetch hasn't settled yet AND no SSR-provided CMS content
-  // exists to show immediately — callers must show a skeleton, not
-  // FALLBACK_MISSIONS, during this window.
+  // null = missions fetch hasn't settled yet — callers must show a
+  // skeleton, not FALLBACK_MISSIONS, during this window.
   const missions = useMemo(() => {
     // Prefer live missions from /api/quest (real DB + real progress)
     if (liveMissions && liveMissions.length > 0) {
@@ -2197,11 +2227,9 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         description: lang === 'en' ? (m.description_en || m.description) : m.description,
       }));
     }
-    // Fall back to static CMS blocks if present (SSR-provided, no flash)
-    if (content?.missions?.length > 0) return content.missions;
     if (!missionsReady) return null;
     return FALLBACK_MISSIONS;
-  }, [liveMissions, content?.missions, missionsReady, lang]);
+  }, [liveMissions, missionsReady, lang]);
 
   const leaderboard = useMemo(() => {
     // Needs levelThresholds to compute each user's level name — wait for it too.
@@ -2226,9 +2254,8 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     // null = fetch not yet complete; [] = fetched, no users yet
     return liveLeaderboard === null ? null : [];
   }, [liveLeaderboard, lang, levelThresholds]);
-  // null = badges fetch hasn't settled yet AND no SSR-provided CMS content
-  // exists to show immediately — callers must show a skeleton, not
-  // FALLBACK_BADGES, during this window.
+  // null = badges fetch hasn't settled yet — callers must show a
+  // skeleton, not FALLBACK_BADGES, during this window.
   const badges = useMemo(() => {
     if (liveBadges && liveBadges.length > 0) {
       return liveBadges.map(b => ({
@@ -2237,10 +2264,9 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         description: lang === 'en' ? (b.description_en || b.description_fa) : b.description_fa,
       }));
     }
-    if (content?.badges?.length > 0) return content.badges;
     if (!badgesReady) return null;
     return FALLBACK_BADGES;
-  }, [liveBadges, content?.badges, badgesReady, lang]);
+  }, [liveBadges, badgesReady, lang]);
 
   const tabs = useMemo(() => [
     { id: "missions",    icon: iconOf(c.icon_tab_missions)    || "🎯", iconSize: iconSizeOf(c.icon_tab_missions,    18), text: c.tab_missions    || "مأموریت‌ها",
@@ -2251,18 +2277,36 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
       colorDark: iconColorOf(c.icon_tab_badges, 'color_dark'),      colorLight: iconColorOf(c.icon_tab_badges, 'color_light') },
   ], [c]);
 
+  const statIcons = useMemo(() => ({
+    xp:      { icon: iconOf(c.icon_stat_xp)      || "⚡", iconSize: iconSizeOf(c.icon_stat_xp,      20),
+               colorDark: iconColorOf(c.icon_stat_xp, 'color_dark'),      colorLight: iconColorOf(c.icon_stat_xp, 'color_light') },
+    scanned: { icon: iconOf(c.icon_stat_scanned) || "📍", iconSize: iconSizeOf(c.icon_stat_scanned, 20),
+               colorDark: iconColorOf(c.icon_stat_scanned, 'color_dark'), colorLight: iconColorOf(c.icon_stat_scanned, 'color_light') },
+    rank:    { icon: iconOf(c.icon_stat_rank)    || "🏅", iconSize: iconSizeOf(c.icon_stat_rank,    20),
+               colorDark: iconColorOf(c.icon_stat_rank, 'color_dark'),    colorLight: iconColorOf(c.icon_stat_rank, 'color_light') },
+  }), [c]);
+
+  const rankIcons = useMemo(() => ({
+    1: { icon: iconOf(c.icon_rank_1) || "🥇", iconSize: iconSizeOf(c.icon_rank_1, 18),
+         colorDark: iconColorOf(c.icon_rank_1, 'color_dark'), colorLight: iconColorOf(c.icon_rank_1, 'color_light') },
+    2: { icon: iconOf(c.icon_rank_2) || "🥈", iconSize: iconSizeOf(c.icon_rank_2, 18),
+         colorDark: iconColorOf(c.icon_rank_2, 'color_dark'), colorLight: iconColorOf(c.icon_rank_2, 'color_light') },
+    3: { icon: iconOf(c.icon_rank_3) || "🥉", iconSize: iconSizeOf(c.icon_rank_3, 18),
+         colorDark: iconColorOf(c.icon_rank_3, 'color_dark'), colorLight: iconColorOf(c.icon_rank_3, 'color_light') },
+  }), [c]);
+
   const labels = useMemo(() => ({
     userCardLabel:      c.user_card_label      || "کاربر",
     xpLabel:            c.xp_label             || "امتیاز فعلی",
     xpUnit:             c.xp_unit              || "XP",
     nextLevelPrefix:    c.next_level_prefix    || "تا سطح بعدی:",
     xpRemainingSuffix:  c.xp_remaining_suffix  || "XP مانده",
-    scanButtonLabel:    c.scan_button_label    || "اسکن QR غرفه",
     statXpLabel:        c.stat_xp_label        || "امتیاز امروز",
     statScannedLabel:   c.stat_scanned_label   || "غرفه اسکن‌شده",
     statRankLabel:      c.stat_rank_label      || "رتبه شما",
     viewListLabel:      c.view_list_label      || "مشاهده لیست",
-    missionsTodayLabel: c.missions_today_label || "مأموریت‌های امروز",
+    missionsTodayLabel: c.missions_today_label || "ماموریت‌های فعال",
+    missionsCompletedLabel: c.missions_completed_label || "ماموریت‌های انجام‌شده",
     boothsSheetTitle:   c.booths_sheet_title   || "غرفه‌های نمایشگاه",
   }), [c]);
 
@@ -2282,10 +2326,34 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     return { ...defaults, ...saved };
   }, [isDark, appearanceConfig]);
 
+  // Icon color fallback for missions with no per-mission icon_color_dark/light
+  // override. QuestIcon needs both dark+light simultaneously (it does its own
+  // live theme detection via DOM observation, independent of `isDark` here),
+  // so this reads the raw appearanceConfig prop directly rather than the
+  // theme-resolved effectiveAppearance above.
+  const missionIconColors = useMemo(() => ({
+    activeDark:     appearanceConfig?.dark?.active_mission_icon_color,
+    activeLight:    appearanceConfig?.light?.active_mission_icon_color,
+    completedDark:  appearanceConfig?.dark?.completed_mission_icon_color,
+    completedLight: appearanceConfig?.light?.completed_mission_icon_color,
+  }), [appearanceConfig]);
+
+  // Global sponsor row style -- switches color by the same isDark signal as
+  // effectiveAppearance above, but reads from questSettings (flat quest_settings
+  // fields), not appearanceConfig, since these aren't per-theme-nested.
+  const sponsorStyle = useMemo(() => ({
+    logoSize:  questSettings.sponsor_logo_size ?? SPONSOR_STYLE_DEFAULTS.sponsor_logo_size,
+    nameSize:  questSettings.sponsor_name_size ?? SPONSOR_STYLE_DEFAULTS.sponsor_name_size,
+    nameColor: isDark
+      ? (questSettings.sponsor_name_color_dark  || SPONSOR_STYLE_DEFAULTS.sponsor_name_color_dark)
+      : (questSettings.sponsor_name_color_light || SPONSOR_STYLE_DEFAULTS.sponsor_name_color_light),
+  }), [isDark, questSettings]);
+
   // Global, theme-independent — read straight off the SSR-provided
   // appearanceConfig prop (page.js), so it's available on first render with
   // no loading window and therefore no circle/no-circle flash.
   const showLevelCircle = appearanceConfig?.show_level_circle !== false;
+  const userPhotoSize = questSettings.user_photo_size ?? 32;
 
   const refreshQuest = useCallback(() => {
     // Stats included so XP/level (UserCard's useAnimatedCounter) update in the same
@@ -2359,21 +2427,45 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     };
   }, [refreshQuest]);
 
-  const missionList = useMemo(
-    () => (missions ?? []).map((m, i) => (
+  const { activeMissions, completedMissions } = useMemo(() => {
+    const all = missions ?? [];
+    const active = [];
+    const completed = [];
+    for (const m of all) {
+      (isMissionCompleted(m) ? completed : active).push(m);
+    }
+    return { activeMissions: active, completedMissions: completed };
+  }, [missions]);
+
+  const renderMissionCard = useCallback(
+    (m, i) => (
       <MissionCard
         key={m.id ?? i}
         mission={m}
         xpUnit={labels.xpUnit}
         lang={lang}
         logoBaseUrl={logoBaseUrl}
+        sponsorLogoSize={sponsorStyle.logoSize}
+        sponsorNameColor={sponsorStyle.nameColor}
+        sponsorNameSize={sponsorStyle.nameSize}
+        missionIconColors={missionIconColors}
         onQuizClick={m.mission_type === 'quiz' ? () => setOpenQuiz({ ...m, isBadge: false }) : undefined}
         onSurveyClick={m.mission_type === 'survey' ? () => setOpenSurvey({ ...m, isBadge: false }) : undefined}
         onSocialShareClick={m.mission_type === 'social_share' ? () => setOpenSocialShare({ ...m, isBadge: false }) : undefined}
         onFeaturedClick={m.mission_type === 'featured_booth' ? () => setOpenFeaturedPool(m) : undefined}
       />
-    )),
-    [missions, labels.xpUnit, lang, logoBaseUrl]
+    ),
+    [labels.xpUnit, lang, logoBaseUrl, sponsorStyle, missionIconColors]
+  );
+
+  const activeMissionList = useMemo(
+    () => activeMissions.map(renderMissionCard),
+    [activeMissions, renderMissionCard]
+  );
+
+  const completedMissionList = useMemo(
+    () => completedMissions.map(renderMissionCard),
+    [completedMissions, renderMissionCard]
   );
 
   const ea = effectiveAppearance;
@@ -2398,6 +2490,21 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         '--quest-active-border':  activeBorderColor,
         '--quest-active-bg':      hexToRgba(ea.active_border_color, 0.05)  || 'rgba(0,255,179,0.05)',
         '--quest-active-icon-bg': hexToRgba(ea.active_border_color, 0.15) || 'rgba(0,255,179,0.15)',
+        // Mission-row state colors -- distinct from --quest-active-* above,
+        // which means "achieved highlight" (leaderboard current-user row,
+        // earned badges) and is unrelated to mission completion state. These
+        // are the actual not-done/done mission-card colors. Unset -> exactly
+        // today's look: active falls to the same theme surface/border vars
+        // MissionCard always hardcoded; completed falls to the same
+        // active_border_color-derived tint/border it always used.
+        '--quest-mission-active-row-bg':        ea.active_mission_row_bg_color        || 'var(--surface-2)',
+        '--quest-mission-active-row-border':    ea.active_mission_row_border_color    || 'var(--border)',
+        '--quest-mission-active-icon-bg':       ea.active_mission_icon_bg_color       || 'var(--surface-2)',
+        '--quest-mission-active-icon-border':   ea.active_mission_icon_border_color   || 'transparent',
+        '--quest-mission-completed-row-bg':       ea.completed_mission_row_bg_color      || hexToRgba(ea.active_border_color, 0.05)  || 'rgba(0,255,179,0.05)',
+        '--quest-mission-completed-row-border':   ea.completed_mission_row_border_color  || activeBorderColor,
+        '--quest-mission-completed-icon-bg':      ea.completed_mission_icon_bg_color     || hexToRgba(ea.active_border_color, 0.15) || 'rgba(0,255,179,0.15)',
+        '--quest-mission-completed-icon-border':  ea.completed_mission_icon_border_color || 'transparent',
         '--quest-rotation-size': (ea.rotation_text_size  || 11) + 'px',
         '--quest-rotation-color': ea.rotation_text_color || 'var(--text-dim)',
       }}
@@ -2409,7 +2516,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
 
       <div className="relative max-w-md mx-auto px-4 pb-32">
 
-        <PageHeader title={title || c.title || "Booth Quest"} subtitle={subtitle || c.subtitle || ""} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={isHomeContext} showBack={showBack} />
+        <PageHeader title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={isHomeContext} showBack={showBack} />
 
         {questStats && levelThresholds ? (
           <UserCard
@@ -2422,13 +2529,54 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
             labels={labels}
             lang={lang}
             showLevelCircle={showLevelCircle}
+            profilePhotoUrl={profilePhotoUrl}
+            userPhotoSize={userPhotoSize}
           />
         ) : (
           <UserCardSkeleton />
         )}
 
-        <div className="flex justify-center my-8">
-          <ScanButton isDark={isDark} label={labels.scanButtonLabel} glowColor={ea.scan_glow_color} />
+        <div className="grid grid-cols-3 gap-3 my-8">
+          {(() => {
+            return [
+              { label: labels.statXpLabel,      value: questStats ? dNum(questStats.today_xp, lang) : "—",     unit: labels.xpUnit, ...statIcons.xp,      onClick: null,                      highlight: false },
+              { label: labels.statScannedLabel, value: questStats ? dNum(questStats.total_scans, lang) : "—", unit: "غرفه", ...statIcons.scanned, onClick: () => setBoothsOpen(true), highlight: true  },
+              { label: labels.statRankLabel,    value: currentUserRank ? dNum(currentUserRank, lang) : "—", unit: "", ...statIcons.rank,    onClick: null, highlight: false },
+            ];
+          })().map((stat) => (
+            <div
+              key={stat.label}
+              onClick={stat.onClick ?? undefined}
+              className={`backdrop-blur-xl border rounded-2xl p-3 text-center transition-colors ${
+                stat.highlight ? "cursor-pointer active:scale-95" : "border-[var(--border)] cursor-default"
+              } ${stat.onClick && !stat.highlight ? "cursor-pointer active:scale-95" : ""}`}
+              style={{
+                background: "var(--surface-2)",
+                borderColor: stat.highlight ? "var(--border-accent)" : undefined,
+              }}
+            >
+              <div className="flex items-center justify-center mb-1" style={{ minHeight: 24 }}>
+                {stat.icon && stat.icon.startsWith('/') ? (
+                  isSvgIconPath(stat.icon) ? (
+                    <QuestIcon path={stat.icon} size={stat.iconSize} colorDark={stat.colorDark} colorLight={stat.colorLight} />
+                  ) : (
+                    <img src={stat.icon} alt="" style={{ width: stat.iconSize, height: stat.iconSize, objectFit: 'contain' }} />
+                  )
+                ) : (
+                  <span style={{ fontSize: stat.iconSize, lineHeight: 1 }}>{stat.icon}</span>
+                )}
+              </div>
+              <div className="font-black text-lg leading-tight" style={{ color: "var(--accent)" }}>
+                {stat.value}
+                <span className="text-xs font-normal" style={{ color: "var(--accent)", opacity: 0.6 }}>
+                  {" "}{stat.unit}
+                </span>
+              </div>
+              <p className="text-[10px] mt-0.5 leading-5" style={{ color: "var(--text-dim)" }}>
+                {stat.label}
+              </p>
+            </div>
+          ))}
         </div>
 
         <div
@@ -2464,53 +2612,41 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
 
         {activeTab === "missions" && (
           <>
-            <div className="grid grid-cols-3 gap-3 mb-6">
-              {(() => {
-                return [
-                  { label: labels.statXpLabel,      value: questStats ? dNum(questStats.today_xp, lang) : "—",     unit: labels.xpUnit, icon: "⚡", onClick: null,                      highlight: false },
-                  { label: labels.statScannedLabel, value: questStats ? dNum(questStats.total_scans, lang) : "—", unit: "غرفه", icon: "📍", onClick: () => setBoothsOpen(true), highlight: true  },
-                  { label: labels.statRankLabel,    value: currentUserRank ? dNum(currentUserRank, lang) : "—", unit: "", icon: "🏅", onClick: null, highlight: false },
-                ];
-              })().map((stat) => (
-                <div
-                  key={stat.label}
-                  onClick={stat.onClick ?? undefined}
-                  className={`backdrop-blur-xl border rounded-2xl p-3 text-center transition-colors ${
-                    stat.highlight ? "cursor-pointer active:scale-95" : "border-[var(--border)] cursor-default"
-                  } ${stat.onClick && !stat.highlight ? "cursor-pointer active:scale-95" : ""}`}
-                  style={{
-                    background: "var(--surface-2)",
-                    borderColor: stat.highlight ? "var(--border-accent)" : undefined,
-                  }}
-                >
-                  <div className="text-xl mb-1">{stat.icon}</div>
-                  <div className="font-black text-lg leading-tight" style={{ color: "var(--accent)" }}>
-                    {stat.value}
-                    <span className="text-xs font-normal" style={{ color: "var(--accent)", opacity: 0.6 }}>
-                      {" "}{stat.unit}
-                    </span>
-                  </div>
-                  <p className="text-[10px] mt-0.5 leading-5" style={{ color: "var(--text-dim)" }}>
-                    {stat.label}
-                  </p>
-                  {stat.highlight && (
-                    <p className="text-[9px] mt-1.5 flex items-center justify-center gap-0.5"
-                      style={{ color: "var(--accent)", opacity: 0.5 }}>
-                      <span>{labels.viewListLabel}</span>
-                      <span>←</span>
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
             <p className="text-xs px-1 mb-3" style={{ color: "var(--text-dim)" }}>
               {labels.missionsTodayLabel}
             </p>
             <div className="space-y-3">
               {missions === null
                 ? Array.from({ length: 4 }).map((_, i) => <MissionCardSkeleton key={i} />)
-                : missionList}
+                : activeMissionList}
             </div>
+
+            {missions !== null && completedMissions.length > 0 && (
+              <div className="mt-6">
+                <button
+                  type="button"
+                  onClick={() => setCompletedMissionsOpen((open) => !open)}
+                  className="w-full flex items-center justify-between px-1 mb-3"
+                  aria-expanded={completedMissionsOpen}
+                >
+                  <span className="text-xs" style={{ color: "var(--text-dim)" }}>
+                    {labels.missionsCompletedLabel}
+                  </span>
+                  <span
+                    className="text-xs transition-transform"
+                    style={{
+                      color: "var(--text-dim)",
+                      transform: completedMissionsOpen ? "rotate(180deg)" : "rotate(0deg)",
+                    }}
+                  >
+                    ▾
+                  </span>
+                </button>
+                {completedMissionsOpen && (
+                  <div className="space-y-3">{completedMissionList}</div>
+                )}
+              </div>
+            )}
           </>
         )}
 
@@ -2521,6 +2657,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
               levelColors={levelColors}
               thresholds={levelThresholds}
               currentUserUuid={currentUserUuid}
+              rankIcons={rankIcons}
               xpUnit={labels.xpUnit}
               lang={lang}
               levels={liveLevels || []}

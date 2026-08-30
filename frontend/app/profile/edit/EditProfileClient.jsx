@@ -646,8 +646,8 @@ export default function EditProfileClient() {
         <div className="flex flex-col gap-4">
           {/* ── Profile photo ── */}
           <div className="flex flex-col items-center gap-2 py-2">
-            <label
-              className="relative cursor-pointer group"
+            <div
+              className="relative group"
               title={isEN ? "Change photo" : "تغییر تصویر"}
             >
               <div
@@ -683,16 +683,38 @@ export default function EditProfileClient() {
                   </svg>
                 </div>
               </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <label
+                htmlFor="profile-photo-camera-input"
+                className="text-xs px-3 py-2 rounded-xl font-bold whitespace-nowrap cursor-pointer"
+                style={{ background: "color-mix(in srgb, var(--accent) 10%, transparent)", color: "var(--accent)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
+              >
+                {isEN ? "Take Photo" : "گرفتن عکس"}
+              </label>
+              <label
+                htmlFor="profile-photo-gallery-input"
+                className="text-xs px-3 py-2 rounded-xl font-bold whitespace-nowrap cursor-pointer"
+                style={{ background: "color-mix(in srgb, var(--accent) 10%, transparent)", color: "var(--accent)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
+              >
+                {isEN ? "Choose from Gallery" : "انتخاب از گالری"}
+              </label>
               <input
+                id="profile-photo-camera-input"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={onFileChange}
+              />
+              <input
+                id="profile-photo-gallery-input"
                 type="file"
                 accept="image/*"
                 className="hidden"
                 onChange={onFileChange}
               />
-            </label>
-            <p className="text-xs" style={{ color: "var(--text-dim)" }}>
-              {isEN ? "Tap to change photo" : "برای تغییر تصویر ضربه بزنید"}
-            </p>
+            </div>
             {uploadingPhoto && (
               <p className="text-xs" style={{ color: "var(--accent)" }}>
                 {isEN ? "Uploading..." : "در حال آپلود..."}

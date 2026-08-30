@@ -5,13 +5,6 @@ import { query } from '@/lib/db';
 import { ensureFeaturedBoothState, getFeaturedBoothCountdown } from '@/lib/featuredBoothHelper';
 import { getCurrentEventId } from '@/lib/currentEvent';
 
-// Same default pair used across quest icon theming (AppearanceTab's
-// defaultText in iph-apn's app/quest/page.js) -- kept in sync by value,
-// not import, matching how this codebase already re-declares shared
-// per-theme defaults locally in each file that needs them.
-const QUEST_ICON_DEFAULT_COLOR_DARK = '#ffffff';
-const QUEST_ICON_DEFAULT_COLOR_LIGHT = '#0f172a';
-
 // Mission DEFINITIONS only (admin-curated: title/description/xp/icon/quiz
 // question/survey fields/etc, quest_content table) — cached. Every per-user
 // field (progress, quiz_attempted, survey_submitted, social_share_status,
@@ -259,8 +252,11 @@ export async function GET() {
           description_en: m.description_en,
           icon: m.icon_value,
           icon_size: m.icon_size ?? 36,
-          icon_color_dark: m.icon_color_dark ?? QUEST_ICON_DEFAULT_COLOR_DARK,
-          icon_color_light: m.icon_color_light ?? QUEST_ICON_DEFAULT_COLOR_LIGHT,
+          is_icon_color_unique: m.is_icon_color_unique === true,
+          icon_color_dark_active: m.icon_color_dark_active ?? null,
+          icon_color_dark_completed: m.icon_color_dark_completed ?? null,
+          icon_color_light_active: m.icon_color_light_active ?? null,
+          icon_color_light_completed: m.icon_color_light_completed ?? null,
           xpReward: m.xp_reward,
           featuredBoothBonusXp: m.mission_type === 'featured_booth' ? (m.featured_booth_bonus_xp ?? 500) : undefined,
           mission_type: m.mission_type,
