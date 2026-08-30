@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.iphexpo.app",
+    "sha256_cert_fingerprints": ["06:0B:C5:45:85:88:99:57:C3:2F:F1:B6:16:F5:02:AB:A0:B0:FA:A4:4D:E7:E2:63:EC:73:C7:44:9A:2E:02:37"]
+  }
+}]
