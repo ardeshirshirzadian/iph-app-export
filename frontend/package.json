@@ -4,13 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "node server.js",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "node server.js",
     "lint": "eslint"
   },
   "dependencies": {
     "@apollo/client": "^4.2.3",
-    "@zxing/browser": "^0.2.0",
+    "@serwist/next": "^9.5.12",
+    "@zxing/browser": "0.2.0",
     "@zxing/library": "^0.22.0",
     "bcrypt": "^6.0.0",
     "dotenv": "^17.4.2",
@@ -37,6 +38,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.7",
     "puppeteer-core": "^25.5.0",
+    "serwist": "^9.5.12",
     "tailwindcss": "^4"
   }
 }

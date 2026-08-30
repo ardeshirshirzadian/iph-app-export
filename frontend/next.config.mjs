@@ -1,5 +1,6 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
+import withSerwistInit from '@serwist/next';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -15,4 +16,13 @@ const nextConfig = {
   cacheMaxMemorySize: 0,
 };
 
-export default nextConfig;
+const withSerwist = withSerwistInit({
+  swSrc: 'app/sw.js',
+  swDest: 'public/sw.js',
+  disable: process.env.NODE_ENV === 'development',
+  // ServiceWorkerRegistrar.js already registers /sw.js manually; keep Serwist's
+  // own auto-registration off to avoid two competing registration paths.
+  register: false,
+});
+
+export default withSerwist(nextConfig);
