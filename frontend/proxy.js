@@ -305,6 +305,15 @@ export async function proxy(request) {
     return proceed()
   }
 
+  // Kick off the token-version check now, in parallel with the app-pages
+  // lookup below — it depends on neither resolvedEventId nor getAppPages'
+  // result, so there's no reason to pay for it strictly after them. Only
+  // fired past this point (userCookieRaw already known, all the earlier
+  // no-auth-needed paths already returned) so requests that never reach the
+  // token-version check below don't pay for an unused lookup.
+  const tokenVersionPromise = userCookieRaw ? getCurrentTokenVersion() : null
+  tokenVersionPromise?.catch(() => {}) // mark handled; real handling stays at the await below
+
   // ── App pages enforcement ─────────────────────────────────────────────────
   // Runs before auth so disabled pages 404 regardless of login state.
   // Table may not exist yet (before migration) — fail-open in that case.
@@ -344,7 +353,7 @@ export async function proxy(request) {
   // Token version check: if DB version is higher, admin triggered force-logout
   try {
     const userVersion = JSON.parse(userCookieRaw).tokenVersion ?? 1
-    const currentVersion = await getCurrentTokenVersion()
+    const currentVersion = await tokenVersionPromise
 
     if (userVersion < currentVersion) {
       const response = NextResponse.redirect(new URL('/login', request.url))

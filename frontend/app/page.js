@@ -122,28 +122,23 @@ export default async function Home() {
 
   switch (route) {
     case '/quest': {
-      let content = { main: {}, main_en: {}, missions: [], leaderboard: [], badges: [] };
-      try {
-        const rows = await getCachedQuestContentBlocks(currentEventId);
-        content = parseQuestBlocks(rows);
-      } catch (err) {
-        console.error('[home→quest] failed to load content blocks:', err.message);
-      }
-      let appearanceConfig = {};
-      try {
-        appearanceConfig = await getCachedQuestAppearanceConfig(currentEventId);
-      } catch {
-        // Fall back to defaults in QuestClient
-      }
-      let questSettings = {};
-      try {
-        questSettings = await getCachedQuestSettings(currentEventId);
-      } catch {
-        // Fall back to defaults in QuestClient
-      }
-      // getPageTitle()'s own DEFAULTS merge already resolves 'never
-      // customized' vs 'explicitly cleared' -- see app/quest/page.js.
-      const { title, subtitle, title_en, subtitle_en } = await getCachedQuestPageTitle(currentEventId);
+      // These 4 reads are independent of each other, so fetch concurrently
+      // instead of paying their round-trips one after another (same pattern
+      // as the `default` branch's Promise.all below, and app/quest/page.js).
+      const [content, appearanceConfig, questSettings, pageTitle] = await Promise.all([
+        getCachedQuestContentBlocks(currentEventId)
+          .then(parseQuestBlocks)
+          .catch((err) => {
+            console.error('[home→quest] failed to load content blocks:', err.message);
+            return { main: {}, main_en: {}, missions: [], leaderboard: [], badges: [] };
+          }),
+        getCachedQuestAppearanceConfig(currentEventId).catch(() => ({})),
+        getCachedQuestSettings(currentEventId).catch(() => ({})),
+        // getPageTitle()'s own DEFAULTS merge already resolves 'never
+        // customized' vs 'explicitly cleared' -- see app/quest/page.js.
+        getCachedQuestPageTitle(currentEventId),
+      ]);
+      const { title, subtitle, title_en, subtitle_en } = pageTitle;
       return <HomeVariantRenderer route="/quest" content={content} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} appearanceConfig={appearanceConfig} questSettings={questSettings} isHomeContext={false} showBack={false} />;
     }
 
