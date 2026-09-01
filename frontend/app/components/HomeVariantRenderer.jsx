@@ -15,6 +15,8 @@
 // WHICH branch's data to fetch; this component only decides which
 // already-resolved branch's JS to load and render.
 import dynamic from "next/dynamic";
+import { useLang } from "@/lib/useLang";
+import PushPopup from "./PushPopup";
 
 const HomeClient = dynamic(() => import("./HomeClient"));
 const QuestClient = dynamic(() => import("../quest/QuestClient"));
@@ -28,29 +30,55 @@ const GalleryClient = dynamic(() => import("../gallery/GalleryClient"));
 const NewsClient = dynamic(() => import("../news/NewsClient"));
 const ProfileClient = dynamic(() => import("../profile/ProfileClient"));
 
-export default function HomeVariantRenderer({ route, ...props }) {
+// The push-permission prompt is rendered here -- once, above the switch --
+// rather than inside HomeClient, so it shows on "/" no matter which home
+// variant an event has configured (previously it only ever appeared for the
+// default/services variant, since that was the only branch that rendered
+// it). `pushPrompt` is pulled off props so the variant components below
+// don't receive a prop they never asked for.
+export default function HomeVariantRenderer({ route, pushPrompt, ...props }) {
+  const { lang } = useLang();
+
+  let variant;
   switch (route) {
     case '/quest':
-      return <QuestClient {...props} />;
+      variant = <QuestClient {...props} />;
+      break;
     case '/companies':
-      return <CompaniesClient {...props} />;
+      variant = <CompaniesClient {...props} />;
+      break;
     case '/panels':
-      return <PanelsClient {...props} />;
+      variant = <PanelsClient {...props} />;
+      break;
     case '/badge':
-      return <BadgeClient {...props} />;
+      variant = <BadgeClient {...props} />;
+      break;
     case '/map':
-      return <MapClient {...props} />;
+      variant = <MapClient {...props} />;
+      break;
     case '/chat':
-      return <ChatClient {...props} />;
+      variant = <ChatClient {...props} />;
+      break;
     case '/notifications':
-      return <NotificationsClient {...props} />;
+      variant = <NotificationsClient {...props} />;
+      break;
     case '/gallery':
-      return <GalleryClient {...props} />;
+      variant = <GalleryClient {...props} />;
+      break;
     case '/news':
-      return <NewsClient {...props} />;
+      variant = <NewsClient {...props} />;
+      break;
     case '/profile':
-      return <ProfileClient {...props} />;
+      variant = <ProfileClient {...props} />;
+      break;
     default:
-      return <HomeClient {...props} />;
+      variant = <HomeClient {...props} />;
   }
+
+  return (
+    <>
+      {variant}
+      <PushPopup pushPrompt={pushPrompt} lang={lang} />
+    </>
+  );
 }

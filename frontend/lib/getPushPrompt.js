@@ -11,6 +11,8 @@ const DEFAULT = {
   description: 'با فعال‌سازی، اطلاعیه‌های مهم نمایشگاه را حتی در پس‌زمینه دریافت کنید.',
   confirm_button: 'فعال‌سازی',
   dismiss_button: 'بعداً',
+  icon_color_dark: '',
+  icon_color_light: '',
 };
 
 // eventId: pass explicitly from inside an unstable_cache-wrapped call site --

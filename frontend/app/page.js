@@ -115,7 +115,14 @@ const getCachedHomeContentRoute = unstable_cache(
 
 export default async function Home() {
   const currentEventId = await getCurrentEventId();
-  const route = await getCachedHomeContentRoute(currentEventId);
+  // Fetched unconditionally (not just inside the `default` branch below) so
+  // the push-permission prompt shows on "/" no matter which home variant an
+  // event has configured -- see HomeVariantRenderer.jsx for where it's
+  // actually rendered.
+  const [route, pushPrompt] = await Promise.all([
+    getCachedHomeContentRoute(currentEventId),
+    getCachedPushPrompt(currentEventId),
+  ]);
 
   // Each case replicates the exact server-side logic from its own page.js,
   // then renders that page's Client Component directly. The URL stays "/".
@@ -139,17 +146,17 @@ export default async function Home() {
         getCachedQuestPageTitle(currentEventId),
       ]);
       const { title, subtitle, title_en, subtitle_en } = pageTitle;
-      return <HomeVariantRenderer route="/quest" content={content} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} appearanceConfig={appearanceConfig} questSettings={questSettings} isHomeContext={false} showBack={false} />;
+      return <HomeVariantRenderer route="/quest" pushPrompt={pushPrompt} content={content} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} appearanceConfig={appearanceConfig} questSettings={questSettings} isHomeContext={false} showBack={false} />;
     }
 
     case '/companies': {
       const { title, subtitle, title_en, subtitle_en } = await getCachedCompaniesPageTitle(currentEventId);
-      return <HomeVariantRenderer route="/companies" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
+      return <HomeVariantRenderer route="/companies" pushPrompt={pushPrompt} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
     }
 
     case '/panels': {
       const { title, subtitle, title_en, subtitle_en } = await getCachedPanelsPageTitle(currentEventId);
-      return <HomeVariantRenderer route="/panels" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
+      return <HomeVariantRenderer route="/panels" pushPrompt={pushPrompt} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
     }
 
     case '/badge': {
@@ -157,6 +164,7 @@ export default async function Home() {
       return (
         <HomeVariantRenderer
           route="/badge"
+          pushPrompt={pushPrompt}
           title={settings.title_fa}
           subtitle={settings.subtitle_fa}
           title_en={settings.title_en}
@@ -170,42 +178,41 @@ export default async function Home() {
 
     case '/map': {
       const { title, subtitle, title_en, subtitle_en } = await getCachedMapPageTitle(currentEventId);
-      return <HomeVariantRenderer route="/map" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
+      return <HomeVariantRenderer route="/map" pushPrompt={pushPrompt} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
     }
 
     case '/chat': {
       const { title, subtitle, title_en, subtitle_en } = await getCachedChatPageTitle(currentEventId);
-      return <HomeVariantRenderer route="/chat" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
+      return <HomeVariantRenderer route="/chat" pushPrompt={pushPrompt} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
     }
 
     case '/notifications': {
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('notifications', currentEventId);
-      return <HomeVariantRenderer route="/notifications" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
+      return <HomeVariantRenderer route="/notifications" pushPrompt={pushPrompt} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
     }
 
     case '/gallery': {
       const { title, subtitle, title_en, subtitle_en } = await getCachedGalleryPageTitle(currentEventId);
-      return <HomeVariantRenderer route="/gallery" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
+      return <HomeVariantRenderer route="/gallery" pushPrompt={pushPrompt} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
     }
 
     case '/news': {
       const { title, subtitle, title_en, subtitle_en } = await getCachedNewsPageTitle(currentEventId);
-      return <HomeVariantRenderer route="/news" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
+      return <HomeVariantRenderer route="/news" pushPrompt={pushPrompt} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
     }
 
     case '/profile': {
       const { title, subtitle, title_en, subtitle_en } = await getPageTitle('profile', currentEventId);
-      return <HomeVariantRenderer route="/profile" title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
+      return <HomeVariantRenderer route="/profile" pushPrompt={pushPrompt} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={false} showBack={false} />;
     }
 
     default: {
       // Default (empty setting): render the services grid exactly as before.
-      const [services, banners, defaultNotifications, welcomeToast, pushPrompt] = await Promise.all([
+      const [services, banners, defaultNotifications, welcomeToast] = await Promise.all([
         getCachedActiveServices(currentEventId),
         getCachedActiveBanners(currentEventId),
         getCachedDefaultNotifications(currentEventId),
         getCachedWelcomeToast(currentEventId),
-        getCachedPushPrompt(currentEventId),
       ]);
       return (
         <HomeVariantRenderer
