@@ -10,7 +10,14 @@ export default function SettingsClient({ title, subtitle, title_en, subtitle_en,
   const [isDark, setIsDark] = useState(true);
   const { lang, switchLang, isRTL, langLocked } = useLang();
   const [pushPermission, setPushPermission] = useState('loading');
-  const [pushActionStatus, setPushActionStatus] = useState('idle'); // idle | loading | done | error
+  // idle | loading | done | permission-denied | subscribe-error --
+  // permission-denied and subscribe-error are surfaced as distinct copy
+  // below: one means the browser itself blocked the prompt, the other means
+  // permission was granted fine but our own subscribe call failed (missing
+  // VAPID key, server error, etc) -- telling the user to go check browser
+  // settings for the latter would be actively wrong.
+  const [pushActionStatus, setPushActionStatus] = useState('idle');
+  const [showPushHelp, setShowPushHelp] = useState(false);
 
   useEffect(() => {
     queueMicrotask(() => setIsDark(localStorage.getItem("iph-theme") !== "light"));
@@ -30,18 +37,27 @@ export default function SettingsClient({ title, subtitle, title_en, subtitle_en,
     const perm = await requestNotificationPermission();
     if (perm !== 'granted') {
       setPushPermission(perm);
-      setPushActionStatus('error');
+      setPushActionStatus('permission-denied');
       return;
     }
+    setPushPermission('granted');
     const result = await subscribeToPush();
     if (result.ok) {
-      setPushPermission('granted');
       setPushActionStatus('done');
       localStorage.setItem('push_banner_dismissed', '1');
       localStorage.removeItem('show_push_popup');
     } else {
-      setPushActionStatus('error');
+      setPushActionStatus('subscribe-error');
     }
+  }
+
+  // For the "did you just fix it in browser settings?" case -- re-reads the
+  // live value instead of waiting for another full requestPermission() round
+  // trip (which browsers won't even show a prompt for once denied anyway).
+  function handleCheckPushAgain() {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    setPushPermission(Notification.permission);
+    if (Notification.permission !== 'denied') setPushActionStatus('idle');
   }
 
   function toggleTheme() {
@@ -157,18 +173,18 @@ export default function SettingsClient({ title, subtitle, title_en, subtitle_en,
                   <p className="font-medium text-sm leading-7" style={{ color: "var(--text)" }}>
                     {t(lang, "push_notifications_label")}
                   </p>
-                  <p className="text-xs leading-relaxed" style={{ color: pushPermission === 'granted' ? "var(--accent)" : "var(--text-dim)" }}>
-                    {pushPermission === 'granted'
+                  <p className="text-xs leading-relaxed" style={{ color: (pushPermission === 'granted' && pushActionStatus !== 'subscribe-error') ? "var(--accent)" : "var(--text-dim)" }}>
+                    {pushPermission === 'granted' && pushActionStatus !== 'subscribe-error'
                       ? t(lang, 'push_done')
                       : pushPermission === 'denied'
                       ? t(lang, 'push_denied')
-                      : pushActionStatus === 'error'
-                      ? t(lang, 'push_denied')
+                      : pushActionStatus === 'subscribe-error'
+                      ? t(lang, 'push_subscribe_error')
                       : ''}
                   </p>
                 </div>
 
-                {pushPermission === 'default' && pushActionStatus !== 'done' && (
+                {(pushPermission === 'default' || pushActionStatus === 'subscribe-error') && pushActionStatus !== 'done' && (
                   <button
                     onClick={handleEnablePush}
                     disabled={pushActionStatus === 'loading'}
@@ -183,10 +199,45 @@ export default function SettingsClient({ title, subtitle, title_en, subtitle_en,
                   </button>
                 )}
 
-                {(pushPermission === 'granted' || pushActionStatus === 'done') && (
+                {((pushPermission === 'granted' && pushActionStatus !== 'subscribe-error') || pushActionStatus === 'done') && (
                   <span className="flex-shrink-0 text-lg" style={{ color: "var(--accent)" }}>✓</span>
                 )}
               </div>
+
+              {pushPermission === 'denied' && (
+                <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleCheckPushAgain}
+                      className="text-xs font-bold rounded-xl px-3 py-1.5 transition-opacity"
+                      style={{ background: "var(--surface-2)", color: "var(--text)" }}
+                    >
+                      {t(lang, 'push_check_again')}
+                    </button>
+                    <button
+                      onClick={() => setShowPushHelp((v) => !v)}
+                      className="text-xs font-medium"
+                      style={{ color: "var(--accent)" }}
+                    >
+                      {t(lang, 'push_how_label')} {showPushHelp ? '▲' : '▼'}
+                    </button>
+                  </div>
+
+                  {showPushHelp && (
+                    <div className="mt-3 flex flex-col gap-2">
+                      <p className="text-xs leading-relaxed" style={{ color: "var(--text-dim)" }}>
+                        {t(lang, 'push_guide_chrome')}
+                      </p>
+                      <p className="text-xs leading-relaxed" style={{ color: "var(--text-dim)" }}>
+                        {t(lang, 'push_guide_safari_mac')}
+                      </p>
+                      <p className="text-xs leading-relaxed" style={{ color: "var(--text-dim)" }}>
+                        {t(lang, 'push_guide_safari_ios')}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
