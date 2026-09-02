@@ -30,3 +30,6 @@ cache/
 *.save
 *.save.*
 *.code-workspace
+
+# graphify knowledge-graph output (regenerable via graphify extract/update)
+graphify-out/
