@@ -42,18 +42,36 @@ No automated test suite exists. Verify changes by running the dev server and tes
 
 ```
 Browser → proxy.js (Next.js middleware, Edge Runtime)
+             ├─ resolve event: hostname → events.id (lib/domainEventMap.js)
+             │                 attaches x-resolved-event-id header
              ├─ /login         → public, no auth
              ├─ /apn/*         → admin JWT check via adminAuth.js
              └─ everything else → iph_access_token cookie check
                                   + token version DB check (force-logout)
         → server.js (custom HTTP server wraps Next.js + attaches Socket.IO)
         → Next.js App Router (page.js + XxxClient.jsx)
+             reads event id via lib/currentEvent.js → getCurrentEventId()
 ```
 
 **Key files:**
 - `proxy.js` — this IS the Next.js middleware (not named `middleware.js`). Handles user auth, admin auth, and token version–based force-logout.
 - `server.js` — replaces `next start`. Exposes `globalThis._io` so API routes can emit Socket.IO events to connected clients.
 - `app/layout.js` — root Server Component with `force-dynamic`; reads DB for font, theme colors, and app identity on every request.
+- `lib/domainEventMap.js` — resolves hostname → local `events.id`, Redis-cached across this app's 3 replicas, fail-open to a direct DB query.
+- `lib/currentEvent.js` — `getCurrentEventId()`, reads the `x-resolved-event-id` header via Next's `headers()`. Must be called outside any `unstable_cache`-wrapped function.
+
+### Multi-event / multi-tenant architecture
+
+This deployment serves **two active events** from one shared codebase, distinguished by hostname (source of truth: the `events` table, `status = 'active'` rows; confirmed live 2026-09-02):
+
+| event id | name           | domain                 |
+|----------|----------------|-------------------------|
+| 1        | IranPharma     | app.iphexpo.com        |
+| 2        | Iran Cosmetica | app.irancosmetica.com  |
+
+- **Resolution:** on every request, `proxy.js` resolves the hostname to an `events.id` via `lib/domainEventMap.js` and attaches it as the `x-resolved-event-id` header. Server Components/routes then read it with `lib/currentEvent.js` → `getCurrentEventId()`.
+- **Why `force-dynamic` is (almost) everywhere:** calling `headers()` in the render path is itself what forces dynamic rendering on nearly every route in this app. This is load-bearing multi-tenant infrastructure, not a stray/removable read — don't "optimize" a page into static/cached rendering without accounting for this dependency first.
+- **No per-event branching:** the codebase does NOT fork logic per event — there is no `if (eventId === 1) {...}` special-casing anywhere. It's a single parameterized code path everywhere (`WHERE event_id = $1`), with both tenants sharing identical functions/routes and differing only in which DB rows they read. Keep this in mind when reasoning about the codebase's structure, including for any future static-analysis/knowledge-graph tooling — there is one implementation to map, not two divergent ones per tenant.
 
 ### Page pattern (used everywhere)
 
@@ -76,7 +94,7 @@ app/[page]/XxxClient.jsx    ← Client Component: all interactivity
 
 ### Admin panel
 
-Lives at `app/apn/*` — same Next.js codebase, served on `appapn.iphexpo.com/apn`. Adding a new admin section requires exactly two steps:
+Lives at `app/apn/*` — same Next.js codebase, served on `appapn.rasayesh.com/apn`. Adding a new admin section requires exactly two steps:
 1. Add one entry to `lib/adminSections.js` → `ADMIN_SECTIONS`.
 2. Add `/api/admin/[prefix]` mapping to `API_SECTION_PREFIXES` in `proxy.js`.
 
@@ -238,7 +256,7 @@ Pages: `/quest` (hub) and `/quest/scan` (QR scanner via `@zxing/browser`).
 QR format: `IPH-BOOTH-{boothId}`. Quest content (missions, leaderboard, badges) is DB-driven via `quest_content_blocks` table, admin-editable at `/apn/quest`.
 
 ## Testing Rule
-- NEVER attempt to access live URLs (app.iphexpo.com, appapn.iphexpo.com) 
+- NEVER attempt to access live URLs (app.iphexpo.com, appapn.rasayesh.com) 
   for testing — all routes require authentication and return 403
 - NEVER use browser/curl to test the live app
 - Make code changes directly to files
@@ -247,6 +265,6 @@ QR format: `IPH-BOOTH-{boothId}`. Quest content (missions, leaderboard, badges) 
 ## Local Testing
 - To test the app locally from the server, use:
   curl http://localhost:3002/login (bypasses CDN and auth)
-- NEVER access app.iphexpo.com or appapn.iphexpo.com from the server
+- NEVER access app.iphexpo.com or appapn.rasayesh.com from the server
   (CDN blocks server's own IP)
 - For page content testing: curl http://localhost:3002/[path]
