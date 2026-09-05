@@ -229,7 +229,7 @@ export default function CartClient() {
 
   return (
     <div
-      className="min-h-screen pb-28"
+      className="min-h-dvh pb-28"
       style={{ background: "var(--bg)" }}
       dir={isRTL ? "rtl" : "ltr"}
       lang={lang}

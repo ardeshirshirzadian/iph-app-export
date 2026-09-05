@@ -270,7 +270,7 @@ export default function ProfileUpdateClient() {
 
   return (
     <div
-      className="min-h-screen pb-28"
+      className="min-h-dvh pb-28"
       style={{ background: "var(--bg)" }}
       dir={dir}
       lang={lang}

@@ -146,7 +146,7 @@ export default function CompanyDetailClient({ slug }) {
   if (loading) {
     return (
       <div
-        className="min-h-screen pb-28"
+        className="min-h-dvh pb-28"
         style={{ background: "var(--bg)", color: "var(--text)" }}
         dir={isRTL ? "rtl" : "ltr"}
         lang={lang}
@@ -171,7 +171,7 @@ export default function CompanyDetailClient({ slug }) {
   if (notFoundState) {
     return (
       <div
-        className="min-h-screen pb-28"
+        className="min-h-dvh pb-28"
         style={{ background: "var(--bg)", color: "var(--text)" }}
         dir={isRTL ? "rtl" : "ltr"}
         lang={lang}
@@ -219,7 +219,7 @@ export default function CompanyDetailClient({ slug }) {
 
   return (
     <div
-      className="min-h-screen pb-28"
+      className="min-h-dvh pb-28"
       style={{ background: "var(--bg)", color: "var(--text)" }}
       dir={isRTL ? "rtl" : "ltr"}
       lang={lang}

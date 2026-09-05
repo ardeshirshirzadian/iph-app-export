@@ -347,7 +347,7 @@ export default function HomeClient({ services, banners = [], defaultNotification
     <main
       dir={isRTL ? "rtl" : "ltr"}
       lang={lang}
-      className="min-h-screen pb-28"
+      className="min-h-dvh pb-28"
       style={{ background: "var(--bg)", color: "var(--text)" }}
       onTouchStart={onPullStart}
       onTouchMove={onPullMove}

@@ -203,7 +203,7 @@ export default function BookClient({ title, subtitle, title_en, subtitle_en }) {
 
   return (
     <div
-      className="min-h-screen pb-28"
+      className="min-h-dvh pb-28"
       style={{ background: "var(--bg)" }}
       dir={isRTL ? "rtl" : "ltr"}
       lang={lang}

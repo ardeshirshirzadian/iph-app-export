@@ -2475,7 +2475,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     <main
       dir={isRTL ? "rtl" : "ltr"}
       lang={lang}
-      className="min-h-screen"
+      className="min-h-dvh"
       style={{
         background: "var(--bg)",
         color: "var(--text)",

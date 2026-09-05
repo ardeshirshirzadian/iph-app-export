@@ -434,7 +434,7 @@ export default function PanelsClient({ title, subtitle, title_en, subtitle_en, i
 
   return (
     <div
-      className="min-h-screen pb-28"
+      className="min-h-dvh pb-28"
       style={{ background: "var(--bg)" }}
       dir={isRTL ? "rtl" : "ltr"}
       lang={lang}

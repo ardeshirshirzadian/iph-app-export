@@ -576,7 +576,7 @@ export default function EditProfileClient() {
     <main
       dir={dir}
       lang={lang}
-      className="min-h-screen"
+      className="min-h-dvh"
       style={{ background: "var(--bg)", color: "var(--text)" }}
     >
       {/* ── Crop modal (full-screen overlay) ───────────────────────────── */}

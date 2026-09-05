@@ -150,7 +150,7 @@ export default function NewsClient({ title, subtitle, title_en, subtitle_en, isH
     <main
       dir={isRTL ? "rtl" : "ltr"}
       lang={lang}
-      className="min-h-screen pb-32"
+      className="min-h-dvh pb-32"
       style={{ background: "var(--bg)", color: "var(--text)" }}
     >
       <div className="dark-only fixed inset-0 pointer-events-none overflow-hidden">
