@@ -477,7 +477,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
     <main
       dir={dir}
       lang={lang}
-      className="min-h-screen flex items-center justify-center px-4"
+      className="min-h-dvh flex items-start justify-center px-4 pt-[12dvh] pb-10"
       style={{ background: "var(--bg)", color: "var(--text)" }}
     >
       {/* Background glows */}
@@ -502,7 +502,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
             // or letterboxed into a forced square.
             const height = parseInt(settings.logo_height ?? "80", 10) || 80;
             return (
-              <div className="mx-auto mb-4 flex items-center justify-center">
+              <div className="mx-auto mb-8 flex items-center justify-center">
                 {logoSrc && (
                   <img
                     src={logoSrc}
