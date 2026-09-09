@@ -1138,6 +1138,7 @@ function repeatRuleLabel(booth, lang) {
 function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedIds, boothsLoading, logoBaseUrl, xpUnit, featuredBoothPoolIds }) {
   const [visible, setVisible] = useState(false);
   const now = useCooldownTick();
+  const isEN = lang === 'en';
 
   useEffect(() => {
     if (open) {
@@ -1232,9 +1233,14 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
                       {name}
                     </span>
                     {booth.is_sponsor && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
-                        style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>
-                        ویژه
+                      <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                        style={{ background: booth.sponsor_color || '#f59e0b', color: '#1c1007' }}>
+                        {booth.sponsor_icon?.startsWith('<svg')
+                          ? <span dangerouslySetInnerHTML={{ __html: booth.sponsor_icon }} style={{ width: 12, height: 12, display: 'inline-flex', alignItems: 'center', verticalAlign: 'middle', flexShrink: 0, overflow: 'hidden' }} />
+                          : (booth.sponsor_icon || '🌟')}{' '}
+                        {isEN
+                          ? (booth.sponsor_title_en || booth.sponsor_level || 'Sponsor')
+                          : (booth.sponsor_level || 'حامی')}
                       </span>
                     )}
                   </div>

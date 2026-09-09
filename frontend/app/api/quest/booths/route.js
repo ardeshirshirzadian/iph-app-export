@@ -18,7 +18,8 @@ const getCachedBoothDefinitions = unstable_cache(
     // without needing a separate local event_id param on this cached fn.
     const companiesResult = await query(
       `SELECT company_id AS id, brand_name_fa, brand_name_en, hall_name, booth_no,
-              booth_uuid, logo, is_sponsor, booth_xp,
+              booth_uuid, logo, is_sponsor, sponsor_level, sponsor_title_en,
+              sponsor_color, sponsor_icon, booth_xp,
               repeatable_scan, repeatable_scan_hours,
               repeatable_start_hour, repeatable_end_hour
        FROM companies_placement
