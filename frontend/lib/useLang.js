@@ -30,6 +30,13 @@ export function useLang() {
   function switchLang(newLang) {
     if (langLocked) return;
     localStorage.setItem('iph-lang', newLang);
+    // Mirror into a plain host cookie (path=/, no Domain) so the server
+    // (app/page.js) can read the language to pick the fa/en home-page
+    // variant. Purely additive -- localStorage above stays the source of
+    // truth for every client-side language decision.
+    try {
+      document.cookie = `iph-lang=${newLang}; path=/; max-age=31536000; samesite=lax`;
+    } catch {}
     setLang(newLang);
     window.dispatchEvent(new StorageEvent('storage', { key: 'iph-lang', newValue: newLang }));
   }

@@ -1,4 +1,5 @@
 import { unstable_cache } from 'next/cache';
+import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { getCurrentEventId } from '@/lib/currentEvent';
 import { getPageTitle } from '@/lib/getPageTitles';
@@ -96,13 +97,24 @@ const getCachedPushPrompt = unstable_cache(getPushPrompt, ['home-push-prompt'], 
 // on-demand revalidateTag() call wired into iph-apn's home-page save handler.
 // 300s is a safety-net ceiling only, same pattern as app/settings/page.js.
 const getCachedHomeContentRoute = unstable_cache(
-  async (eventId) => {
+  async (eventId, lang) => {
     try {
       const result = await query(
         "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'home_page_config'",
         [eventId]
       );
-      return result.rows[0]?.value?.redirect_path || '';
+      const cfg = result.rows[0]?.value ?? {};
+      const fa = cfg.redirect_path || '';
+      const en = cfg.redirect_path_en || '';
+      // Opt-in per event: diverge ONLY when a distinct English home is set.
+      // Both currently-live events have no redirect_path_en, so this returns
+      // `fa` unconditionally for them -- byte-identical to before this change.
+      // `lang` is passed in as an argument (never read via cookies() in here,
+      // per lib/currentEvent.js's unstable_cache rule); it also makes Next
+      // key the fa and en results as separate cache entries, both carrying
+      // the 'home-page-config' tag so one admin save busts both.
+      if (lang === 'en' && en && en !== fa) return en;
+      return fa;
     } catch {
       return '';
     }
@@ -115,12 +127,16 @@ const getCachedHomeContentRoute = unstable_cache(
 
 export default async function Home() {
   const currentEventId = await getCurrentEventId();
+  // Read the language cookie here in request scope (never inside the
+  // unstable_cache fn above). Absent/anything-but-'en' => 'fa', so a
+  // visitor with no cookie yet is treated exactly as today.
+  const lang = (await cookies()).get('iph-lang')?.value === 'en' ? 'en' : 'fa';
   // Fetched unconditionally (not just inside the `default` branch below) so
   // the push-permission prompt shows on "/" no matter which home variant an
   // event has configured -- see HomeVariantRenderer.jsx for where it's
   // actually rendered.
   const [route, pushPrompt] = await Promise.all([
-    getCachedHomeContentRoute(currentEventId),
+    getCachedHomeContentRoute(currentEventId, lang),
     getCachedPushPrompt(currentEventId),
   ]);
 
