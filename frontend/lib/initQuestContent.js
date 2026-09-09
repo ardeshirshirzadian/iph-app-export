@@ -142,5 +142,21 @@ export async function ensureQuestContentTable(eventId) {
     }
   }
 
+  // booths_search_placeholder — search bar atop the Quest booth list. Added
+  // after the initial seed, and unlike the 5-tuple SEED_ROWS it also needs a
+  // content_en seed, so it's inserted here (idempotent) for both fresh and
+  // pre-existing events rather than in the loop / else branch above.
+  const { rows: hasBoothsSearch } = await query(
+    "SELECT id FROM quest_content_blocks WHERE event_id = $1 AND section = 'main' AND block_key = 'booths_search_placeholder'",
+    [eventId]
+  );
+  if (hasBoothsSearch.length === 0) {
+    await query(
+      `INSERT INTO quest_content_blocks (section, block_type, block_key, content, content_en, sort_order, event_id)
+       VALUES ('main', 'text', 'booths_search_placeholder', 'جستجوی غرفه...', 'Search booths...', 131, $1)`,
+      [eventId]
+    );
+  }
+
   globalThis._questContentInitializedEvents.add(eventId);
 }

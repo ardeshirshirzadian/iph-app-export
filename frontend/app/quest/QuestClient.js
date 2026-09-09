@@ -8,7 +8,7 @@ import BottomNav from "../components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { useAttendee } from "../components/AttendeeProvider";
 import { useLang } from "@/lib/useLang";
-import { toPersianDigits } from "@/lib/utils";
+import { toPersianDigits, toEnglishDigits } from "@/lib/utils";
 
 const RASAYESH_BASE = "https://api.rasayesh.com/";
 
@@ -1135,8 +1135,9 @@ function repeatRuleLabel(booth, lang) {
   return `🔄 Every ${hours}h (${startH}:00–${endH}:00)`;
 }
 
-function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedIds, boothsLoading, logoBaseUrl, xpUnit, featuredBoothPoolIds }) {
+function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedIds, boothsLoading, logoBaseUrl, xpUnit, searchPlaceholder, featuredBoothPoolIds }) {
   const [visible, setVisible] = useState(false);
+  const [search, setSearch] = useState('');
   const now = useCooldownTick();
   const isEN = lang === 'en';
 
@@ -1148,6 +1149,21 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
       setVisible(false);
     }
   }, [open]);
+
+  // Instant client-side filter over the already-local booth list (~300 max),
+  // so no debounce. Matches brand name (fa + en), hall and booth number;
+  // digits in both the query and the data are normalised to ASCII so a
+  // Persian-digit query ("۱۴۸") still matches an ASCII booth_no ("148").
+  const filteredBooths = useMemo(() => {
+    const needle = toEnglishDigits(search.trim().toLowerCase());
+    if (!needle) return booths;
+    return booths.filter((b) => {
+      const haystack = toEnglishDigits(
+        `${b.brand_name_fa || ''} ${b.brand_name_en || ''} ${b.hall_name || ''} ${b.booth_no || ''}`.toLowerCase()
+      );
+      return haystack.includes(needle);
+    });
+  }, [booths, search]);
 
   if (!open && !visible) return null;
 
@@ -1188,6 +1204,23 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
             </svg>
           </button>
         </div>
+        {!boothsLoading && booths.length > 0 && (
+          <div className="px-4 pt-3 pb-1">
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={searchPlaceholder || (lang === 'fa' ? 'جستجوی غرفه...' : 'Search booths...')}
+              className="w-full rounded-2xl px-4 py-3 text-sm outline-none"
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                color: "var(--text)",
+                fontFamily: "inherit",
+              }}
+            />
+          </div>
+        )}
         <div className="overflow-y-auto max-h-[65vh] px-4 py-3 space-y-2 pb-8">
           {boothsLoading ? (
             Array.from({ length: 5 }).map((_, i) => (
@@ -1204,7 +1237,11 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
             <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
               هنوز غرفه‌ای ثبت نشده
             </div>
-          ) : booths.map((booth) => {
+          ) : filteredBooths.length === 0 ? (
+            <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
+              {lang === 'fa' ? 'هیچ غرفه‌ای با این جستجو پیدا نشد' : 'No booths match your search'}
+            </div>
+          ) : filteredBooths.map((booth) => {
             const scanned = scannedIds.has(booth.id);
             const logoUrl = getLogoUrl(booth.logo, logoBaseUrl);
             const name = lang === 'fa'
@@ -2314,7 +2351,8 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     missionsTodayLabel: c.missions_today_label || "ماموریت‌های فعال",
     missionsCompletedLabel: c.missions_completed_label || "ماموریت‌های انجام‌شده",
     boothsSheetTitle:   c.booths_sheet_title   || "غرفه‌های نمایشگاه",
-  }), [c]);
+    boothsSearchPlaceholder: c.booths_search_placeholder || (lang === 'fa' ? "جستجوی غرفه..." : "Search booths..."),
+  }), [c, lang]);
 
   useEffect(() => {
     const check = () => setIsDark(!document.documentElement.classList.contains("light"));
@@ -2704,6 +2742,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         boothsLoading={boothsLoading}
         logoBaseUrl={logoBaseUrl}
         xpUnit={labels.xpUnit}
+        searchPlaceholder={labels.boothsSearchPlaceholder}
         featuredBoothPoolIds={featuredBoothPoolIds}
       />
 
