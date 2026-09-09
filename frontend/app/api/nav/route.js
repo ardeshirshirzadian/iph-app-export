@@ -10,9 +10,10 @@ const getCachedNavItems = unstable_cache(
   async (eventId) => {
     await ensureBottomNavTable(eventId);
     const result = await query(
-      `SELECT id, title_fa, title_en, icon_type, icon_path, icon_size, href, is_coming_soon, coming_soon_badge_fa, coming_soon_badge_en, coming_soon_no_badge
+      `SELECT id, title_fa, title_en, icon_type, icon_path, icon_size, href, is_active, sort_order, is_coming_soon, coming_soon_badge_fa, coming_soon_badge_en, coming_soon_no_badge,
+              is_active_en, sort_order_en, href_en, icon_type_en, icon_path_en, icon_size_en, is_coming_soon_en
        FROM bottom_nav_items
-       WHERE is_active = true AND event_id = $1
+       WHERE (is_active = true OR is_active_en = true) AND event_id = $1
        ORDER BY sort_order ASC, id ASC`,
       [eventId]
     );

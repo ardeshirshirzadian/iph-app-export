@@ -52,6 +52,13 @@ export async function ensureBottomNavTable(eventId) {
   await query(`ALTER TABLE bottom_nav_items ADD COLUMN IF NOT EXISTS coming_soon_badge_fa TEXT`);
   await query(`ALTER TABLE bottom_nav_items ADD COLUMN IF NOT EXISTS coming_soon_badge_en TEXT`);
   await query(`ALTER TABLE bottom_nav_items ADD COLUMN IF NOT EXISTS coming_soon_no_badge BOOLEAN DEFAULT false`);
+  await query(`ALTER TABLE bottom_nav_items ADD COLUMN IF NOT EXISTS is_active_en BOOLEAN`);
+  await query(`ALTER TABLE bottom_nav_items ADD COLUMN IF NOT EXISTS sort_order_en INTEGER`);
+  await query(`ALTER TABLE bottom_nav_items ADD COLUMN IF NOT EXISTS href_en VARCHAR(200)`);
+  await query(`ALTER TABLE bottom_nav_items ADD COLUMN IF NOT EXISTS icon_type_en VARCHAR(10)`);
+  await query(`ALTER TABLE bottom_nav_items ADD COLUMN IF NOT EXISTS icon_path_en VARCHAR(500)`);
+  await query(`ALTER TABLE bottom_nav_items ADD COLUMN IF NOT EXISTS icon_size_en INTEGER`);
+  await query(`ALTER TABLE bottom_nav_items ADD COLUMN IF NOT EXISTS is_coming_soon_en BOOLEAN`);
 
   if (globalThis._bottomNavInitializedEvents.has(eventId)) return;
 

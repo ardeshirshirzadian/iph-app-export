@@ -70,24 +70,44 @@ export default function BottomNav() {
   // hardcoded icon paths that may differ from what admin has configured.
   // is_active=false items are already excluded server-side (app/api/nav/route.js
   // filters WHERE is_active = true) -- is_coming_soon never affects that filter.
+  // Per-language resolution. Every _en column is nullable: NULL => fall
+  // back to the fa value, so an event with no overrides renders exactly
+  // as before. /api/nav now returns rows active in EITHER language, so
+  // the final per-language visibility filter happens here.
+  const en = lang === "en";
   const items = navItems
-    ? navItems.map((item) => ({
-        href: item.href,
-        icon_type: item.icon_type,
-        icon_path: item.icon_path,
-        // 80 (not the generic 28 default below) matches ScanButton's own
-        // original hardcoded circle size -- an admin who never touches
-        // icon_size for this row should still see the button at its
-        // designed size, not shrunk to a regular nav-icon's default.
-        icon_size: item.icon_size ?? (item.icon_type === "qr_scan" ? 80 : 28),
-        title: lang === "en" ? (item.title_en || item.title_fa) : item.title_fa,
-        is_coming_soon: !!item.is_coming_soon,
-        no_badge: !!item.coming_soon_no_badge,
-        badge:
-          lang === "en"
-            ? item.coming_soon_badge_en || item.coming_soon_badge_fa || "Coming soon"
-            : item.coming_soon_badge_fa || "به زودی",
-      }))
+    ? navItems
+        .filter((item) =>
+          en ? (item.is_active_en ?? item.is_active) === true : item.is_active === true
+        )
+        .map((item) => {
+          const icon_type = (en && item.icon_type_en) || item.icon_type;
+          return {
+            id: item.id,
+            _order: en ? (item.sort_order_en ?? item.sort_order) : item.sort_order,
+            href: (en && item.href_en) || item.href,
+            icon_type,
+            icon_path: (en && item.icon_path_en) || item.icon_path,
+            // 80 (not the generic 28 default below) matches ScanButton's own
+            // original hardcoded circle size -- an admin who never touches
+            // icon_size for this row should still see the button at its
+            // designed size, not shrunk to a regular nav-icon's default.
+            icon_size:
+              (en ? item.icon_size_en ?? item.icon_size : item.icon_size) ??
+              (icon_type === "qr_scan" ? 80 : 28),
+            title: en ? (item.title_en || item.title_fa) : item.title_fa,
+            is_coming_soon: en
+              ? !!(item.is_coming_soon_en ?? item.is_coming_soon)
+              : !!item.is_coming_soon,
+            no_badge: !!item.coming_soon_no_badge,
+            badge: en
+              ? item.coming_soon_badge_en || item.coming_soon_badge_fa || "Coming soon"
+              : item.coming_soon_badge_fa || "به زودی",
+          };
+        })
+        // fa order arrives pre-sorted from /api/nav; the en order can
+        // differ (sort_order_en), so re-sort here. id is a stable tiebreak.
+        .sort((a, b) => a._order - b._order || a.id - b.id)
     : [];
 
   return (
@@ -118,7 +138,7 @@ export default function BottomNav() {
             // button floating above the bar.)
             const overlap = -(item.icon_size * 0.6);
             return (
-              <div key={item.href} className="relative flex-1 flex items-center justify-center">
+              <div key={item.id} className="relative flex-1 flex items-center justify-center">
                 <div className="absolute" style={{ bottom: "100%", marginBottom: overlap }}>
                   <ScanButton
                     isDark={isDark}
@@ -137,7 +157,7 @@ export default function BottomNav() {
           if (item.is_coming_soon) {
             return (
               <div
-                key={item.href}
+                key={item.id}
                 className="relative flex-1 flex items-center justify-center py-3 select-none"
                 style={{ color: "var(--text-dim)", opacity: 0.55, cursor: "default" }}
                 aria-disabled="true"
@@ -166,7 +186,7 @@ export default function BottomNav() {
               : pathname === item.href || pathname.startsWith(item.href + "/");
           return (
             <Link
-              key={item.href}
+              key={item.id}
               href={item.href}
               className="flex-1 flex items-center justify-center py-3 transition-colors"
               style={{ color: active ? "var(--accent)" : "var(--text-dim)" }}
