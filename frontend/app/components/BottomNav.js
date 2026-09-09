@@ -1,14 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useLang } from "@/lib/useLang";
 import ScanButton from "./ScanButton";
 
-// Module-level cache: survives component unmount/remount across navigations.
-// Populated on first mount, reused on all subsequent mounts — zero re-fetches.
-// Resets to null on every fresh page load (new JS execution context).
+// Module-level cache: survives component unmount/remount across client-side
+// navigations, so moving between pages never re-hits /api/nav. It is
+// deliberately refreshed on three signals (see fetchNav below): first load,
+// a UI-language change, and tab refocus — an admin may edit the nav (e.g.
+// hide an item for one language) while a tab stays open, and the user only
+// looks at the other language on a toggle. Resets to null on a full page
+// load (new JS execution context).
 let _navCache = null;
 let _scanGlowCache = null;
 
@@ -37,8 +41,7 @@ export default function BottomNav() {
   const [navItems, setNavItems] = useState(_navCache);
   const [scanGlow, setScanGlow] = useState(_scanGlowCache);
 
-  useEffect(() => {
-    if (_navCache) return; // already fetched this session — skip
+  const fetchNav = useCallback(() => {
     fetch("/api/nav")
       .then((r) => r.json())
       .then((data) => {
@@ -53,6 +56,33 @@ export default function BottomNav() {
       })
       .catch(() => {});
   }, []);
+
+  // First load only — reuse the module cache on every subsequent remount.
+  useEffect(() => {
+    if (_navCache) return;
+    fetchNav();
+  }, [fetchNav]);
+
+  // Re-fetch on an actual UI-language change (not the initial fa->stored
+  // resolution counts as one). /api/nav is language-agnostic; this is what
+  // surfaces an admin's mid-session nav edit when the user toggles.
+  const prevLang = useRef(lang);
+  useEffect(() => {
+    if (prevLang.current === lang) return;
+    prevLang.current = lang;
+    fetchNav();
+  }, [lang, fetchNav]);
+
+  // Re-fetch when the tab regains focus, so an edit made while it was
+  // backgrounded shows up without a hard reload (same pattern as
+  // app/quest/QuestClient.js's visibilitychange handler).
+  useEffect(() => {
+    function onVisibilityChange() {
+      if (!document.hidden) fetchNav();
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [fetchNav]);
 
   // Same isDark signal as app/quest/QuestClient.js's ScanButton usage --
   // duplicated here (not shared state) since this component mounts on
