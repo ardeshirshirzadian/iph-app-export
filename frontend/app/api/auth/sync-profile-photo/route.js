@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { extractProfilePhotoUrl } from '@/lib/utils';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { grantProfilePhotoMissionXp, grantProfilePhotoBadge } from '@/lib/grantProfilePhotoMissionXp';
 
 // Lightweight companion to finalize-login's upsertAppUser -- keeps
 // app_users.profile_image fresh when a photo changes MID-SESSION (e.g. via
@@ -44,6 +45,13 @@ export async function POST(request) {
     // Nothing to sync yet (no photo on the account) -- not an error.
     return NextResponse.json({ success: true, updated: false });
   }
+
+  // A photo genuinely exists on the account -- credit the profile-photo
+  // quest mission + badge. Both no-op until an admin creates a row for
+  // each; idempotent; also covers users who already had a photo. These
+  // never throw (each swallows its own errors) and never block the sync.
+  await grantProfilePhotoMissionXp();
+  await grantProfilePhotoBadge();
 
   try {
     const currentEventId = await getCurrentEventId();

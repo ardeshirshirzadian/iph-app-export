@@ -66,6 +66,13 @@ async function calcEarned(badge, userUuid, eventId, currentEventId) {
         );
         return r.rows.length > 0;
       }
+      case 'profile_photo': {
+        const r = await query(
+          'SELECT 1 FROM quest_badge_progress WHERE badge_id = $1 AND user_uuid = $2 AND earned = true',
+          [badge.id, userUuid]
+        );
+        return r.rows.length > 0;
+      }
       case 'booth_scan_single_day': {
         const r = await query(
           `SELECT DATE(scanned_at) AS day, COUNT(*) AS cnt

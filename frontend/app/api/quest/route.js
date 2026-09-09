@@ -70,6 +70,15 @@ async function calcProgress(mission, userUuid, eventId, currentEventId) {
         );
         return r.rows.length > 0 && r.rows[0].completed ? 1 : 0;
       }
+      case 'profile_photo': {
+        const r = await query(
+          `SELECT qup.completed FROM quest_user_progress qup
+           JOIN quest_content qc ON qc.id = qup.mission_id
+           WHERE qup.mission_id = $1 AND qup.user_uuid = $2 AND qc.event_id = $3`,
+          [mission.id, userUuid, currentEventId]
+        );
+        return r.rows.length > 0 && r.rows[0].completed ? 1 : 0;
+      }
       case 'attendance':
       case 'manual': {
         const r = await query(
