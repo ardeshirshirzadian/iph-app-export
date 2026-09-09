@@ -150,9 +150,6 @@ export const translations = {
     push_subscribe_error: 'تکمیل تنظیم اعلان‌ها ممکن نشد. لطفاً دوباره تلاش کنید.',
     push_check_again: 'بررسی مجدد',
     push_how_label: 'چطور؟',
-    push_guide_chrome: 'کروم: روی آیکون قفل 🔒 کنار آدرس سایت بزنید ← «اعلان‌ها» ← «اجازه بده»، سپس صفحه را دوباره بارگذاری کنید.',
-    push_guide_safari_mac: 'سافاری (مک): از منوی Safari گزینه Settings for This Website را باز کنید ← اعلان‌ها را روی Allow بگذارید.',
-    push_guide_safari_ios: 'سافاری (آیفون): تنظیمات گوشی ← اعلان‌ها ← این اپ را پیدا کنید ← Allow Notifications را روشن کنید.',
     // Scan page
     scan_title: 'اسکن غرفه',
     scan_back_aria: 'بازگشت',
@@ -410,9 +407,6 @@ export const translations = {
     push_subscribe_error: "Couldn't complete notification setup. Please try again.",
     push_check_again: 'Check again',
     push_how_label: 'How?',
-    push_guide_chrome: 'Chrome: tap the 🔒 lock icon next to the address bar → Notifications → Allow, then reload the page.',
-    push_guide_safari_mac: 'Safari (Mac): open the Safari menu → Settings for This Website → set Notifications to Allow.',
-    push_guide_safari_ios: 'Safari (iPhone): open the Settings app → Notifications → find this app → turn on Allow Notifications.',
     // Scan page
     scan_title: 'Scan Booth',
     scan_back_aria: 'Back',

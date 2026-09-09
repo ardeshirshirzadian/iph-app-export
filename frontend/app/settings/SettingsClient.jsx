@@ -4,9 +4,9 @@ import { useState, useEffect } from "react";
 import PageHeader from "@/components/PageHeader";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
-import { isPushSupported, requestNotificationPermission, subscribeToPush } from "@/lib/pushClient";
+import { isPushSupported, isIOS, requestNotificationPermission, subscribeToPush } from "@/lib/pushClient";
 
-export default function SettingsClient({ title, subtitle, title_en, subtitle_en, themeMode = "system" }) {
+export default function SettingsClient({ title, subtitle, title_en, subtitle_en, themeMode = "system", pushGuides = {} }) {
   const [isDark, setIsDark] = useState(true);
   const { lang, switchLang, isRTL, langLocked } = useLang();
   const [pushPermission, setPushPermission] = useState('loading');
@@ -224,15 +224,16 @@ export default function SettingsClient({ title, subtitle, title_en, subtitle_en,
                   </div>
 
                   {showPushHelp && (
-                    <div className="mt-3 flex flex-col gap-2">
-                      <p className="text-xs leading-relaxed" style={{ color: "var(--text-dim)" }}>
-                        {t(lang, 'push_guide_chrome')}
-                      </p>
-                      <p className="text-xs leading-relaxed" style={{ color: "var(--text-dim)" }}>
-                        {t(lang, 'push_guide_safari_mac')}
-                      </p>
-                      <p className="text-xs leading-relaxed" style={{ color: "var(--text-dim)" }}>
-                        {t(lang, 'push_guide_safari_ios')}
+                    <div className="mt-3">
+                      {/* Push only reaches this card on installed-PWA iOS Safari or
+                          Android Chrome (isPushSupported gates it), so isIOS() is a
+                          sufficient split — no Android UA sniff. This block is
+                          client-only (denied state + toggle are set post-mount),
+                          so there's no SSR/hydration mismatch from isIOS(). */}
+                      <p className="text-xs leading-relaxed" style={{ color: "var(--text-dim)", whiteSpace: "pre-line" }}>
+                        {isIOS()
+                          ? (lang === 'fa' ? pushGuides.ios_fa : pushGuides.ios_en)
+                          : (lang === 'fa' ? pushGuides.android_fa : pushGuides.android_en)}
                       </p>
                     </div>
                   )}

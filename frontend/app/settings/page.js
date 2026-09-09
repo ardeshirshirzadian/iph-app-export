@@ -1,6 +1,7 @@
 import { unstable_cache } from 'next/cache';
 import { getPageTitle } from '@/lib/getPageTitles';
 import { getThemeMode } from '@/lib/getThemeMode';
+import { getPushGuides } from '@/lib/getPushGuides';
 import { getCurrentEventId } from '@/lib/currentEvent';
 import SettingsClient from './SettingsClient';
 
@@ -24,11 +25,21 @@ const getCachedSettingsThemeMode = unstable_cache(
   { tags: ['settings-theme-mode'], revalidate: 300 }
 );
 
+// Same page-scoped cache pattern as above — the per-platform push help text,
+// editable per-event in iph-apn's /notifications admin. On-demand invalidated
+// via revalidateIphApp('settings-push-guides'); 300s is the fallback ceiling.
+const getCachedPushGuides = unstable_cache(
+  (eventId) => getPushGuides(eventId),
+  ['settings-push-guides'],
+  { tags: ['settings-push-guides'], revalidate: 300 }
+);
+
 export default async function SettingsPage() {
   const currentEventId = await getCurrentEventId();
-  const [{ title, subtitle, title_en, subtitle_en }, themeMode] = await Promise.all([
+  const [{ title, subtitle, title_en, subtitle_en }, themeMode, pushGuides] = await Promise.all([
     getCachedSettingsPageTitle(currentEventId),
     getCachedSettingsThemeMode(currentEventId),
+    getCachedPushGuides(currentEventId),
   ]);
-  return <SettingsClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} themeMode={themeMode} />;
+  return <SettingsClient title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} themeMode={themeMode} pushGuides={pushGuides} />;
 }
