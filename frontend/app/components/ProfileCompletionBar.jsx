@@ -3,22 +3,14 @@
 import Link from "next/link";
 import { useAttendee } from "./AttendeeProvider";
 import { toPersianDigits } from "@/lib/utils";
-
-const PROFILE_FIELDS = [
-  (a) => !!a.firstname_fa,
-  (a) => !!a.national_code,
-  (a) => !!a.occupation_id,
-  (a) => !!a.education_level_id,
-  (a) => Array.isArray(a.field_of_activities) && a.field_of_activities.length > 0,
-  (a) => !!a.profile,
-];
+import { PROFILE_FIELDS } from "@/lib/profileCompletion";
 
 export default function ProfileCompletionBar({ lang }) {
   const { attendee } = useAttendee();
 
   if (!attendee) return null;
 
-  const completed = PROFILE_FIELDS.filter((fn) => fn(attendee)).length;
+  const completed = PROFILE_FIELDS.filter((f) => f.test(attendee)).length;
   const pct = Math.round((completed / PROFILE_FIELDS.length) * 100);
 
   if (pct >= 100) return null;

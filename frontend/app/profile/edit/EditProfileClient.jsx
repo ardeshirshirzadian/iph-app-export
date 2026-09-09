@@ -14,6 +14,7 @@ import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 import { toPersianDigits, toEnglishDigits } from "@/lib/utils";
 import { hapticSuccess, hapticError } from "@/lib/haptics";
+import { getMissingFields } from "@/lib/profileCompletion";
 
 const RASAYESH_BASE   = "https://api.rasayesh.com/";
 const RASAYESH_GQL    = "https://api.rasayesh.com/graphql";
@@ -572,6 +573,20 @@ export default function EditProfileClient() {
 
   const dir = isRTL ? "rtl" : "ltr";
 
+  // Themed "please fill this in" highlight for the profile-completion fields
+  // that are still empty on the server (see lib/profileCompletion.js — the
+  // same 6 fields the ProfileCompletionBar percentage counts). Sourced from
+  // saved attendee data, not the unsaved form, so a highlight clears only
+  // after the field is saved. Deliberately soft (accent border + faint accent
+  // tint, no red/icons) — this is guidance, not a validation error. Fields
+  // that aren't in the DOM for the current sub-tab / before formOptions load
+  // simply can't be highlighted; that's an accepted limit, not a bug.
+  const missingFields = getMissingFields(attendeeData);
+  const highlightStyle = (key) =>
+    missingFields.includes(key)
+      ? { border: "1px solid var(--accent)", background: "color-mix(in srgb, var(--accent) 6%, var(--surface))" }
+      : null;
+
   return (
     <main
       dir={dir}
@@ -652,7 +667,15 @@ export default function EditProfileClient() {
             >
               <div
                 className="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center border-2"
-                style={{ background: "var(--surface)", borderColor: "color-mix(in srgb, var(--accent) 30%, transparent)" }}
+                style={{
+                  background: "var(--surface)",
+                  borderColor: missingFields.includes("profile")
+                    ? "var(--accent)"
+                    : "color-mix(in srgb, var(--accent) 30%, transparent)",
+                  ...(missingFields.includes("profile")
+                    ? { boxShadow: "0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent)" }
+                    : null),
+                }}
               >
                 {profileUrl ? (
                   <img src={profileUrl} alt="profile" className="w-full h-full object-cover" />
@@ -760,7 +783,8 @@ export default function EditProfileClient() {
               <>
                 <Field label={t(lang, "edit_firstname")}>
                   <input dir="rtl" type="text" value={form.firstnameFa}
-                    onChange={(e) => set("firstnameFa", e.target.value)} style={INPUT_STYLE} />
+                    onChange={(e) => set("firstnameFa", e.target.value)}
+                    style={{ ...INPUT_STYLE, ...highlightStyle("firstname_fa") }} />
                 </Field>
                 <Field label={t(lang, "edit_lastname")}>
                   <input dir="rtl" type="text" value={form.lastnameFa}
@@ -775,7 +799,7 @@ export default function EditProfileClient() {
                     dir="ltr" type="text" inputMode="numeric"
                     value={isRTL ? toPersianDigits(form.nationalCode) : form.nationalCode}
                     onChange={(e) => set("nationalCode", toEnglishDigits(e.target.value).replace(/\D/g, "").slice(0, 10))}
-                    style={{ ...INPUT_STYLE, textAlign: "center", letterSpacing: 2 }}
+                    style={{ ...INPUT_STYLE, textAlign: "center", letterSpacing: 2, ...highlightStyle("national_code") }}
                     maxLength={10}
                   />
                 </Field>
@@ -965,7 +989,7 @@ export default function EditProfileClient() {
                     <select
                       value={form.occupationId}
                       onChange={(e) => set("occupationId", e.target.value)}
-                      style={{ ...SELECT_STYLE, direction: dir }}
+                      style={{ ...SELECT_STYLE, direction: dir, ...highlightStyle("occupation_id") }}
                     >
                       <option value="">{isEN ? "Select..." : "انتخاب کنید..."}</option>
                       {formOptions.occupations.map((o) => (
@@ -979,7 +1003,19 @@ export default function EditProfileClient() {
 
                 {formOptions.fieldOfActivities.length > 0 && (
                   <Field label={isEN ? "Field of Activity" : "حوزه فعالیت"}>
-                    <div className="flex flex-wrap gap-2 mt-1">
+                    <div
+                      className="flex flex-wrap gap-2 mt-1"
+                      style={
+                        missingFields.includes("field_of_activities")
+                          ? {
+                              border: "1px solid var(--accent)",
+                              background: "color-mix(in srgb, var(--accent) 6%, transparent)",
+                              borderRadius: 12,
+                              padding: 8,
+                            }
+                          : undefined
+                      }
+                    >
                       {formOptions.fieldOfActivities.map((f) => {
                         const isActive = form.fieldOfActivities.includes(f.id);
                         return (
@@ -1008,7 +1044,7 @@ export default function EditProfileClient() {
                     <select
                       value={form.educationLevelId}
                       onChange={(e) => set("educationLevelId", e.target.value)}
-                      style={{ ...SELECT_STYLE, direction: dir }}
+                      style={{ ...SELECT_STYLE, direction: dir, ...highlightStyle("education_level_id") }}
                     >
                       <option value="">{isEN ? "Select..." : "انتخاب کنید..."}</option>
                       {formOptions.educationLevels.map((e) => (
