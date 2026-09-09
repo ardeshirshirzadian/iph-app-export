@@ -8,7 +8,6 @@ import ApolloClientProvider from "./components/ApolloProvider";
 import AttendeeProvider from "./components/AttendeeProvider";
 import CartProvider from "./components/CartProvider";
 import PageWrapper from "./components/PageWrapper";
-import ProfilePhotoGuard from "./components/ProfilePhotoGuard";
 import { getActiveFont, getActiveFontEn } from "@/lib/getActiveFont";
 import { getThemeColors } from "@/lib/getThemeColors";
 import { getThemeMode } from "@/lib/getThemeMode";
@@ -222,7 +221,7 @@ export default async function RootLayout({ children }) {
         <LangSync singleLanguage={singleLanguage} />
         <ServiceWorkerRegistrar />
         <SessionExpiredToast />
-        <ApolloClientProvider><AttendeeProvider rasayeshEventId={rasayeshEventId}><CartProvider><ProfilePhotoGuard /><PageWrapper>{children}</PageWrapper></CartProvider></AttendeeProvider></ApolloClientProvider>
+        <ApolloClientProvider><AttendeeProvider rasayeshEventId={rasayeshEventId}><CartProvider><PageWrapper>{children}</PageWrapper></CartProvider></AttendeeProvider></ApolloClientProvider>
       </body>
     </html>
   );
