@@ -3,6 +3,7 @@ import { unstable_cache } from 'next/cache';
 import { getCachedCompaniesConfig } from '@/lib/getCompaniesConfig';
 import { fetchPublicGraphQL } from '@/lib/publicRasayeshClient';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { query } from '@/lib/db';
 
 // Company records live in Rasayesh (external CRM) -- this app's admin panel
 // doesn't control them and has no "saved" event to hook a revalidateTag()
@@ -119,19 +120,153 @@ const getCachedCompanyDetail = unstable_cache(
   { tags: ['companies-rasayesh-data'], revalidate: RASAYESH_TTL }
 );
 
+// Subsidiary companies (e.g. داروپخش under تامین/تیپیکو) -- Rasayesh's own
+// eventCompanies list and eventCompanies search never return them (they're
+// only discoverable by walking a parent's `subsidiaries` field, which this
+// app's own iph-apn sync already does into companies_placement), and
+// eventCompany(slug:...) resolves null for one too (confirmed live
+// 2026-09-12) unless it also happens to be independently registered for
+// this event. So they're merged in here from the local sync, deliberately
+// OUTSIDE the unstable_cache wrapper above -- normal companies keep their
+// exact 60s live-Rasayesh freshness guarantee unchanged; subsidiary data
+// only ever changes on our own admin-triggered sync, so a plain per-request
+// query (sub-ms on the local Postgres socket, ~60 rows) needs no caching
+// layer of its own.
+//
+// Shapes each row into the exact same raw JSON shape the corresponding
+// Rasayesh query already returns, so CompaniesClient.jsx's mapCompany() and
+// CompanyDetailClient.jsx need zero changes -- they only ever see "a raw
+// eventCompanies/eventCompany entry", never where it came from. hall_name/
+// booth_no are stored as plain text (already denormalized from the parent
+// at sync time, see companiesSync.js) rather than Rasayesh's real booths[]
+// array, so they're wrapped into a single synthetic booth entry here.
+function shapeLocalSubsidiaryForList(row) {
+  return {
+    id: row.id,
+    slug: row.slug,
+    legal_name_fa: row.legal_name_fa,
+    legal_name_en: row.legal_name_en,
+    brand_name_fa: row.brand_name_fa,
+    brand_name_en: row.brand_name_en,
+    logo: row.logo,
+    description_fa: row.description_fa,
+    description_en: row.description_en,
+    website: row.website,
+    booths: (row.hall_name || row.booth_no)
+      ? [{ hall: { name: row.hall_name }, no: row.booth_no }]
+      : [],
+    // Not a sponsor via inheritance -- a subsidiary only ever appears in a
+    // sponsorMap lookup (built client-side from the separate sponsorship
+    // query, keyed by this same global `id`) if it's independently a
+    // sponsor, which matches how a normal company works too.
+    eventOptions: { show_profile: true },
+  };
+}
+
+function shapeLocalSubsidiaryForDetail(row) {
+  return {
+    id: row.id,
+    slug: row.slug,
+    legal_name_fa: row.legal_name_fa,
+    legal_name_en: row.legal_name_en,
+    brand_name_fa: row.brand_name_fa,
+    brand_name_en: row.brand_name_en,
+    logo: row.logo,
+    description_fa: row.description_fa,
+    description_en: row.description_en,
+    phones: row.phones,
+    emails: row.emails,
+    website: row.website,
+    address_fa: row.address_fa,
+    address_en: row.address_en,
+    booths: (row.hall_name || row.booth_no)
+      ? [{ hall: { name: row.hall_name }, no: row.booth_no }]
+      : [],
+    // Empty, not inherited from the parent -- CompanyDetailClient.jsx derives
+    // is_sponsor/sponsor_level from sponsorshipLevels.length, so this
+    // correctly renders a subsidiary as not-a-sponsor unless it someday gets
+    // its own real sponsorshipRequests synced (companiesSync.js already
+    // checks each subsidiary's own sponsorshipRequests, not the parent's).
+    sponsorshipLevels: [],
+  };
+}
+
+async function fetchLocalSubsidiaries(currentEventId, rasayeshEventId, search) {
+  if (!currentEventId || rasayeshEventId == null) return [];
+  try {
+    const { rows } = await query(
+      `SELECT company_id AS id, slug, brand_name_fa, brand_name_en, legal_name_fa, legal_name_en,
+              logo, website, description_fa, description_en, hall_name, booth_no
+       FROM companies_placement
+       WHERE event_id = $1 AND rasayesh_event_id = $2
+         AND parent_company_id IS NOT NULL AND is_active = true
+         AND ($3 = '' OR brand_name_fa ILIKE $4 OR brand_name_en ILIKE $4 OR legal_name_fa ILIKE $4)
+       ORDER BY brand_name_fa ASC NULLS LAST`,
+      [currentEventId, rasayeshEventId, search, `%${search}%`]
+    );
+    return rows.map(shapeLocalSubsidiaryForList);
+  } catch (err) {
+    console.error('[api/companies/data] local subsidiary list query failed:', err.message);
+    return [];
+  }
+}
+
+async function fetchLocalSubsidiaryDetail(currentEventId, rasayeshEventId, slug) {
+  if (!currentEventId || rasayeshEventId == null) return null;
+  try {
+    const { rows } = await query(
+      `SELECT company_id AS id, slug, brand_name_fa, brand_name_en, legal_name_fa, legal_name_en,
+              logo, website, description_fa, description_en, phones, emails,
+              address_fa, address_en, hall_name, booth_no
+       FROM companies_placement
+       WHERE event_id = $1 AND rasayesh_event_id = $2
+         AND parent_company_id IS NOT NULL AND slug = $3 AND is_active = true
+       LIMIT 1`,
+      [currentEventId, rasayeshEventId, slug]
+    );
+    return rows[0] ? shapeLocalSubsidiaryForDetail(rows[0]) : null;
+  } catch (err) {
+    console.error('[api/companies/data] local subsidiary detail query failed:', err.message);
+    return null;
+  }
+}
+
+// Merges an already orderBy-sorted Rasayesh page with the (separately
+// sorted) local subsidiary rows -- a plain concat would always trail
+// subsidiaries at the end regardless of alphabetical position, since
+// CompaniesClient.jsx fetches the full list (`all: true`) and paginates
+// client-side. Null/missing field values sort last, matching the
+// `ORDER BY ... NULLS LAST` the rest of this codebase already uses.
+function compareByField(a, b, field) {
+  const av = a?.[field];
+  const bv = b?.[field];
+  if (!av && !bv) return 0;
+  if (!av) return 1;
+  if (!bv) return -1;
+  return String(av).localeCompare(String(bv));
+}
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const type = searchParams.get('type');
 
   try {
-    const cfg = await getCachedCompaniesConfig(await getCurrentEventId());
+    const currentEventId = await getCurrentEventId();
+    const cfg = await getCachedCompaniesConfig(currentEventId);
     const eventId = cfg.eventId != null ? Number(cfg.eventId) : null;
 
     if (type === 'list') {
       const search = searchParams.get('search') || '';
       const orderBy = searchParams.get('orderBy') || 'brand_name_fa';
       const result = await getCachedCompaniesList(search, orderBy, eventId, cfg.eventOrigin);
-      return NextResponse.json({ companies: result?.data?.eventCompanies ?? [] });
+      const rasayeshCompanies = result?.data?.eventCompanies ?? [];
+
+      const localSubsidiaries = await fetchLocalSubsidiaries(currentEventId, eventId, search);
+
+      const merged = [...rasayeshCompanies, ...localSubsidiaries];
+      merged.sort((a, b) => compareByField(a, b, orderBy));
+
+      return NextResponse.json({ companies: merged });
     }
 
     if (type === 'sponsorship') {
@@ -148,7 +283,12 @@ export async function GET(request) {
       const slug = searchParams.get('slug');
       if (!slug) return NextResponse.json({ error: 'missing slug' }, { status: 400 });
       const result = await getCachedCompanyDetail(slug, eventId, cfg.eventOrigin);
-      return NextResponse.json({ company: result?.data?.eventCompany ?? null });
+      // Only fall back on null -- never override a successful Rasayesh
+      // result. The one subsidiary that's also independently registered
+      // for this event (id 561) already resolves live and must keep using
+      // that path, not the local one.
+      const company = result?.data?.eventCompany ?? (await fetchLocalSubsidiaryDetail(currentEventId, eventId, slug));
+      return NextResponse.json({ company });
     }
 
     return NextResponse.json({ error: 'invalid type' }, { status: 400 });
