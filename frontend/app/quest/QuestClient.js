@@ -1301,8 +1301,11 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
                   )}
                 </div>
 
-                {/* XP — hidden for featured_booth pool booths to avoid spoiling the treasure hunt */}
-                {!featuredBoothPoolIds?.has(booth.id) && (
+                {/* XP — hidden for featured_booth pool booths to avoid spoiling the treasure hunt.
+                    featuredBoothPoolIds is keyed by the GLOBAL Rasayesh company id (see
+                    quest/route.js), not the companies_placement surrogate id booth.id now
+                    correctly holds post 2026-09-12 fix -- must compare against booth.company_id. */}
+                {!featuredBoothPoolIds?.has(booth.company_id) && (
                   <span className="text-xs font-bold flex-shrink-0" style={{ color: "var(--accent)" }}>
                     {lang === 'fa'
                       ? `${dNum(booth.xp, lang)}+ ${xpUnit || "XP"}`
