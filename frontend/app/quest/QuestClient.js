@@ -461,7 +461,25 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
         }}
       >
         {sponsorLogoUrl ? (
-          <img src={sponsorLogoUrl} alt="" style={{ width: mission.icon_size ?? 36, height: mission.icon_size ?? 36, objectFit: 'contain' }} />
+          <img
+            src={sponsorLogoUrl}
+            alt=""
+            style={{
+              width: mission.icon_size ?? 36,
+              height: mission.icon_size ?? 36,
+              objectFit: 'contain',
+              // Event-agnostic by construction, not by coincidence of today's
+              // colors: mixing var(--accent) at only 8% into white can shift
+              // the result by at most 8% of the channel range no matter what
+              // --accent is -- even the theoretical worst case (a pure black
+              // accent, #000000) only reaches rgb(235,235,235), still clearly
+              // light. A future event's admin can set --accent to anything
+              // and this stays a light, legible logo backing with no code
+              // change here.
+              background: 'color-mix(in srgb, var(--accent) 8%, white)',
+              filter: iconUsesCompletedStyle ? 'grayscale(1)' : undefined,
+            }}
+          />
         ) : mission.icon && mission.icon.startsWith('/') ? (
           isSvgIconPath(mission.icon) ? (
             <QuestIcon
