@@ -4,6 +4,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import BottomNav from "../components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { useAttendee } from "../components/AttendeeProvider";
@@ -380,7 +381,7 @@ function isMissionCompleted(mission) {
   return false;
 }
 
-function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyClick, onSocialShareClick, lang: langProp, logoBaseUrl, sponsorLogoSize, sponsorNameColor, sponsorNameSize, missionIconColors }) {
+function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyClick, onSocialShareClick, onProfilePhotoClick, lang: langProp, logoBaseUrl, sponsorLogoSize, sponsorNameColor, sponsorNameSize, missionIconColors }) {
   const pct = useMemo(
     () => (mission.total > 0 ? Math.round((mission.progress / mission.total) * 100) : 0),
     [mission.progress, mission.total]
@@ -390,6 +391,7 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
   const isFeaturedBooth = mission.mission_type === 'featured_booth';
   const isSurvey = mission.mission_type === 'survey';
   const isSocialShare = mission.mission_type === 'social_share';
+  const isProfilePhoto = mission.mission_type === 'profile_photo';
   const quizAttempted = isQuiz && !!mission.quiz_attempted;
   // Wrong quiz answers ARE completed (isMissionCompleted treats any attempt
   // as done, regardless of correctness -- see MissionCard's `done` above),
@@ -415,6 +417,7 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
   const featuredClickable = isFeaturedBooth && typeof onFeaturedClick === 'function';
   // Social share: clickable if no pending submission, not yet approved
   const socialShareClickable = isSocialShare && !done && socialShareStatus !== 'pending' && typeof onSocialShareClick === 'function';
+  const profilePhotoClickable = isProfilePhoto && !done && typeof onProfilePhotoClick === 'function';
 
   const now = useLiveNow(isFeaturedBooth && !done);
   const countdownText = isFeaturedBooth
@@ -425,6 +428,7 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
     : surveyClickable ? onSurveyClick
     : socialShareClickable ? onSocialShareClick
     : featuredClickable ? onFeaturedClick
+    : profilePhotoClickable ? onProfilePhotoClick
     : undefined;
 
   // 44px (the old fixed w-11/h-11) already matched the 36px default icon plus
@@ -436,7 +440,7 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
     <div
       onClick={handleClick}
       className={`backdrop-blur-xl border rounded-2xl p-4 flex items-center gap-4 transition-colors ${
-        (quizClickable || surveyClickable || socialShareClickable || featuredClickable) ? "cursor-pointer active:scale-[0.98]" : ""
+        (quizClickable || surveyClickable || socialShareClickable || featuredClickable || profilePhotoClickable) ? "cursor-pointer active:scale-[0.98]" : ""
       }`}
       style={done
         ? { borderColor: "var(--quest-mission-completed-row-border)", background: "var(--quest-mission-completed-row-bg)" }
@@ -539,6 +543,16 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
               <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0"
                 style={{ background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent)" }}>
                 {langProp === 'fa' ? 'شرکت در نظرسنجی ←' : 'Take Survey →'}
+              </span>
+            )}
+          </div>
+        ) : isProfilePhoto ? (
+          <div className="flex items-center justify-between gap-2">
+            <span />
+            {profilePhotoClickable && (
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0"
+                style={{ background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent)" }}>
+                {langProp === 'fa' ? 'آپلود کن ←' : 'Upload →'}
               </span>
             )}
           </div>
@@ -2106,6 +2120,8 @@ function SocialShareModal({ share, onClose, onComplete, lang }) {
 // ── Main client component ───────────────────────────────────────────────────
 
 export default function QuestClient({ content, title, subtitle, title_en, subtitle_en, isHomeContext = false, showBack = true, appearanceConfig = {}, questSettings = {} }) {
+  const router = useRouter();
+  const onProfilePhotoClick = useCallback(() => router.push('/profile/edit'), [router]);
   const [boothsOpen, setBoothsOpen] = useState(false);
   const [openFeaturedPool, setOpenFeaturedPool] = useState(null);
   const [activeTab, setActiveTab] = useState("missions");
@@ -2500,9 +2516,10 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         onSurveyClick={m.mission_type === 'survey' ? () => setOpenSurvey({ ...m, isBadge: false }) : undefined}
         onSocialShareClick={m.mission_type === 'social_share' ? () => setOpenSocialShare({ ...m, isBadge: false }) : undefined}
         onFeaturedClick={m.mission_type === 'featured_booth' ? () => setOpenFeaturedPool(m) : undefined}
+        onProfilePhotoClick={m.mission_type === 'profile_photo' ? onProfilePhotoClick : undefined}
       />
     ),
-    [labels.xpUnit, lang, logoBaseUrl, sponsorStyle, missionIconColors]
+    [labels.xpUnit, lang, logoBaseUrl, sponsorStyle, missionIconColors, onProfilePhotoClick]
   );
 
   const activeMissionList = useMemo(
