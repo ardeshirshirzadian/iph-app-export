@@ -1,9 +1,13 @@
-import { getCachedBadgePageConfig } from '@/lib/badgePageCache';
+import { getCachedBadgePageConfig, getCachedBadgeHeaderIconConfig } from '@/lib/badgePageCache';
 import { getCurrentEventId } from '@/lib/currentEvent';
 import BadgeClient from './BadgeClient';
 
 export default async function BadgePage() {
-  const settings = await getCachedBadgePageConfig(await getCurrentEventId());
+  const eventId = await getCurrentEventId();
+  const [settings, headerIcon] = await Promise.all([
+    getCachedBadgePageConfig(eventId),
+    getCachedBadgeHeaderIconConfig(eventId),
+  ]);
 
   return (
     <BadgeClient
@@ -12,6 +16,7 @@ export default async function BadgePage() {
       title_en={settings.title_en}
       subtitle_en={settings.subtitle_en}
       badgeSettings={settings}
+      headerIcon={headerIcon}
     />
   );
 }

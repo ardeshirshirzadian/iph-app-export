@@ -40,3 +40,38 @@ export const getCachedBadgePageConfig = unstable_cache(
   ['badge-page-config'],
   { tags: ['badge-page-config'], revalidate: 300 }
 );
+
+// Separate app_settings key from badge_page above (own admin save action,
+// own revalidation tag) -- same split as map_header_icons_config being
+// independent of the rest of the map page's settings. icon/target_url both
+// default empty, which is the "button not configured yet" state -- the
+// renderer (BadgeClient) treats an empty icon or target_url as "don't show
+// the button" rather than rendering a dead/blank control.
+export const BADGE_HEADER_ICON_DEFAULTS = {
+  icon: '',
+  icon_size: 20,
+  color_dark: null,
+  color_light: null,
+  target_url: '',
+  visibility: 'both',
+};
+
+export const getCachedBadgeHeaderIconConfig = unstable_cache(
+  async (eventId) => {
+    let config = BADGE_HEADER_ICON_DEFAULTS;
+    try {
+      const result = await query(
+        "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'badge_header_icon_config'",
+        [eventId]
+      );
+      if (result.rows[0]?.value) {
+        config = { ...BADGE_HEADER_ICON_DEFAULTS, ...result.rows[0].value };
+      }
+    } catch {
+      // fall back to defaults
+    }
+    return config;
+  },
+  ['badge-header-icon-config'],
+  { tags: ['badge-header-icon-config'], revalidate: 300 }
+);

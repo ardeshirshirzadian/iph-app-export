@@ -29,6 +29,42 @@ const BADGE_QUERY = gql`
   }
 `;
 
+function isSvgIconPath(path) {
+  return typeof path === "string" && path.startsWith("/") && path.toLowerCase().endsWith(".svg");
+}
+
+// Colorable SVG for the header button, admin-configured via
+// badge_header_icon_config -- same CSS mask-image + backgroundColor
+// technique as QuestClient.js's QuestIcon and Map's HeaderIcon (no
+// fetch/inline SVG markup, so nothing here needs sanitizing). Runs its own
+// theme MutationObserver like QuestIcon does, since BadgeClient (unlike
+// MapClient) doesn't already track theme in its own state.
+function HeaderButtonIcon({ path, size, colorDark, colorLight }) {
+  const [isLight, setIsLight] = useState(false);
+
+  useEffect(() => {
+    setIsLight(document.documentElement.classList.contains("light"));
+    const observer = new MutationObserver(() => {
+      setIsLight(document.documentElement.classList.contains("light"));
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  const color = isLight ? (colorLight || "#0f172a") : (colorDark || "#ffffff");
+
+  return (
+    <span style={{
+      display: "block", width: size, height: size, flexShrink: 0,
+      backgroundColor: color,
+      WebkitMaskImage: `url('${path}')`, WebkitMaskSize: "contain",
+      WebkitMaskRepeat: "no-repeat", WebkitMaskPosition: "center",
+      maskImage: `url('${path}')`, maskSize: "contain",
+      maskRepeat: "no-repeat", maskPosition: "center",
+    }} />
+  );
+}
+
 function SkeletonBlock({ className }) {
   return (
     <div
@@ -189,7 +225,7 @@ async function downloadCard() {
   }
 }
 
-export default function BadgeClient({ title, subtitle, title_en, subtitle_en, badgeSettings = {}, isHomeContext = false, showBack = true }) {
+export default function BadgeClient({ title, subtitle, title_en, subtitle_en, badgeSettings = {}, headerIcon = {}, isHomeContext = false, showBack = true }) {
   const { isLoggedIn } = useAuth();
   const [authReady, setAuthReady] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -211,6 +247,14 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
   const displayEventName = lang === 'en'
     ? (settings.event_name_en || settings.event_name_fa)
     : settings.event_name_fa;
+
+  // Empty icon or target_url means "not configured yet" -- don't render a
+  // dead/blank button. visibility gates on the resolved client-side lang,
+  // same as every other fa/en check in this codebase (useLang()-driven,
+  // no server-side per-request lang exists here).
+  const headerButtonVisible = Boolean(headerIcon?.icon) && Boolean(headerIcon?.target_url)
+    && (headerIcon.visibility === 'both' || headerIcon.visibility === lang);
+  const isExternalTarget = /^https?:\/\//i.test(headerIcon?.target_url || '');
 
   useEffect(() => {
     queueMicrotask(() => setAuthReady(true));
@@ -273,6 +317,19 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
   const nameFa = [attendee?.firstname_fa, attendee?.lastname_fa].filter(Boolean).join(" ");
   const nameEn = [attendee?.firstname_en, attendee?.lastname_en].filter(Boolean).join(" ");
 
+  const headerButtonIcon = headerIcon.icon && headerIcon.icon.startsWith('/') ? (
+    isSvgIconPath(headerIcon.icon)
+      ? <HeaderButtonIcon path={headerIcon.icon} size={headerIcon.icon_size} colorDark={headerIcon.color_dark} colorLight={headerIcon.color_light} />
+      : <img src={headerIcon.icon} alt="" style={{ width: headerIcon.icon_size, height: headerIcon.icon_size, objectFit: "contain" }} />
+  ) : (
+    <span style={{ fontSize: headerIcon.icon_size, lineHeight: 1 }}>{headerIcon.icon}</span>
+  );
+  const headerButtonProps = {
+    "aria-label": lang === "en" ? "Badge header link" : "دکمه هدر",
+    className: "w-9 h-9 rounded-xl flex items-center justify-center text-base transition-all active:scale-90",
+    style: { background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", textDecoration: "none" },
+  };
+
   return (
     <main
       dir={isRTL ? "rtl" : "ltr"}
@@ -286,7 +343,21 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
       </div>
 
       <div className="relative max-w-md mx-auto px-4 pb-32">
-        <PageHeader title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={isHomeContext} showBack={showBack} />
+        <PageHeader
+          title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en}
+          isHomeContext={isHomeContext} showBack={showBack}
+          titleRowExtra={headerButtonVisible && (
+            isExternalTarget ? (
+              <a href={headerIcon.target_url} target="_blank" rel="noopener noreferrer" {...headerButtonProps}>
+                {headerButtonIcon}
+              </a>
+            ) : (
+              <Link href={headerIcon.target_url} {...headerButtonProps}>
+                {headerButtonIcon}
+              </Link>
+            )
+          )}
+        />
 
         {loading && (
           <div
