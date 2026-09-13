@@ -34,17 +34,25 @@ export async function POST(request) {
     }
   }
 
+  // A "queued" ack has no answer yet — XP waits for /chat/status to report
+  // 'done'. "capacity_limited" comes from the VPS fallback's local-LLM
+  // concurrency cap (main.py) when it couldn't get an Ollama slot in time —
+  // no real answer was produced, so no XP either (the badge above already
+  // covers "sent a message" regardless of outcome). Anything else here
+  // (exact/RAG/fallback) is a real answer.
+  function isRealAnswer(data) {
+    return data?.status !== 'queued' && data?.source !== 'capacity_limited';
+  }
+
   try {
     const data = await tryFetch(PRIMARY_URL, 15_000);
-    // A "queued" ack has no answer yet — XP waits for /chat/status to report
-    // 'done'. Any other status here (exact/RAG/fallback) is a real answer.
-    if (data?.status !== 'queued') await grantChatMissionXp();
+    if (isRealAnswer(data)) await grantChatMissionXp();
     return Response.json(data);
   } catch (primaryErr) {
     console.warn('Primary chatbot backend (GPU server) failed, falling back to VPS:', primaryErr.message);
     try {
       const data = await tryFetch(FALLBACK_URL, 90_000);
-      if (data?.status !== 'queued') await grantChatMissionXp();
+      if (isRealAnswer(data)) await grantChatMissionXp();
       return Response.json(data);
     } catch (fallbackErr) {
       console.error('Fallback chatbot backend (VPS) also failed:', fallbackErr.message);
