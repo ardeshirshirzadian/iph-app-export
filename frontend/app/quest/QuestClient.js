@@ -516,11 +516,6 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
         </div>
         {mission.sponsor && (
           <div className="flex items-center gap-1.5 mb-1">
-            <BoothLogo
-              logoUrl={getLogoUrl(mission.sponsor.logo, logoBaseUrl)}
-              firstLetter={(mission.sponsor.brand_name_fa || mission.sponsor.brand_name_en || '?').charAt(0)}
-              size={sponsorLogoSize}
-            />
             <span style={{ fontSize: sponsorNameSize, color: sponsorNameColor }}>
               {langProp === 'en'
                 ? (mission.sponsor.brand_name_en || mission.sponsor.brand_name_fa)
