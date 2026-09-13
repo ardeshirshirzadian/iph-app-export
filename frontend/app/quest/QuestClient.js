@@ -458,27 +458,20 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
           width: iconBoxSize, height: iconBoxSize,
           background: iconUsesCompletedStyle ? "var(--quest-mission-completed-icon-bg)" : "var(--quest-mission-active-icon-bg)",
           border: iconUsesCompletedStyle ? "1px solid var(--quest-mission-completed-icon-border)" : "1px solid var(--quest-mission-active-icon-border)",
+          // Sponsor logo only: grayscale the WHOLE box (this background +
+          // the logo) as one unit when completed, instead of just the
+          // image, so it reads as one uniformly muted box rather than a
+          // colored/light square with a separately-desaturated logo on it.
+          // undefined for every non-sponsor icon (sponsorLogoUrl is null),
+          // so this box's normal/completed behavior is untouched otherwise.
+          filter: sponsorLogoUrl && iconUsesCompletedStyle ? 'grayscale(1)' : undefined,
         }}
       >
         {sponsorLogoUrl ? (
           <img
             src={sponsorLogoUrl}
             alt=""
-            style={{
-              width: mission.icon_size ?? 36,
-              height: mission.icon_size ?? 36,
-              objectFit: 'contain',
-              // Event-agnostic by construction, not by coincidence of today's
-              // colors: mixing var(--accent) at only 8% into white can shift
-              // the result by at most 8% of the channel range no matter what
-              // --accent is -- even the theoretical worst case (a pure black
-              // accent, #000000) only reaches rgb(235,235,235), still clearly
-              // light. A future event's admin can set --accent to anything
-              // and this stays a light, legible logo backing with no code
-              // change here.
-              background: 'color-mix(in srgb, var(--accent) 8%, white)',
-              filter: iconUsesCompletedStyle ? 'grayscale(1)' : undefined,
-            }}
+            style={{ width: mission.icon_size ?? 36, height: mission.icon_size ?? 36, objectFit: 'contain' }}
           />
         ) : mission.icon && mission.icon.startsWith('/') ? (
           isSvgIconPath(mission.icon) ? (
