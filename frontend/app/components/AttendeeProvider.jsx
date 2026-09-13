@@ -61,6 +61,29 @@ const AttendeeContext = createContext({
   refetch: async () => {},
 });
 
+// Fire-and-forget: keeps app_users.profile_image (the leaderboard's primary
+// photo source, see leaderboard/route.js's resolvePhotoUrl) fresh, and
+// awards the profile_photo quest mission/badge the moment a photo is
+// confirmed present (see grantProfilePhotoMissionXp in
+// app/api/auth/sync-profile-photo/route.js — idempotent, no-op if already
+// granted or if no active profile_photo mission/badge exists yet).
+// Extracted to a plain module-level function (no component state captured)
+// so both fetchAttendee's initial call and the visibilitychange re-check
+// below share one implementation.
+function syncProfilePhoto(profile) {
+  return fetch("/api/auth/sync-profile-photo", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profile }),
+  }).catch(() => {});
+}
+
+// Floor between profile-photo re-checks, so rapid tab-switching can't
+// fire this repeatedly. The endpoint is idempotent either way (ON CONFLICT
+// DO NOTHING for the XP grant) -- this is purely to avoid pointless network
+// chatter, not a correctness requirement.
+const PROFILE_PHOTO_RECHECK_MIN_INTERVAL_MS = 60_000;
+
 export default function AttendeeProvider({ children, rasayeshEventId }) {
   const { user, isLoggedIn } = useAuth();
   // useAuth() resolves the iph_user cookie via queueMicrotask, so `user` is
@@ -72,6 +95,9 @@ export default function AttendeeProvider({ children, rasayeshEventId }) {
   const [attendee, setAttendee] = useState(null);
   const [loading, setLoading] = useState(true);
   const fetchedForUser = useRef(null);
+  // Timestamp of the last sync-profile-photo call (initial fetch or
+  // visibilitychange re-check below) — see PROFILE_PHOTO_RECHECK_MIN_INTERVAL_MS.
+  const lastProfilePhotoSyncRef = useRef(0);
 
   useEffect(() => {
     queueMicrotask(() => setAuthChecked(true));
@@ -96,16 +122,12 @@ export default function AttendeeProvider({ children, rasayeshEventId }) {
         });
         if (data?.getAttendee) {
           setAttendee(data.getAttendee);
-          // Fire-and-forget: keeps app_users.profile_image (the leaderboard's
-          // primary photo source, see leaderboard/route.js's resolvePhotoUrl)
-          // fresh even when the photo changed mid-session -- e.g.
-          // EditProfileClient's upload flow calls refetch() (this function)
-          // but only updates local state, never the server, on its own.
-          fetch("/api/auth/sync-profile-photo", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ profile: data.getAttendee.profile }),
-          }).catch(() => {});
+          // Also keeps app_users.profile_image fresh when the photo changed
+          // mid-session -- e.g. EditProfileClient's upload flow calls
+          // refetch() (this function) but only updates local state, never
+          // the server, on its own.
+          syncProfilePhoto(data.getAttendee.profile);
+          lastProfilePhotoSyncRef.current = Date.now();
           break;
         }
         // Not a NetworkRetryError (e.g. confirmed auth failure, already
@@ -141,6 +163,34 @@ export default function AttendeeProvider({ children, rasayeshEventId }) {
     fetchedForUser.current = user.id;
     fetchAttendee();
   }, [authChecked, isLoggedIn, user?.id, rasayeshEventId, fetchAttendee]);
+
+  // Re-check the profile-photo mission/badge grant on tab refocus, without
+  // re-running the rest of fetchAttendee (a live Rasayesh GraphQL call --
+  // this re-check should stay purely local/cheap, see sync-profile-photo's
+  // own ~0.1-0.2s measured cost). Deliberately isolated from the
+  // fetchedForUser-gated effect above: fetchedForUser continues to gate the
+  // full attendee fetch to once per login session exactly as before; this
+  // effect only ever re-fires the lightweight sync call, using the
+  // already-fetched attendee.profile already sitting in state. Needed
+  // because grantProfilePhotoMissionXp() checks for an active profile_photo
+  // mission live on every call — a session that started before an admin
+  // created that mission never rechecks until something re-fires this sync,
+  // which fetchedForUser's once-per-session gate otherwise prevents (see
+  // 2026-09-12 leaderboard-visibility investigation).
+  useEffect(() => {
+    if (!isLoggedIn || !attendee?.profile) return;
+
+    function onVisibilityChange() {
+      if (document.hidden) return;
+      const now = Date.now();
+      if (now - lastProfilePhotoSyncRef.current < PROFILE_PHOTO_RECHECK_MIN_INTERVAL_MS) return;
+      lastProfilePhotoSyncRef.current = now;
+      syncProfilePhoto(attendee.profile);
+    }
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [isLoggedIn, attendee]);
 
   return (
     <AttendeeContext.Provider value={{ attendee, loading, isLoggedIn, refetch: fetchAttendee }}>
