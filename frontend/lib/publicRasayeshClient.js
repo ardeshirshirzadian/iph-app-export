@@ -44,24 +44,51 @@ export async function getRasayeshEventInfo(eventId) {
   return data;
 }
 
+// Single-flight de-dup: when the unstable_cache layer above this (see
+// app/api/companies/data/route.js) misses concurrently -- e.g. a burst of
+// requests landing right as the 60s TTL expires -- every one of them used to
+// fire its own independent fetch() to Rasayesh (a cache-miss "stampede").
+// Keying on the exact (query, variables, eventOrigin) triple means this only
+// coalesces genuinely identical concurrent calls: different search terms,
+// different eventIds, or different query types (list/sponsorship/featured/
+// detail) each get their own key and are never merged. The map entry is
+// removed as soon as the promise settles (success or failure), so it adds
+// no caching beyond the lifetime of one in-flight request -- the very next
+// call, even microseconds later, starts a fresh fetch exactly as before.
+const inFlightRequests = new Map(); // signature -> Promise<json>
+
 export async function fetchPublicGraphQL(query, variables = {}, eventOrigin) {
-  const res = await fetch(GQL, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-rasayesh-site': 'iph',
-      origin: eventOrigin,
-      referer: `${eventOrigin}/`,
-    },
-    body: JSON.stringify({ query, variables }),
-  });
-  const json = await res.json();
-  if (json.errors?.length) {
-    const err = new Error(json.errors[0]?.message || 'GraphQL error');
-    err.graphQLErrors = json.errors;
-    throw err;
+  const signature = JSON.stringify({ query, variables, eventOrigin });
+
+  const inFlight = inFlightRequests.get(signature);
+  if (inFlight) return inFlight;
+
+  const promise = (async () => {
+    const res = await fetch(GQL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-rasayesh-site': 'iph',
+        origin: eventOrigin,
+        referer: `${eventOrigin}/`,
+      },
+      body: JSON.stringify({ query, variables }),
+    });
+    const json = await res.json();
+    if (json.errors?.length) {
+      const err = new Error(json.errors[0]?.message || 'GraphQL error');
+      err.graphQLErrors = json.errors;
+      throw err;
+    }
+    return json;
+  })();
+
+  inFlightRequests.set(signature, promise);
+  try {
+    return await promise;
+  } finally {
+    inFlightRequests.delete(signature);
   }
-  return json;
 }
 
 const EVENT_REGISTRATION_PLANS_QUERY = `
