@@ -435,6 +435,11 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
   // 8px padding — keep that same padding so the container scales with a
   // per-mission icon_size instead of clipping it at a fixed size.
   const iconBoxSize = Math.max(44, (mission.icon_size ?? 36) + 8);
+  // Sponsored missions show the sponsor's own logo in the icon box instead of
+  // the admin-picked icon -- same resolved-URL helper already used for the
+  // small avatar in the sponsor row below, so this falls back to null (and
+  // therefore the normal icon) whenever the sponsor has no logo.
+  const sponsorLogoUrl = mission.sponsor ? getLogoUrl(mission.sponsor.logo, logoBaseUrl) : null;
 
   return (
     <div
@@ -455,7 +460,9 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
           border: iconUsesCompletedStyle ? "1px solid var(--quest-mission-completed-icon-border)" : "1px solid var(--quest-mission-active-icon-border)",
         }}
       >
-        {mission.icon && mission.icon.startsWith('/') ? (
+        {sponsorLogoUrl ? (
+          <img src={sponsorLogoUrl} alt="" style={{ width: mission.icon_size ?? 36, height: mission.icon_size ?? 36, objectFit: 'contain' }} />
+        ) : mission.icon && mission.icon.startsWith('/') ? (
           isSvgIconPath(mission.icon) ? (
             <QuestIcon
               path={mission.icon}
