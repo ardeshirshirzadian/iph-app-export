@@ -77,6 +77,19 @@ export default function QRScanPage() {
           return;
         }
 
+        if (data.status === 'featured_booth_closed') {
+          setLogoErr(false);
+          setScanResult({
+            company: data.company,
+            featuredBoothClosed: true,
+            startHour: data.start_hour,
+            endHour: data.end_hour,
+          });
+          setStatus("success");
+          setTimeout(() => router.replace("/quest"), 3500);
+          return;
+        }
+
         if (data.status === 'cooldown') {
           setLogoErr(false);
           setScanResult({
@@ -321,14 +334,14 @@ export default function QRScanPage() {
       {status === "success" && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 z-10 px-8">
           {/* Check icon or logo */}
-          {logoUrl && !scanResult?.outsideWindow ? (
+          {logoUrl && !scanResult?.outsideWindow && !scanResult?.featuredBoothClosed ? (
             <div
               className="w-24 h-24 rounded-2xl overflow-hidden flex items-center justify-center bg-white"
               style={{ animation: "successPulse 1.4s ease-in-out infinite", border: "2px solid var(--accent)" }}
             >
               <img src={logoUrl} alt="" onError={() => setLogoErr(true)} className="w-full h-full object-contain" />
             </div>
-          ) : scanResult?.outsideWindow ? (
+          ) : (scanResult?.outsideWindow || scanResult?.featuredBoothClosed) ? (
             <div className="w-24 h-24 rounded-full bg-amber-500/20 border-2 border-amber-400 flex items-center justify-center">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />
@@ -361,6 +374,19 @@ export default function QRScanPage() {
                     ? `این غرفه فقط بین ساعت ${toPersianDigits(scanResult.startHour)} تا ${toPersianDigits(scanResult.endHour)} امتیاز تکراری می‌دهد`
                     : `Repeat scoring active ${scanResult.startHour}:00–${scanResult.endHour}:00`}
                 </p>
+              </>
+            ) : scanResult?.featuredBoothClosed ? (
+              <>
+                <p className="font-bold text-lg mb-1" style={{ color: "#f59e0b" }}>
+                  {lang === "fa" ? "نمایشگاه در این ساعت تعطیل است" : "Exhibition closed at this time"}
+                </p>
+                {scanResult.startHour != null && scanResult.endHour != null && (
+                  <p className="text-sm mb-2" style={{ color: "rgba(255,255,255,0.55)" }}>
+                    {lang === "fa"
+                      ? `فقط بین ساعت ${toPersianDigits(scanResult.startHour)} تا ${toPersianDigits(scanResult.endHour)} فعال است`
+                      : `Active only ${scanResult.startHour}:00–${scanResult.endHour}:00`}
+                  </p>
+                )}
               </>
             ) : scanResult?.cooldown ? (
               <p className="font-bold text-lg mb-2" style={{ color: "#fbbf24" }}>
@@ -411,7 +437,7 @@ export default function QRScanPage() {
               </p>
             )}
 
-            {!scanResult?.alreadyScanned && !scanResult?.cooldown && !scanResult?.outsideWindow && (
+            {!scanResult?.alreadyScanned && !scanResult?.cooldown && !scanResult?.outsideWindow && !scanResult?.featuredBoothClosed && (
               <p className="text-white/40 text-sm mt-2">{t(lang, "scan_success_title")}</p>
             )}
           </div>

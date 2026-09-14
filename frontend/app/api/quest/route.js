@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { unstable_cache } from 'next/cache';
 import { query } from '@/lib/db';
-import { ensureFeaturedBoothState, getFeaturedBoothCountdown } from '@/lib/featuredBoothHelper';
+import { ensureFeaturedBoothState, isWithinDailyWindow } from '@/lib/featuredBoothHelper';
 import { getCurrentEventId } from '@/lib/currentEvent';
 
 // Mission DEFINITIONS only (admin-curated: title/description/xp/icon/quiz
@@ -195,20 +195,27 @@ export async function GET() {
         // Countdown for featured_booth: return next rotation timestamp (no golden
         // booth identity revealed — only WHEN the next rotation occurs).
         let featured_booth_next_rotation = undefined;
+        // True while the current cycle's golden booth has already been
+        // scanned by someone -- the mission is locked for everyone else
+        // until featured_booth_next_rotation passes (see 2026-09-14 spec,
+        // point 3). Reuses ensureFeaturedBoothState's own return value
+        // instead of a second separate lookup.
+        let featured_booth_claimed = undefined;
         // Pool companies for featured_booth: show all candidates so the user knows
         // which booths to visit. Does NOT reveal which is currently golden.
         let featured_booth_pool_companies = undefined;
         if (m.mission_type === 'featured_booth') {
           // Lazily ensure a state row exists so the countdown is non-null on first load.
+          let fbState = null;
           if (Array.isArray(m.featured_booth_pool) && m.featured_booth_pool.length >= 2) {
-            await ensureFeaturedBoothState(m, 'mission').catch(() => {});
+            fbState = await ensureFeaturedBoothState(m, 'mission').catch(() => null);
           }
-          const selectedAt = await getFeaturedBoothCountdown(m.id, 'mission');
-          if (selectedAt) {
-            const nextMs = new Date(selectedAt).getTime() +
+          if (fbState?.selected_at) {
+            const nextMs = new Date(fbState.selected_at).getTime() +
               Math.max(1, m.featured_booth_rotation_hours ?? 1) * 3_600_000;
             featured_booth_next_rotation = new Date(nextMs).toISOString();
           }
+          featured_booth_claimed = !!fbState?.claimed_at;
           // Resolve company details for every pool member (no golden booth revealed).
           const pool = m.featured_booth_pool;
           if (Array.isArray(pool) && pool.length > 0) {
@@ -286,7 +293,15 @@ export async function GET() {
           social_share_status: m.mission_type === 'social_share' ? (social_share_status ?? null) : undefined,
           social_share_note: m.mission_type === 'social_share' ? (social_share_note ?? null) : undefined,
           featured_booth_next_rotation,
+          featured_booth_claimed,
           featured_booth_pool_companies,
+          featured_booth_daily_start_hour: m.mission_type === 'featured_booth' ? (m.featured_booth_daily_start_hour ?? null) : undefined,
+          featured_booth_daily_end_hour: m.mission_type === 'featured_booth' ? (m.featured_booth_daily_end_hour ?? null) : undefined,
+          featured_booth_closed: m.mission_type === 'featured_booth'
+            ? !isWithinDailyWindow(m.featured_booth_daily_start_hour, m.featured_booth_daily_end_hour)
+            : undefined,
+          featured_booth_message_fa: m.mission_type === 'featured_booth' ? (m.featured_booth_message_fa ?? null) : undefined,
+          featured_booth_message_en: m.mission_type === 'featured_booth' ? (m.featured_booth_message_en ?? null) : undefined,
           sponsor: m.sponsor_company_id ? {
             brand_name_fa: m.sponsor_brand_name_fa,
             brand_name_en: m.sponsor_brand_name_en,

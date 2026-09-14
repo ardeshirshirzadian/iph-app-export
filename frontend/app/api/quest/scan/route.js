@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { ensureBadgeProgressTable } from '@/lib/initQuestBadges';
-import { ensureFeaturedBoothState } from '@/lib/featuredBoothHelper';
+import { ensureFeaturedBoothState, markFeaturedBoothClaimed, isWithinDailyWindow } from '@/lib/featuredBoothHelper';
 import { getCurrentEventId } from '@/lib/currentEvent';
 
 const RASAYESH_BASE = 'https://api.rasayesh.com/';
@@ -146,62 +146,22 @@ export async function POST(request) {
 
     const company = companyResult.rows[0];
 
-    if (company.repeatable_scan) {
-      const startH = company.repeatable_start_hour ?? 0;
-      const endH = company.repeatable_end_hour ?? 24;
-      const currentHour = new Date().getHours();
-      if (currentHour < startH || currentHour >= endH) {
-        return NextResponse.json({
-          status: 'outside_window',
-          start_hour: startH,
-          end_hour: endH,
-          company,
-        });
-      }
-
-      const lastScanResult = await query(
-        `SELECT scanned_at FROM quest_scans
-         WHERE user_uuid = $1 AND company_id = $2 AND event_id = $3
-         ORDER BY scanned_at DESC LIMIT 1`,
-        [userUuid, company.placement_id, currentEventId]
-      );
-      if (lastScanResult.rows.length > 0) {
-        const elapsedMs = Date.now() - new Date(lastScanResult.rows[0].scanned_at).getTime();
-        const cooldownHours = Math.max(1, company.repeatable_scan_hours || 1);
-        const cooldownMs = cooldownHours * 60 * 60 * 1000;
-        if (elapsedMs < cooldownMs) {
-          const remainingMs = cooldownMs - elapsedMs;
-          return NextResponse.json({
-            status: 'cooldown',
-            minutes_remaining: Math.ceil(remainingMs / 60000),
-            seconds_remaining: Math.ceil(remainingMs / 1000),
-            company,
-          });
-        }
-      }
-    } else {
-      const existingResult = await query(
-        `SELECT id FROM quest_scans
-         WHERE user_uuid = $1 AND company_id = $2 AND event_id = $3
-           AND scanned_at > NOW() - INTERVAL '24 hours'`,
-        [userUuid, company.placement_id, currentEventId]
-      );
-      if (existingResult.rows.length > 0) {
-        return NextResponse.json({ already_scanned: true, company });
-      }
-    }
-
-    // ── Featured booth golden-booth check ──────────────────────────────────────
-    // Look for any active featured_booth missions/badges where the scanned company
-    // is in the pool.  This check is intentionally low-cost: pools are small and
-    // the query is bounded to active featured_booth rows only.
-    let bonusXp     = 0;
-    let bonusMission = null; // { id, featured_booth_bonus_xp }
-    let bonusBadge   = null;
+    // ── Featured-booth pool gating (window / claim-lock / rotation-aware
+    // re-scan) -- runs BEFORE the generic dedup/cooldown checks below, since
+    // a pool booth's scan eligibility is governed entirely by its
+    // featured_booth mission's own state, not the generic per-booth rules.
+    // Missions only (badges keep their pre-existing, unchanged behavior --
+    // no window/claim-lock/rotation-aware re-scan for them, out of scope).
+    // See 2026-09-14 spec (points 3 and 4, plus the daily-window addition).
+    let bonusXp             = 0;
+    let bonusMission        = null; // { id, featured_booth_bonus_xp }
+    let bonusBadge          = null;
+    let fbSkipGenericDedup  = false; // true once rotation-aware dedup already resolved this scan
 
     try {
       const { rows: fbMissions } = await query(
-        `SELECT id, featured_booth_pool, featured_booth_bonus_xp, featured_booth_rotation_hours
+        `SELECT id, featured_booth_pool, featured_booth_bonus_xp, featured_booth_rotation_hours,
+                featured_booth_daily_start_hour, featured_booth_daily_end_hour
          FROM quest_content
          WHERE is_active = true AND mission_type = 'featured_booth'
            AND featured_booth_pool IS NOT NULL AND event_id = $1`,
@@ -210,10 +170,55 @@ export async function POST(request) {
       for (const m of fbMissions) {
         const pool = Array.isArray(m.featured_booth_pool) ? m.featured_booth_pool : [];
         if (!pool.includes(company.id)) continue;
-        const goldenId = await ensureFeaturedBoothState(m, 'mission');
-        if (goldenId === company.id) {
+
+        if (!isWithinDailyWindow(m.featured_booth_daily_start_hour, m.featured_booth_daily_end_hour)) {
+          return NextResponse.json({
+            status: 'featured_booth_closed',
+            start_hour: m.featured_booth_daily_start_hour,
+            end_hour: m.featured_booth_daily_end_hour,
+            company,
+          });
+        }
+
+        const state = await ensureFeaturedBoothState(m, 'mission');
+        if (!state) continue; // misconfigured/empty pool -- fall through to normal handling
+
+        if (state.claimed_at) {
+          const nextMs = new Date(state.selected_at).getTime() +
+            Math.max(1, m.featured_booth_rotation_hours ?? 1) * 3_600_000;
+          const remainingMs = Math.max(0, nextMs - Date.now());
+          return NextResponse.json({
+            status: 'cooldown',
+            minutes_remaining: Math.max(1, Math.ceil(remainingMs / 60000)),
+            seconds_remaining: Math.max(1, Math.ceil(remainingMs / 1000)),
+            company,
+          });
+        }
+
+        // Rotation-aware re-scan: a prior scan of this exact booth from
+        // BEFORE the current cycle started doesn't count against the
+        // generic dedup rule below -- it's a fresh opportunity in a new
+        // pool/cycle, not a repeat within the same one.
+        const { rows: lastScanRows } = await query(
+          `SELECT scanned_at FROM quest_scans
+           WHERE user_uuid = $1 AND company_id = $2 AND event_id = $3
+           ORDER BY scanned_at DESC LIMIT 1`,
+          [userUuid, company.placement_id, currentEventId]
+        );
+        if (
+          lastScanRows.length > 0 &&
+          new Date(lastScanRows[0].scanned_at).getTime() >= new Date(state.selected_at).getTime()
+        ) {
+          // Already scanned THIS booth THIS cycle -- same outcome the
+          // generic rule would give, surfaced the same way.
+          return NextResponse.json({ already_scanned: true, company });
+        }
+        fbSkipGenericDedup = true;
+
+        if (state.current_company_id === company.id) {
           bonusXp      = Math.max(bonusXp, m.featured_booth_bonus_xp ?? 500);
           bonusMission = m;
+          await markFeaturedBoothClaimed(m.id, 'mission');
         }
       }
 
@@ -227,14 +232,64 @@ export async function POST(request) {
       for (const b of fbBadges) {
         const pool = Array.isArray(b.featured_booth_pool) ? b.featured_booth_pool : [];
         if (!pool.includes(company.id)) continue;
-        const goldenId = await ensureFeaturedBoothState(b, 'badge');
-        if (goldenId === company.id) {
+        const state = await ensureFeaturedBoothState(b, 'badge');
+        if (state?.current_company_id === company.id) {
           bonusBadge = b;
           // Badges don't award XP; bonusXp is not updated here
         }
       }
     } catch (fbErr) {
       console.error('[quest/scan] featured_booth check failed:', fbErr.message);
+    }
+
+    // ── Generic dedup / cooldown (repeatable-scan window, or plain 24h) ──────
+    // Skipped entirely when the rotation-aware re-scan check above already
+    // resolved dedup for a featured_booth pool booth.
+    if (!fbSkipGenericDedup) {
+      if (company.repeatable_scan) {
+        const startH = company.repeatable_start_hour ?? 0;
+        const endH = company.repeatable_end_hour ?? 24;
+        const currentHour = new Date().getHours();
+        if (currentHour < startH || currentHour >= endH) {
+          return NextResponse.json({
+            status: 'outside_window',
+            start_hour: startH,
+            end_hour: endH,
+            company,
+          });
+        }
+
+        const lastScanResult = await query(
+          `SELECT scanned_at FROM quest_scans
+           WHERE user_uuid = $1 AND company_id = $2 AND event_id = $3
+           ORDER BY scanned_at DESC LIMIT 1`,
+          [userUuid, company.placement_id, currentEventId]
+        );
+        if (lastScanResult.rows.length > 0) {
+          const elapsedMs = Date.now() - new Date(lastScanResult.rows[0].scanned_at).getTime();
+          const cooldownHours = Math.max(1, company.repeatable_scan_hours || 1);
+          const cooldownMs = cooldownHours * 60 * 60 * 1000;
+          if (elapsedMs < cooldownMs) {
+            const remainingMs = cooldownMs - elapsedMs;
+            return NextResponse.json({
+              status: 'cooldown',
+              minutes_remaining: Math.ceil(remainingMs / 60000),
+              seconds_remaining: Math.ceil(remainingMs / 1000),
+              company,
+            });
+          }
+        }
+      } else {
+        const existingResult = await query(
+          `SELECT id FROM quest_scans
+           WHERE user_uuid = $1 AND company_id = $2 AND event_id = $3
+             AND scanned_at > NOW() - INTERVAL '24 hours'`,
+          [userUuid, company.placement_id, currentEventId]
+        );
+        if (existingResult.rows.length > 0) {
+          return NextResponse.json({ already_scanned: true, company });
+        }
+      }
     }
 
     // Total XP: regular booth XP + golden-booth bonus (if any)

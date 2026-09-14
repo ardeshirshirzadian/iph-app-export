@@ -381,7 +381,7 @@ function isMissionCompleted(mission) {
   return false;
 }
 
-function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyClick, onSocialShareClick, onProfilePhotoClick, lang: langProp, logoBaseUrl, sponsorLogoSize, sponsorNameColor, sponsorNameSize, missionIconColors }) {
+function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyClick, onSocialShareClick, onProfilePhotoClick, onManualScanClick, lang: langProp, logoBaseUrl, sponsorLogoSize, sponsorNameColor, sponsorNameSize, missionIconColors }) {
   const pct = useMemo(
     () => (mission.total > 0 ? Math.round((mission.progress / mission.total) * 100) : 0),
     [mission.progress, mission.total]
@@ -392,6 +392,13 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
   const isSurvey = mission.mission_type === 'survey';
   const isSocialShare = mission.mission_type === 'social_share';
   const isProfilePhoto = mission.mission_type === 'profile_photo';
+  // chat/attendance render a clean checkmark-only state (no pill, no bar --
+  // the completion checkmark bubble below already covers it). manual gets
+  // the same treatment PLUS a scan-now pill, since unlike chat/attendance it
+  // has a concrete user action available from the list (see 2026-09-14).
+  const isChat = mission.mission_type === 'chat';
+  const isAttendance = mission.mission_type === 'attendance';
+  const isManual = mission.mission_type === 'manual';
   const quizAttempted = isQuiz && !!mission.quiz_attempted;
   // Wrong quiz answers ARE completed (isMissionCompleted treats any attempt
   // as done, regardless of correctness -- see MissionCard's `done` above),
@@ -418,6 +425,7 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
   // Social share: clickable if no pending submission, not yet approved
   const socialShareClickable = isSocialShare && !done && socialShareStatus !== 'pending' && typeof onSocialShareClick === 'function';
   const profilePhotoClickable = isProfilePhoto && !done && typeof onProfilePhotoClick === 'function';
+  const manualScanClickable = isManual && !done && typeof onManualScanClick === 'function';
 
   const now = useLiveNow(isFeaturedBooth && !done);
   const countdownText = isFeaturedBooth
@@ -429,6 +437,7 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
     : socialShareClickable ? onSocialShareClick
     : featuredClickable ? onFeaturedClick
     : profilePhotoClickable ? onProfilePhotoClick
+    : manualScanClickable ? onManualScanClick
     : undefined;
 
   // 44px (the old fixed w-11/h-11) already matched the 36px default icon plus
@@ -445,7 +454,7 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
     <div
       onClick={handleClick}
       className={`backdrop-blur-xl border rounded-2xl p-4 flex items-center gap-4 transition-colors ${
-        (quizClickable || surveyClickable || socialShareClickable || featuredClickable || profilePhotoClickable) ? "cursor-pointer active:scale-[0.98]" : ""
+        (quizClickable || surveyClickable || socialShareClickable || featuredClickable || profilePhotoClickable || manualScanClickable) ? "cursor-pointer active:scale-[0.98]" : ""
       }`}
       style={done
         ? { borderColor: "var(--quest-mission-completed-row-border)", background: "var(--quest-mission-completed-row-bg)" }
@@ -568,6 +577,20 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
                 {langProp === 'fa' ? 'آپلود کن ←' : 'Upload →'}
               </span>
             )}
+          </div>
+        ) : isManual ? (
+          <div className="flex items-center justify-between gap-2">
+            <span />
+            {manualScanClickable && (
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0"
+                style={{ background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent)" }}>
+                {langProp === 'fa' ? 'اسکن کن ←' : 'Scan →'}
+              </span>
+            )}
+          </div>
+        ) : (isChat || isAttendance) ? (
+          <div className="flex items-center justify-between gap-2">
+            <span />
           </div>
         ) : isSocialShare ? (
           <div className="flex flex-col gap-0.5">
@@ -1383,11 +1406,48 @@ function FeaturedBoothPoolSheet({ open, onClose, item, isRTL, lang, logoBaseUrl 
     }
   }, [open]);
 
+  // Missions only -- item?.isFeaturedBadge means these fields are simply
+  // absent (undefined), so isClosed/isClaimed are always false for badges,
+  // leaving their sheet behavior exactly as before (out of scope, see
+  // 2026-09-14 spec).
+  const isClosed = !!item?.featured_booth_closed;
+  const isClaimed = !isClosed && !!item?.featured_booth_claimed;
+  const now = useLiveNow(open && isClaimed);
+
   if (!open && !visible) return null;
 
   const companies = item?.featured_booth_pool_companies || [];
   const isBadge = !!item?.isFeaturedBadge;
   const itemTitle = item?.title || item?.name || (lang === 'fa' ? 'غرفه‌های این ماموریت' : 'Mission Booths');
+
+  const startH = item?.featured_booth_daily_start_hour;
+  const endH = item?.featured_booth_daily_end_hour;
+  const closedMessage = lang === 'fa'
+    ? (startH != null && endH != null
+        ? `نمایشگاه در این ساعت تعطیل است — فقط بین ساعت ${toPersianNum(startH)} تا ${toPersianNum(endH)} فعال است.`
+        : 'نمایشگاه در این ساعت تعطیل است.')
+    : (startH != null && endH != null
+        ? `Exhibition closed at this time — active only ${startH}:00–${endH}:00.`
+        : 'Exhibition closed at this time.');
+
+  let claimedMinutes = null;
+  if (isClaimed && item?.featured_booth_next_rotation) {
+    const remaining = new Date(item.featured_booth_next_rotation).getTime() - now;
+    claimedMinutes = Math.max(1, Math.ceil(remaining / 60_000));
+  }
+  const claimedMessage = lang === 'fa'
+    ? (claimedMinutes != null
+        ? `غرفه برتر همین چرخه قبلاً پیدا شده — ${toPersianNum(claimedMinutes)} دقیقه دیگر دوباره امتحان کن.`
+        : 'غرفه برتر همین چرخه قبلاً پیدا شده — کمی بعد دوباره امتحان کن.')
+    : (claimedMinutes != null
+        ? `This cycle's featured booth was already found — try again in ${claimedMinutes} min.`
+        : "This cycle's featured booth was already found — try again shortly.");
+
+  const framingMessage = lang === 'fa'
+    ? (item?.featured_booth_message_fa ||
+        'یکی از این غرفه‌ها به‌صورت تصادفی انتخاب شده — غرفه فعال را با اسکن QR هر کدام پیدا کن.')
+    : (item?.featured_booth_message_en ||
+        'One of these booths is randomly selected as the active target — find it by scanning the QR code of each.');
 
   return (
     <div className="fixed inset-0 z-[200] flex items-end justify-center">
@@ -1427,15 +1487,26 @@ function FeaturedBoothPoolSheet({ open, onClose, item, isRTL, lang, logoBaseUrl 
         </div>
 
         <div className="overflow-y-auto max-h-[65vh] px-4 pt-3 pb-8">
-          {/* Framing message — tells user what to do without revealing the active booth */}
-          <div className="mb-3 px-1 py-2.5 rounded-xl text-xs leading-6"
-            style={{ background: "color-mix(in srgb, var(--accent) 6%, transparent)", color: "var(--text-dim)", borderRight: isRTL ? "3px solid color-mix(in srgb, var(--accent) 30%, transparent)" : "none", borderLeft: !isRTL ? "3px solid color-mix(in srgb, var(--accent) 30%, transparent)" : "none", paddingRight: isRTL ? 10 : 6, paddingLeft: !isRTL ? 10 : 6 }}>
-            {lang === 'fa'
-              ? 'یکی از این غرفه‌ها به‌صورت تصادفی انتخاب شده — غرفه فعال را با اسکن QR هر کدام پیدا کن.'
-              : 'One of these booths is randomly selected as the active target — find it by scanning the QR code of each.'}
-          </div>
+          {(isClosed || isClaimed) ? (
+            // Closed-hours or already-claimed-this-cycle: no scan attempt
+            // should look available -- show the blocking message instead of
+            // the pool/scan UI entirely (see 2026-09-14 spec, Fix A point 4
+            // and the daily-window requirement's frontend piece).
+            <div className="text-center py-10 px-4">
+              <div className="text-3xl mb-3">{isClosed ? '🌙' : '⏳'}</div>
+              <p className="text-sm leading-7" style={{ color: "var(--text-dim)" }}>
+                {isClosed ? closedMessage : claimedMessage}
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Framing message — tells user what to do without revealing the active booth */}
+              <div className="mb-3 px-1 py-2.5 rounded-xl text-xs leading-6"
+                style={{ background: "color-mix(in srgb, var(--accent) 6%, transparent)", color: "var(--text-dim)", borderRight: isRTL ? "3px solid color-mix(in srgb, var(--accent) 30%, transparent)" : "none", borderLeft: !isRTL ? "3px solid color-mix(in srgb, var(--accent) 30%, transparent)" : "none", paddingRight: isRTL ? 10 : 6, paddingLeft: !isRTL ? 10 : 6 }}>
+                {framingMessage}
+              </div>
 
-          <div className="space-y-2">
+              <div className="space-y-2">
             {companies.length === 0 ? (
               <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
                 {lang === 'fa' ? 'غرفه‌ای در این استخر ثبت نشده' : 'No booths in this pool'}
@@ -1499,7 +1570,9 @@ function FeaturedBoothPoolSheet({ open, onClose, item, isRTL, lang, logoBaseUrl 
                 </div>
               );
             })}
-          </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -2135,6 +2208,11 @@ function SocialShareModal({ share, onClose, onComplete, lang }) {
 export default function QuestClient({ content, title, subtitle, title_en, subtitle_en, isHomeContext = false, showBack = true, appearanceConfig = {}, questSettings = {} }) {
   const router = useRouter();
   const onProfilePhotoClick = useCallback(() => router.push('/profile/edit'), [router]);
+  // Reuses the exact same route BottomNav's QR button (ScanButton -> Link
+  // href="/quest/scan") already navigates to -- no mission-specific/pre-
+  // filtered scan mode, scan/route.js already resolves any scanned booth_uuid
+  // to its linked manual mission correctly on its own (see 2026-09-14).
+  const onManualScanClick = useCallback(() => router.push('/quest/scan'), [router]);
   const [boothsOpen, setBoothsOpen] = useState(false);
   const [openFeaturedPool, setOpenFeaturedPool] = useState(null);
   const [activeTab, setActiveTab] = useState("missions");
@@ -2530,9 +2608,10 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         onSocialShareClick={m.mission_type === 'social_share' ? () => setOpenSocialShare({ ...m, isBadge: false }) : undefined}
         onFeaturedClick={m.mission_type === 'featured_booth' ? () => setOpenFeaturedPool(m) : undefined}
         onProfilePhotoClick={m.mission_type === 'profile_photo' ? onProfilePhotoClick : undefined}
+        onManualScanClick={m.mission_type === 'manual' ? onManualScanClick : undefined}
       />
     ),
-    [labels.xpUnit, lang, logoBaseUrl, sponsorStyle, missionIconColors, onProfilePhotoClick]
+    [labels.xpUnit, lang, logoBaseUrl, sponsorStyle, missionIconColors, onProfilePhotoClick, onManualScanClick]
   );
 
   const activeMissionList = useMemo(
