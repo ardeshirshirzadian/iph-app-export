@@ -14,6 +14,7 @@ async function gql(query) {
     },
     body: JSON.stringify({ query }),
     cache: 'no-store',
+    signal: AbortSignal.timeout(12000),
   });
   return res.json();
 }

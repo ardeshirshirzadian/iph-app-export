@@ -17,6 +17,7 @@ function rasayeshFetch(gqlQuery, variables, accessToken, eventOrigin) {
       'authorization': `Bearer ${accessToken}`,
     },
     body: JSON.stringify({ query: gqlQuery, variables }),
+    signal: AbortSignal.timeout(12000),
   }).then((r) => r.json());
 }
 

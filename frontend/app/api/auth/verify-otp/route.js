@@ -60,6 +60,7 @@ export async function POST(request) {
         }`,
         variables: { mobile, code },
       }),
+      signal: AbortSignal.timeout(12000),
     });
 
     const { data, errors } = await res.json();

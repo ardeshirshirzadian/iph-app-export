@@ -39,6 +39,7 @@ export async function POST(request) {
         }`,
         variables: { email },
       }),
+      signal: AbortSignal.timeout(12000),
     });
 
     const { data, errors } = await res.json();
