@@ -9,7 +9,7 @@ import BottomNav from "../components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { useAttendee } from "../components/AttendeeProvider";
 import { useLang } from "@/lib/useLang";
-import { toPersianDigits, toEnglishDigits } from "@/lib/utils";
+import { toPersianDigits, toEnglishDigits, toRelativeTime } from "@/lib/utils";
 
 const RASAYESH_BASE = "https://api.rasayesh.com/";
 
@@ -1445,6 +1445,14 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
 
 function FeaturedBoothPoolSheet({ open, onClose, item, isRTL, lang, logoBaseUrl }) {
   const [visible, setVisible] = useState(false);
+  // 'pool' (live rotation, gated by closed/claimed) vs 'history' (this
+  // user's full past scans against this mission's pool -- always visible
+  // regardless of the current rotation's window/claim state, since it's
+  // showing already-earned XP, not a live scan attempt). Missions only --
+  // badges don't have this tab, see isBadge below.
+  const [subTab, setSubTab] = useState('pool');
+  const [history, setHistory] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -1454,6 +1462,24 @@ function FeaturedBoothPoolSheet({ open, onClose, item, isRTL, lang, logoBaseUrl 
       setVisible(false);
     }
   }, [open]);
+
+  useEffect(() => {
+    if (open) setSubTab('pool');
+  }, [open, item?.id]);
+
+  const isBadge = !!item?.isFeaturedBadge;
+
+  useEffect(() => {
+    if (!open || subTab !== 'history' || isBadge || !item?.id) return;
+    let cancelled = false;
+    setHistoryLoading(true);
+    fetch(`/api/quest/scanned-booths?missionId=${item.id}`)
+      .then(res => res.json())
+      .then(data => { if (!cancelled) setHistory(data); })
+      .catch(() => { if (!cancelled) setHistory({ scans: [], total_xp: 0 }); })
+      .finally(() => { if (!cancelled) setHistoryLoading(false); });
+    return () => { cancelled = true; };
+  }, [open, subTab, isBadge, item?.id]);
 
   // Missions only -- item?.isFeaturedBadge means these fields are simply
   // absent (undefined), so isClosed/isClaimed are always false for badges,
@@ -1466,7 +1492,6 @@ function FeaturedBoothPoolSheet({ open, onClose, item, isRTL, lang, logoBaseUrl 
   if (!open && !visible) return null;
 
   const companies = item?.featured_booth_pool_companies || [];
-  const isBadge = !!item?.isFeaturedBadge;
   const itemTitle = item?.title || item?.name || (lang === 'fa' ? 'غرفه‌های این ماموریت' : 'Mission Booths');
 
   // Same shared resolvers MissionCard uses, so the sheet and the card
@@ -1524,8 +1549,37 @@ function FeaturedBoothPoolSheet({ open, onClose, item, isRTL, lang, logoBaseUrl 
           </button>
         </div>
 
+        {!isBadge && (
+          <div className="flex gap-1.5 px-4 pt-3 pb-1">
+            <button
+              onClick={() => setSubTab('pool')}
+              className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-all"
+              style={{
+                background: subTab === 'pool' ? "var(--accent)" : "var(--surface-2)",
+                color: subTab === 'pool' ? "var(--bg)" : "var(--text-dim)",
+                border: subTab === 'pool' ? '1px solid transparent' : '1px solid var(--border)',
+              }}
+            >
+              {lang === 'fa' ? 'غرفه‌ها' : 'Booths'}
+            </button>
+            <button
+              onClick={() => setSubTab('history')}
+              className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-all"
+              style={{
+                background: subTab === 'history' ? "var(--accent)" : "var(--surface-2)",
+                color: subTab === 'history' ? "var(--bg)" : "var(--text-dim)",
+                border: subTab === 'history' ? '1px solid transparent' : '1px solid var(--border)',
+              }}
+            >
+              {lang === 'fa' ? 'غرفه‌های اسکن‌شده' : 'Scanned Booths'}
+            </button>
+          </div>
+        )}
+
         <div className="overflow-y-auto max-h-[65vh] px-4 pt-3 pb-8">
-          {(isClosed || isClaimed) ? (
+          {subTab === 'history' && !isBadge ? (
+            <ScannedBoothsHistory history={history} loading={historyLoading} lang={lang} logoBaseUrl={logoBaseUrl} />
+          ) : (isClosed || isClaimed) ? (
             // Closed-hours or already-claimed-this-cycle: no scan attempt
             // should look available -- show the blocking message instead of
             // the pool/scan UI entirely (see 2026-09-14 spec, Fix A point 4
@@ -1614,6 +1668,88 @@ function FeaturedBoothPoolSheet({ open, onClose, item, isRTL, lang, logoBaseUrl 
         </div>
       </div>
     </div>
+  );
+}
+
+// Full past-scan history for one featured_booth mission's pool -- every
+// rotation, not just the current one (see FeaturedBoothPoolSheet's subTab).
+function ScannedBoothsHistory({ history, loading, lang, logoBaseUrl }) {
+  if (loading && !history) {
+    return (
+      <div className="text-center py-10 text-sm" style={{ color: "var(--text-dim)" }}>
+        {lang === 'fa' ? 'در حال بارگذاری…' : 'Loading…'}
+      </div>
+    );
+  }
+
+  const scans = history?.scans || [];
+  const totalXp = history?.total_xp || 0;
+
+  if (scans.length === 0) {
+    return (
+      <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
+        {lang === 'fa' ? 'هنوز غرفه‌ای از این ماموریت اسکن نکرده‌ای' : "You haven't scanned any booth from this mission yet"}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="mb-3 flex items-center justify-between px-1 py-2.5 rounded-xl text-xs"
+        style={{ background: "color-mix(in srgb, var(--accent) 6%, transparent)" }}>
+        <span style={{ color: "var(--text-dim)" }}>{lang === 'fa' ? 'مجموع امتیاز این ماموریت' : 'Total XP from this mission'}</span>
+        <span className="font-bold" style={{ color: "var(--accent)" }}>{dNum(totalXp, lang)}</span>
+      </div>
+      <div className="space-y-2">
+        {scans.map((s, i) => {
+          const name = lang === 'fa'
+            ? (s.brand_name_fa || s.brand_name_en || '—')
+            : (s.brand_name_en || s.brand_name_fa || '—');
+          const logoUrl = getLogoUrl(s.logo, logoBaseUrl);
+          const firstLetter = (s.brand_name_fa || s.brand_name_en || '؟').charAt(0);
+          const isBonus = !!s.is_featured_booth_bonus;
+          return (
+            <div key={`${s.placement_id}-${s.scanned_at}-${i}`}
+              className="flex items-center gap-3 rounded-2xl px-3 py-2.5 border"
+              style={
+                isBonus
+                  ? { background: "rgba(251,191,36,0.07)", borderColor: "rgba(251,191,36,0.35)" }
+                  : { background: "var(--surface-2)", borderColor: "var(--border)" }
+              }
+            >
+              <BoothLogo logoUrl={logoUrl} firstLetter={firstLetter} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-sm font-medium leading-6 truncate" style={{ color: "var(--text)" }}>
+                    {name}
+                  </span>
+                  {isBonus && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                      style={{ background: "rgba(251,191,36,0.18)", color: "#fbbf24" }}>
+                      {lang === 'fa' ? '⭐ جایزه' : '⭐ Treasure'}
+                    </span>
+                  )}
+                </div>
+                <div className="text-[11px] leading-4" style={{ color: "var(--text-dim)" }}>
+                  {(s.hall_name || s.booth_no) && (
+                    <>
+                      {s.hall_name && <>{lang === 'fa' ? 'سالن' : 'Hall'} {dNum(s.hall_name, lang)}</>}
+                      {s.hall_name && s.booth_no && <> • </>}
+                      {s.booth_no && <>{lang === 'fa' ? 'غرفه' : 'Booth'} {dNum(s.booth_no, lang)}</>}
+                      {' • '}
+                    </>
+                  )}
+                  {toRelativeTime(s.scanned_at, lang)}
+                </div>
+              </div>
+              <span className="text-xs font-bold flex-shrink-0" style={{ color: isBonus ? "#fbbf24" : "var(--accent)" }}>
+                +{dNum(s.xp_earned, lang)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
