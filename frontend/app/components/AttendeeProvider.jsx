@@ -78,6 +78,30 @@ function syncProfilePhoto(profile) {
   }).catch(() => {});
 }
 
+// Fire-and-forget: keeps app_users.firstname_fa/lastname_fa/firstname_en/
+// lastname_en (leaderboard's name source, see leaderboard/route.js) and the
+// iph_user cookie's name fields (Quest name box's source, via
+// api/quest/stats/route.js) in sync with whatever Rasayesh currently
+// returns for this attendee -- not just after an explicit /profile/edit
+// save (EditProfileClient's saveInfo() already calls this same endpoint for
+// that case, see 2026-09-14), but on every session-start fetch too, so a
+// name changed on Rasayesh's own side entirely outside our app (confirmed
+// real case: a user whose local app_users row was captured at their one and
+// only login and never touched again) self-corrects the next time this user
+// opens the app. Reuses data already just fetched -- no extra Rasayesh call.
+function syncProfileInfo(attendee) {
+  return fetch("/api/auth/sync-profile-info", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      firstnameFa: attendee.firstname_fa,
+      lastnameFa: attendee.lastname_fa,
+      firstnameEn: attendee.firstname_en,
+      lastnameEn: attendee.lastname_en,
+    }),
+  }).catch(() => {});
+}
+
 // Floor between profile-photo re-checks, so rapid tab-switching can't
 // fire this repeatedly. The endpoint is idempotent either way (ON CONFLICT
 // DO NOTHING for the XP grant) -- this is purely to avoid pointless network
@@ -127,6 +151,7 @@ export default function AttendeeProvider({ children, rasayeshEventId }) {
           // refetch() (this function) but only updates local state, never
           // the server, on its own.
           syncProfilePhoto(data.getAttendee.profile);
+          syncProfileInfo(data.getAttendee);
           lastProfilePhotoSyncRef.current = Date.now();
           break;
         }
