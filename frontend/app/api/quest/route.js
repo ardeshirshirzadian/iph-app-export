@@ -260,6 +260,14 @@ export async function GET() {
           }
         }
 
+        // Real local variable (not just an object-literal key) so
+        // featured_booth_lock_reason below can actually reference it --
+        // object-literal properties aren't visible to sibling properties
+        // within the same literal.
+        const featuredBoothClosed = m.mission_type === 'featured_booth'
+          ? !isWithinDailyWindow(m.featured_booth_daily_start_hour, m.featured_booth_daily_end_hour)
+          : false;
+
         return {
           id: m.id,
           title: m.title_fa,
@@ -297,11 +305,21 @@ export async function GET() {
           featured_booth_pool_companies,
           featured_booth_daily_start_hour: m.mission_type === 'featured_booth' ? (m.featured_booth_daily_start_hour ?? null) : undefined,
           featured_booth_daily_end_hour: m.mission_type === 'featured_booth' ? (m.featured_booth_daily_end_hour ?? null) : undefined,
-          featured_booth_closed: m.mission_type === 'featured_booth'
-            ? !isWithinDailyWindow(m.featured_booth_daily_start_hour, m.featured_booth_daily_end_hour)
-            : undefined,
+          featured_booth_closed: m.mission_type === 'featured_booth' ? featuredBoothClosed : undefined,
           featured_booth_message_fa: m.mission_type === 'featured_booth' ? (m.featured_booth_message_fa ?? null) : undefined,
           featured_booth_message_en: m.mission_type === 'featured_booth' ? (m.featured_booth_message_en ?? null) : undefined,
+          // Distinct reason enum ('closed' | 'claimed' | null) rather than
+          // just the two raw booleans -- see 2026-09-14 follow-up. 'closed'
+          // takes precedence: a mission that's both outside its window AND
+          // still shows a stale claimed_at from before the freeze should
+          // read as closed, not claimed.
+          featured_booth_lock_reason: m.mission_type === 'featured_booth'
+            ? (featuredBoothClosed ? 'closed' : (featured_booth_claimed ? 'claimed' : null))
+            : undefined,
+          featured_booth_closed_message_fa: m.mission_type === 'featured_booth' ? (m.featured_booth_closed_message_fa ?? null) : undefined,
+          featured_booth_closed_message_en: m.mission_type === 'featured_booth' ? (m.featured_booth_closed_message_en ?? null) : undefined,
+          featured_booth_claimed_message_fa: m.mission_type === 'featured_booth' ? (m.featured_booth_claimed_message_fa ?? null) : undefined,
+          featured_booth_claimed_message_en: m.mission_type === 'featured_booth' ? (m.featured_booth_claimed_message_en ?? null) : undefined,
           sponsor: m.sponsor_company_id ? {
             brand_name_fa: m.sponsor_brand_name_fa,
             brand_name_en: m.sponsor_brand_name_en,

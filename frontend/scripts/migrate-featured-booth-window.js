@@ -22,7 +22,11 @@ async function run() {
         ADD COLUMN IF NOT EXISTS featured_booth_daily_start_hour INT,
         ADD COLUMN IF NOT EXISTS featured_booth_daily_end_hour   INT,
         ADD COLUMN IF NOT EXISTS featured_booth_message_fa       TEXT,
-        ADD COLUMN IF NOT EXISTS featured_booth_message_en       TEXT
+        ADD COLUMN IF NOT EXISTS featured_booth_message_en       TEXT,
+        ADD COLUMN IF NOT EXISTS featured_booth_closed_message_fa  TEXT,
+        ADD COLUMN IF NOT EXISTS featured_booth_closed_message_en  TEXT,
+        ADD COLUMN IF NOT EXISTS featured_booth_claimed_message_fa TEXT,
+        ADD COLUMN IF NOT EXISTS featured_booth_claimed_message_en TEXT
     `);
     console.log('quest_content: featured_booth daily-window + message columns added (or already exist).');
   } finally {

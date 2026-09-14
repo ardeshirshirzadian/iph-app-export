@@ -368,6 +368,44 @@ function featuredBoothCountdownText(nextRotationIso, lang, now) {
     : `⟳ Next rotation: ${minutes} min`;
 }
 
+// Shared by MissionCard and FeaturedBoothPoolSheet so both surfaces show
+// the exact same text for the exact same reason -- see 2026-09-14
+// follow-up (previously each hardcoded its own, slightly different, copy).
+// Admin-set text is used verbatim (no placeholder to substitute -- the
+// hour range is already a separate, dedicated pair of fields).
+function featuredBoothClosedMessage(mission, lang) {
+  const startH = mission?.featured_booth_daily_start_hour;
+  const endH = mission?.featured_booth_daily_end_hour;
+  const custom = lang === 'fa' ? mission?.featured_booth_closed_message_fa : mission?.featured_booth_closed_message_en;
+  if (custom) return custom;
+  return lang === 'fa'
+    ? (startH != null && endH != null
+        ? `نمایشگاه در این ساعت تعطیل است — فقط بین ساعت ${toPersianNum(startH)} تا ${toPersianNum(endH)} فعال است.`
+        : 'نمایشگاه در این ساعت تعطیل است.')
+    : (startH != null && endH != null
+        ? `Exhibition closed at this time — active only ${startH}:00–${endH}:00.`
+        : 'Exhibition closed at this time.');
+}
+
+// minutes may be null (no featured_booth_next_rotation yet) -- the default
+// copy has its own null-safe phrasing; a custom admin message with a
+// {minutes} token just won't get the token substituted in that edge case
+// (extremely rare: claimed_at set but selected_at somehow missing).
+function featuredBoothClaimedMessage(mission, lang, minutes) {
+  const custom = lang === 'fa' ? mission?.featured_booth_claimed_message_fa : mission?.featured_booth_claimed_message_en;
+  if (custom) {
+    const minutesStr = minutes != null ? (lang === 'fa' ? toPersianNum(minutes) : String(minutes)) : '';
+    return custom.replace('{minutes}', minutesStr);
+  }
+  return lang === 'fa'
+    ? (minutes != null
+        ? `غرفه برتر همین چرخه قبلاً پیدا شده — ${toPersianNum(minutes)} دقیقه دیگر دوباره امتحان کن.`
+        : 'غرفه برتر همین چرخه قبلاً پیدا شده — کمی بعد دوباره امتحان کن.')
+    : (minutes != null
+        ? `This cycle's featured booth was already found — try again in ${minutes} min.`
+        : "This cycle's featured booth was already found — try again shortly.");
+}
+
 // Completion = attempted/submitted, not "answered correctly" (per mission type):
 // - progress/total covers booth_scan, special_booth, hall_scan, manual, attendance,
 //   chat, featured_booth, correct quiz, and approved social_share.
@@ -428,9 +466,20 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
   const manualScanClickable = isManual && !done && typeof onManualScanClick === 'function';
 
   const now = useLiveNow(isFeaturedBooth && !done);
-  const countdownText = isFeaturedBooth
-    ? featuredBoothCountdownText(mission.featured_booth_next_rotation, langProp, now)
+  // Reason-specific message takes priority over the generic "next rotation"
+  // countdown -- a mission that's closed for the day or already claimed
+  // this cycle has nothing to do with when the NEXT shuffle happens, and
+  // showing that countdown there was actively misleading (see 2026-09-14
+  // follow-up). Only falls through to the plain countdown when the mission
+  // is genuinely still open and unclaimed.
+  const fbLockReason = isFeaturedBooth ? (mission.featured_booth_lock_reason ?? null) : null;
+  const fbClaimedMinutes = fbLockReason === 'claimed' && mission.featured_booth_next_rotation
+    ? Math.max(1, Math.ceil((new Date(mission.featured_booth_next_rotation).getTime() - now) / 60_000))
     : null;
+  const countdownText = !isFeaturedBooth ? null
+    : fbLockReason === 'closed' ? featuredBoothClosedMessage(mission, langProp)
+    : fbLockReason === 'claimed' ? featuredBoothClaimedMessage(mission, langProp, fbClaimedMinutes)
+    : featuredBoothCountdownText(mission.featured_booth_next_rotation, langProp, now);
 
   const handleClick = quizClickable ? onQuizClick
     : surveyClickable ? onSurveyClick
@@ -1420,28 +1469,17 @@ function FeaturedBoothPoolSheet({ open, onClose, item, isRTL, lang, logoBaseUrl 
   const isBadge = !!item?.isFeaturedBadge;
   const itemTitle = item?.title || item?.name || (lang === 'fa' ? 'غرفه‌های این ماموریت' : 'Mission Booths');
 
-  const startH = item?.featured_booth_daily_start_hour;
-  const endH = item?.featured_booth_daily_end_hour;
-  const closedMessage = lang === 'fa'
-    ? (startH != null && endH != null
-        ? `نمایشگاه در این ساعت تعطیل است — فقط بین ساعت ${toPersianNum(startH)} تا ${toPersianNum(endH)} فعال است.`
-        : 'نمایشگاه در این ساعت تعطیل است.')
-    : (startH != null && endH != null
-        ? `Exhibition closed at this time — active only ${startH}:00–${endH}:00.`
-        : 'Exhibition closed at this time.');
-
+  // Same shared resolvers MissionCard uses, so the sheet and the card
+  // never drift into showing different wording for the same reason (see
+  // 2026-09-14 follow-up -- this used to be its own separate hardcoded
+  // copy here).
   let claimedMinutes = null;
   if (isClaimed && item?.featured_booth_next_rotation) {
     const remaining = new Date(item.featured_booth_next_rotation).getTime() - now;
     claimedMinutes = Math.max(1, Math.ceil(remaining / 60_000));
   }
-  const claimedMessage = lang === 'fa'
-    ? (claimedMinutes != null
-        ? `غرفه برتر همین چرخه قبلاً پیدا شده — ${toPersianNum(claimedMinutes)} دقیقه دیگر دوباره امتحان کن.`
-        : 'غرفه برتر همین چرخه قبلاً پیدا شده — کمی بعد دوباره امتحان کن.')
-    : (claimedMinutes != null
-        ? `This cycle's featured booth was already found — try again in ${claimedMinutes} min.`
-        : "This cycle's featured booth was already found — try again shortly.");
+  const closedMessage = featuredBoothClosedMessage(item, lang);
+  const claimedMessage = featuredBoothClaimedMessage(item, lang, claimedMinutes);
 
   const framingMessage = lang === 'fa'
     ? (item?.featured_booth_message_fa ||
