@@ -425,6 +425,21 @@ export default function EditProfileClient() {
       client.cache.evict({ fieldName: 'attendee' });
       client.cache.gc();
       await refetch();
+      // Fire-and-forget: keeps app_users/quest_user_names (leaderboard) and
+      // the iph_user cookie (Quest page's name box, via /api/quest/stats) in
+      // sync with this edit -- neither is otherwise touched between logins
+      // (see 2026-09-14 investigation). Never blocks the user from seeing
+      // their own successful save.
+      fetch('/api/auth/sync-profile-info', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstnameFa: form.firstnameFa,
+          lastnameFa: form.lastnameFa,
+          firstnameEn: (form.firstnameEn || "").trim(),
+          lastnameEn: (form.lastnameEn || "").trim(),
+        }),
+      }).catch((err) => console.error('[sync-profile-info]', err.message));
       hapticSuccess();
       setInfoState({ saving: false, saved: true, error: "" });
       setTimeout(() => router.push("/profile"), 1500);
