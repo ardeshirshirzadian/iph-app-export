@@ -64,6 +64,16 @@ export default function QRScanPage() {
           return;
         }
 
+        // Manual/attendance mission was deactivated by an admin after this QR
+        // was printed/shared -- surfaced the same way as booth_not_found
+        // (toast + resume scanning), not the success flow below, since
+        // nothing was credited server-side.
+        if (data.error === "mission_inactive") {
+          showToast(t(lang, "scan_mission_inactive"));
+          processingRef.current = false;
+          return;
+        }
+
         if (data.status === 'outside_window') {
           setLogoErr(false);
           setScanResult({

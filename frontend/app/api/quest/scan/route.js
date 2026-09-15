@@ -130,13 +130,20 @@ export async function POST(request) {
     // rasayesh_event_id alone already disambiguates which row this scan
     // belongs to; event_id is added too for defense-in-depth, matching the
     // rest of this codebase's pattern of filtering by both.
+    // cp.is_active + the linked-mission LEFT JOIN feed the manual-reward gate
+    // just below -- fetched here in the same round-trip rather than a
+    // separate query.
     const companyResult = await query(
-      `SELECT company_id AS id, id AS placement_id, brand_name_fa, brand_name_en, logo, hall_name, booth_no,
-              is_sponsor, website, booth_uuid, booth_xp,
-              is_manual, linked_mission_id, linked_badge_id,
-              repeatable_scan, repeatable_scan_hours,
-              repeatable_start_hour, repeatable_end_hour
-       FROM companies_placement WHERE booth_uuid = $1 AND rasayesh_event_id = $2 AND event_id = $3`,
+      `SELECT cp.company_id AS id, cp.id AS placement_id, cp.brand_name_fa, cp.brand_name_en, cp.logo, cp.hall_name, cp.booth_no,
+              cp.is_sponsor, cp.website, cp.booth_uuid, cp.booth_xp,
+              cp.is_manual, cp.linked_mission_id, cp.linked_badge_id,
+              cp.repeatable_scan, cp.repeatable_scan_hours,
+              cp.repeatable_start_hour, cp.repeatable_end_hour,
+              cp.is_active,
+              qc.is_active AS linked_mission_is_active
+       FROM companies_placement cp
+       LEFT JOIN quest_content qc ON qc.id = cp.linked_mission_id AND qc.event_id = cp.event_id
+       WHERE cp.booth_uuid = $1 AND cp.rasayesh_event_id = $2 AND cp.event_id = $3`,
       [uuid, Number(eventId), currentEventId]
     );
 
@@ -145,6 +152,24 @@ export async function POST(request) {
     }
 
     const company = companyResult.rows[0];
+
+    // Manual-reward gate: once an admin deactivates either the placement row
+    // itself (cp.is_active) or the mission it's linked to (quest_content.
+    // is_active) -- whatever that mission's mission_type is, e.g. 'manual' or
+    // 'attendance' -- this booth must stop paying out. Checked immediately,
+    // before featured-booth gating / dedup / any XP crediting below, so a
+    // rejected scan never reaches the quest_scans insert or the
+    // quest_user_progress/quest_badge_progress upserts further down.
+    // NULL-safe by design: a mission row that's gone missing (dangling
+    // linked_mission_id) reads as "no info" and does not block the scan --
+    // only an explicit is_active = false does.
+    if (company.is_manual) {
+      const placementInactive = company.is_active === false;
+      const missionInactive = !!company.linked_mission_id && company.linked_mission_is_active === false;
+      if (placementInactive || missionInactive) {
+        return NextResponse.json({ error: 'mission_inactive', company }, { status: 410 });
+      }
+    }
 
     // ── Featured-booth pool gating (window / claim-lock / rotation-aware
     // re-scan) -- runs BEFORE the generic dedup/cooldown checks below, since
