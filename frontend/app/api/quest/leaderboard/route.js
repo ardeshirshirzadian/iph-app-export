@@ -262,6 +262,16 @@ export async function GET(request) {
     if (!rankOnly) {
       const limit = await getLeaderboardLimit(currentEventId);
 
+      // rank is a real RANK() OVER (...), not the row's sequential position
+      // (idx+1) -- tied total_xp values must produce the SAME rank number,
+      // matching both the level branch's array (which already uses RANK())
+      // and this same request's own currentUser.rank (a scalar equivalent
+      // of RANK() over the identical filtered pool, see below). With no
+      // secondary ORDER BY key, Postgres has no defined order among tied
+      // rows, so a previous idx+1-based rank silently changed on every
+      // request for whichever tied user happened to land in which array
+      // slot -- c.user_uuid is added purely to make that slot ordering
+      // stable across requests; it never affects the rank NUMBER itself.
       const { rows: leaderboardRows } = await query(`
         ${XP_CTE}
         SELECT
@@ -279,17 +289,18 @@ export async function GET(request) {
           au.profile_image,
           au.hide_leaderboard_photo,
           c.total_xp,
-          c.scan_count
+          c.scan_count,
+          RANK() OVER (ORDER BY c.total_xp DESC)::int AS rank
         FROM combined c
         LEFT JOIN quest_user_names qn ON c.user_uuid = qn.user_uuid
         LEFT JOIN app_users        au ON c.user_uuid = au.uuid AND au.event_id = $1
         WHERE (au.excluded_from_leaderboard IS NOT TRUE)
-        ORDER BY c.total_xp DESC
+        ORDER BY c.total_xp DESC, c.user_uuid ASC
         LIMIT $2
       `, [currentEventId, limit]);
 
-      leaderboard = leaderboardRows.map((row, idx) => ({
-        rank:              idx + 1,
+      leaderboard = leaderboardRows.map(row => ({
+        rank:              row.rank,
         user_uuid:         row.user_uuid,
         display_name_fa:   row.display_name_fa,
         display_name_en:   row.display_name_en || null,
