@@ -363,13 +363,22 @@ export default function EditProfileClient() {
 
   // ── Photo upload handlers ─────────────────────────────────────────────────
 
-  const MAX_PHOTO_SIZE = 15 * 1024 * 1024; // 15MB -- covers large iPhone photos
+  // Camera captures get more headroom (15MB, covers large iPhone photos)
+  // than gallery picks (2MB) -- Ardeshir's decision: a freshly-captured
+  // photo is expected to be large, but a gallery pick is more likely to be
+  // an already-shared/forwarded image where a smaller cap is appropriate.
+  const MAX_PHOTO_SIZE_CAMERA  = 15 * 1024 * 1024;
+  const MAX_PHOTO_SIZE_GALLERY = 2  * 1024 * 1024;
 
-  function onFileChange(e) {
+  function onFileChange(e, source) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > MAX_PHOTO_SIZE) {
-      setPhotoError("حجم تصویر باید کمتر از ۱۵ مگابایت باشد");
+    const isGallery = source === "gallery";
+    const maxSize   = isGallery ? MAX_PHOTO_SIZE_GALLERY : MAX_PHOTO_SIZE_CAMERA;
+    if (file.size > maxSize) {
+      const limitFa = isGallery ? "۲ مگابایت" : "۱۵ مگابایت";
+      const limitEn = isGallery ? "2MB" : "15MB";
+      setPhotoError(isEN ? `Photo must be smaller than ${limitEn}` : `حجم تصویر باید کمتر از ${limitFa} باشد`);
       e.target.value = ""; // allow re-selecting the same file
       return;
     }
@@ -780,14 +789,14 @@ export default function EditProfileClient() {
                 accept="image/*"
                 capture="environment"
                 className="hidden"
-                onChange={onFileChange}
+                onChange={(e) => onFileChange(e, "camera")}
               />
               <input
                 id="profile-photo-gallery-input"
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={onFileChange}
+                onChange={(e) => onFileChange(e, "gallery")}
               />
             </div>
             {uploadingPhoto && (
