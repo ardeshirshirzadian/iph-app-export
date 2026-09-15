@@ -727,7 +727,10 @@ function LeaderboardRow({ user, isMe, badgeColor, badgeLabel, xpUnit, lang, rank
           )
         ) : (
           <span className="text-sm font-bold" style={{ color: isMe ? "var(--accent)" : "var(--text-dim)" }}>
-            {dNum(user.rank, lang)}
+            {/* null rank = viewer is excluded_from_leaderboard; a real numeric
+                rank never reaches this component null, so this only ever
+                fires for that case (see /api/quest/leaderboard's currentUser). */}
+            {user.rank ? dNum(user.rank, lang) : '-'}
           </span>
         )}
       </div>

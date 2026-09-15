@@ -214,7 +214,8 @@ export async function GET(request) {
                    qn.display_name_en,
                    NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), '')
                  ) AS display_name_en,
-                 qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo
+                 qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo,
+                 au.excluded_from_leaderboard
           FROM ranked r
           LEFT JOIN quest_user_names qn ON r.user_uuid = qn.user_uuid
           LEFT JOIN app_users        au ON r.user_uuid = au.uuid AND au.event_id = $1
@@ -224,7 +225,12 @@ export async function GET(request) {
         if (rankRows.length > 0) {
           currentUser = {
             user_uuid:         currentUuid,
-            rank:              rankRows[0].rank,
+            // The ranking pool itself is intentionally NOT filtered here (an
+            // excluded viewer must still see their own accurate score/progress
+            // on their own screen) -- but the numeric rank is meaningless for
+            // someone structurally outside the competition, so it's nulled
+            // rather than shown. The frontend renders a null rank as "-".
+            rank:              rankRows[0].excluded_from_leaderboard ? null : rankRows[0].rank,
             total_xp:          rankRows[0].total_xp,
             display_name_fa:   rankRows[0].display_name_fa,
             display_name_en:   rankRows[0].display_name_en || null,
@@ -295,7 +301,8 @@ export async function GET(request) {
           FROM combined
           GROUP BY user_uuid
         )
-        SELECT r.rank, r.total_xp, qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo
+        SELECT r.rank, r.total_xp, qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo,
+               au.excluded_from_leaderboard
         FROM ranked r
         LEFT JOIN quest_user_names qn ON r.user_uuid = qn.user_uuid
         LEFT JOIN app_users        au ON r.user_uuid = au.uuid AND au.event_id = $1
@@ -305,7 +312,9 @@ export async function GET(request) {
       if (rankRows.length > 0) {
         currentUser = {
           user_uuid:         currentUuid,
-          rank:              rankRows[0].rank,
+          // See the level-leaderboard branch above for why this is nulled
+          // rather than filtered out of the ranking computation itself.
+          rank:              rankRows[0].excluded_from_leaderboard ? null : rankRows[0].rank,
           total_xp:          rankRows[0].total_xp,
           profile_photo_url: resolvePhotoUrl(rankRows[0].profile_photo_url, rankRows[0].profile_image, rankRows[0].hide_leaderboard_photo),
         };
