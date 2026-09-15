@@ -1031,7 +1031,7 @@ function MapSkeleton() {
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
-export default function MapClient({ title, subtitle, title_en, subtitle_en, isHomeContext = false }) {
+export default function MapClient({ title, subtitle, title_en, subtitle_en, isHomeContext = false, showBack = true }) {
   const { lang, isRTL } = useLang();
   const isEN = lang === "en";
 
@@ -1987,8 +1987,12 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
             controls row, same as every other page -- previously this was a
             bespoke duplicate of PageHeader's own markup (including its own
             copy of the now-fixed empty-title-swallowed-by-hardcoded-default
-            bug). titleRowExtra carries the button group; showBack is false
-            to preserve this page's existing no-back-button behavior. */}
+            bug). titleRowExtra carries the button group; showBack now
+            threads through like every other page (Profile/Chat/Badge) --
+            true on a direct /map visit, false when app/page.js renders Map
+            as the configured home variant (see HomeVariantRenderer, which
+            already forwarded showBack={false} for that case -- this prop
+            just wasn't accepted/used here yet, see 2026-09-15 fix). */}
         <div className="px-4 pb-3">
           <PageHeader
             title={title}
@@ -1996,7 +2000,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
             title_en={title_en}
             subtitle_en={subtitle_en}
             isHomeContext={isHomeContext}
-            showBack={false}
+            showBack={showBack}
             titleRowExtra={mapData && (
               <>
                 {/* Hidden entirely while an external 3D embed is configured -- 2D must

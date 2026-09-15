@@ -6,7 +6,7 @@ import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 import { isPushSupported, isIOS, requestNotificationPermission, subscribeToPush } from "@/lib/pushClient";
 
-export default function SettingsClient({ title, subtitle, title_en, subtitle_en, themeMode = "system", pushGuides = {} }) {
+export default function SettingsClient({ title, subtitle, title_en, subtitle_en, themeMode = "system", pushGuides = {}, showBack = true }) {
   const [isDark, setIsDark] = useState(true);
   const { lang, switchLang, isRTL, langLocked } = useLang();
   const [pushPermission, setPushPermission] = useState('loading');
@@ -81,7 +81,12 @@ export default function SettingsClient({ title, subtitle, title_en, subtitle_en,
       </div>
 
       <div className="relative max-w-md mx-auto px-4 pb-16">
-        <PageHeader title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} />
+        {/* showBack made explicit here (was already defaulting true via
+            PageHeader's own default, so this is a no-op that just matches
+            Profile/Chat/Badge's own explicit prop-threading pattern -- see
+            2026-09-15 investigation: unlike Map, Settings' header was
+            already correct in source). */}
+        <PageHeader title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} showBack={showBack} />
 
         <div className="flex flex-col gap-3">
           {/* Appearance section — hidden when admin forces a theme */}
