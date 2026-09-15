@@ -157,8 +157,16 @@ export async function GET(request) {
               AND (au.excluded_from_leaderboard IS NOT TRUE)
           ),
           ranked AS (
+            -- DENSE_RANK(), not RANK(): a tied trio at the top gets rank 1,
+            -- and the next distinct (lower) score gets rank 2, not 4. Must
+            -- stay consistent with the scalar COUNT(DISTINCT ...) formula
+            -- used by this level's currentUser query below, and with the
+            -- overall branch's own array + currentUser queries -- mixing
+            -- RANK() and DENSE_RANK() across these four locations would
+            -- reintroduce exactly the kind of array-vs-chip mismatch fixed
+            -- in the last two rounds.
             SELECT user_uuid, total_xp, scan_count,
-                   RANK() OVER (ORDER BY total_xp DESC)::int AS rank
+                   DENSE_RANK() OVER (ORDER BY total_xp DESC)::int AS rank
             FROM in_level
           )
           SELECT
@@ -225,7 +233,10 @@ export async function GET(request) {
             qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo,
             au.excluded_from_leaderboard,
             (
-              SELECT COUNT(*)::int + 1
+              -- DENSE_RANK() equivalent: 1 + count of DISTINCT higher scores
+              -- among non-excluded users (not COUNT(*), which would replicate
+              -- RANK()'s skip-ahead-by-tie-size behavior instead).
+              SELECT COUNT(DISTINCT il2.total_xp)::int + 1
               FROM in_level il2
               LEFT JOIN app_users au2 ON il2.user_uuid = au2.uuid AND au2.event_id = $1
               WHERE (au2.excluded_from_leaderboard IS NOT TRUE)
@@ -262,16 +273,19 @@ export async function GET(request) {
     if (!rankOnly) {
       const limit = await getLeaderboardLimit(currentEventId);
 
-      // rank is a real RANK() OVER (...), not the row's sequential position
-      // (idx+1) -- tied total_xp values must produce the SAME rank number,
-      // matching both the level branch's array (which already uses RANK())
-      // and this same request's own currentUser.rank (a scalar equivalent
-      // of RANK() over the identical filtered pool, see below). With no
-      // secondary ORDER BY key, Postgres has no defined order among tied
-      // rows, so a previous idx+1-based rank silently changed on every
-      // request for whichever tied user happened to land in which array
-      // slot -- c.user_uuid is added purely to make that slot ordering
-      // stable across requests; it never affects the rank NUMBER itself.
+      // rank is a real DENSE_RANK() OVER (...), not the row's sequential
+      // position (idx+1) -- tied total_xp values must produce the SAME rank
+      // number, matching both the level branch's array (which also uses
+      // DENSE_RANK()) and this same request's own currentUser.rank (a scalar
+      // equivalent of DENSE_RANK() over the identical filtered pool, see
+      // below). With no secondary ORDER BY key, Postgres has no defined
+      // order among tied rows, so a previous idx+1-based rank silently
+      // changed on every request for whichever tied user happened to land
+      // in which array slot -- c.user_uuid is added purely to make that slot
+      // ordering stable across requests; it never affects the rank NUMBER
+      // itself. DENSE_RANK() (not RANK()) is used per product decision: a
+      // tied trio at the top gets rank 1 and the next distinct score gets
+      // rank 2, without skipping ahead by the tie's size.
       const { rows: leaderboardRows } = await query(`
         ${XP_CTE}
         SELECT
@@ -290,7 +304,10 @@ export async function GET(request) {
           au.hide_leaderboard_photo,
           c.total_xp,
           c.scan_count,
-          RANK() OVER (ORDER BY c.total_xp DESC)::int AS rank
+          -- DENSE_RANK(), not RANK() -- see the level branch's matching
+          -- comment above for why all four rank locations in this file must
+          -- agree on the same ranking scheme.
+          DENSE_RANK() OVER (ORDER BY c.total_xp DESC)::int AS rank
         FROM combined c
         LEFT JOIN quest_user_names qn ON c.user_uuid = qn.user_uuid
         LEFT JOIN app_users        au ON c.user_uuid = au.uuid AND au.event_id = $1
@@ -334,7 +351,9 @@ export async function GET(request) {
           t.total_xp, qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo,
           au.excluded_from_leaderboard,
           (
-            SELECT COUNT(*)::int + 1
+            -- DENSE_RANK() equivalent -- see the level branch's matching
+            -- comment above.
+            SELECT COUNT(DISTINCT t2.total_xp)::int + 1
             FROM totals t2
             LEFT JOIN app_users au2 ON t2.user_uuid = au2.uuid AND au2.event_id = $1
             WHERE (au2.excluded_from_leaderboard IS NOT TRUE)
