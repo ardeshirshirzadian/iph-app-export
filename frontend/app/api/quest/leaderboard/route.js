@@ -62,6 +62,14 @@ async function getLeaderboardLimit(eventId) {
 // keep two events' XP totals (and therefore rankings) from being summed
 // together. quest_xp_grants itself has no unique constraint on event_id (see
 // Tier 3 audit notes), so this filter is the only thing keeping it isolated.
+//
+// app_users.excluded_from_leaderboard (admin-set, iph-apn Users section):
+// filtered into the two TOP-N listing queries below (level + overall), and
+// only there -- a user's own `currentUser` rank block (further down, always
+// keyed to the viewer's own uuid) intentionally stays unfiltered, since an
+// excluded user must still see their own accurate score/progress/rank on
+// their own screen. It's just absent from the public listing everyone else
+// sees. quest_stats is untouched entirely (it never reads app_users).
 const XP_CTE = `
   WITH scan_agg AS (
     SELECT user_uuid,
@@ -132,10 +140,16 @@ export async function GET(request) {
         const { rows: topRows } = await query(`
           ${XP_CTE},
           in_level AS (
-            SELECT user_uuid, total_xp, scan_count
-            FROM combined
-            WHERE total_xp >= $2
-              ${maxXpFilter ? 'AND total_xp < $3' : ''}
+            -- app_users is joined + filtered HERE, before RANK() is computed,
+            -- so an excluded user is removed from the ranking pool entirely
+            -- (the remaining rows get clean, gap-free sequential ranks) rather
+            -- than just hidden from the output after ranks were assigned.
+            SELECT c.user_uuid, c.total_xp, c.scan_count
+            FROM combined c
+            LEFT JOIN app_users au ON c.user_uuid = au.uuid AND au.event_id = $1
+            WHERE c.total_xp >= $2
+              ${maxXpFilter ? 'AND c.total_xp < $3' : ''}
+              AND (au.excluded_from_leaderboard IS NOT TRUE)
           ),
           ranked AS (
             SELECT user_uuid, total_xp, scan_count,
@@ -248,6 +262,7 @@ export async function GET(request) {
         FROM combined c
         LEFT JOIN quest_user_names qn ON c.user_uuid = qn.user_uuid
         LEFT JOIN app_users        au ON c.user_uuid = au.uuid AND au.event_id = $1
+        WHERE (au.excluded_from_leaderboard IS NOT TRUE)
         ORDER BY c.total_xp DESC
         LIMIT $2
       `, [currentEventId, limit]);
