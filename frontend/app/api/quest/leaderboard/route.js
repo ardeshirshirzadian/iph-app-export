@@ -64,12 +64,17 @@ async function getLeaderboardLimit(eventId) {
 // Tier 3 audit notes), so this filter is the only thing keeping it isolated.
 //
 // app_users.excluded_from_leaderboard (admin-set, iph-apn Users section):
-// filtered into the two TOP-N listing queries below (level + overall), and
-// only there -- a user's own `currentUser` rank block (further down, always
-// keyed to the viewer's own uuid) intentionally stays unfiltered, since an
-// excluded user must still see their own accurate score/progress/rank on
-// their own screen. It's just absent from the public listing everyone else
-// sees. quest_stats is untouched entirely (it never reads app_users).
+// filtered into the two TOP-N listing queries below (level + overall), AND
+// into both currentUser rank computations (level + overall) -- an excluded
+// user's own row is still always retrievable for display purposes (total_xp,
+// name, photo), but is never counted as a competitor when computing ANYONE's
+// numeric rank, including their own (which gets nulled out anyway -- see
+// below). Before this fix, only the top-N queries filtered the ranking pool;
+// the currentUser queries ranked over every user including excluded ones,
+// which silently inflated every remaining (non-excluded) user's own reported
+// rank by however many excluded users outranked them, even though the public
+// top-N list itself was always correct. quest_stats is untouched entirely
+// (it never reads app_users).
 const XP_CTE = `
   WITH scan_agg AS (
     SELECT user_uuid,
@@ -191,6 +196,13 @@ export async function GET(request) {
       // Current user's rank within this level
       let currentUser = null;
       if (currentUuid) {
+        // `in_level` here is intentionally the RAW XP-bucket pool (no
+        // exclusion filter) so the viewer's own row is always found even if
+        // THEY are excluded -- rank itself is instead computed as a scalar
+        // "how many non-excluded users in this level strictly outrank me"
+        // subquery, which both (a) excludes excluded users from counting
+        // toward anyone's rank and (b) still resolves for an excluded
+        // viewer (whose numeric result gets nulled below regardless).
         const { rows: rankRows } = await query(`
           ${XP_CTE},
           in_level AS (
@@ -198,28 +210,31 @@ export async function GET(request) {
             FROM combined
             WHERE total_xp >= $2
               ${maxXpFilter ? 'AND total_xp < $3' : ''}
-          ),
-          ranked AS (
-            SELECT user_uuid, total_xp,
-                   RANK() OVER (ORDER BY total_xp DESC)::int AS rank
-            FROM in_level
           )
-          SELECT r.rank, r.total_xp,
-                 COALESCE(
-                   qn.display_name_fa,
-                   NULLIF(TRIM(COALESCE(au.firstname_fa, '') || ' ' || COALESCE(au.lastname_fa, '')), ''),
-                   'شرکت‌کننده'
-                 ) AS display_name_fa,
-                 COALESCE(
-                   qn.display_name_en,
-                   NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), '')
-                 ) AS display_name_en,
-                 qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo,
-                 au.excluded_from_leaderboard
-          FROM ranked r
-          LEFT JOIN quest_user_names qn ON r.user_uuid = qn.user_uuid
-          LEFT JOIN app_users        au ON r.user_uuid = au.uuid AND au.event_id = $1
-          WHERE r.user_uuid = $${maxXpFilter ? '4' : '3'}
+          SELECT
+            il.total_xp,
+            COALESCE(
+              qn.display_name_fa,
+              NULLIF(TRIM(COALESCE(au.firstname_fa, '') || ' ' || COALESCE(au.lastname_fa, '')), ''),
+              'شرکت‌کننده'
+            ) AS display_name_fa,
+            COALESCE(
+              qn.display_name_en,
+              NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), '')
+            ) AS display_name_en,
+            qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo,
+            au.excluded_from_leaderboard,
+            (
+              SELECT COUNT(*)::int + 1
+              FROM in_level il2
+              LEFT JOIN app_users au2 ON il2.user_uuid = au2.uuid AND au2.event_id = $1
+              WHERE (au2.excluded_from_leaderboard IS NOT TRUE)
+                AND il2.total_xp > il.total_xp
+            ) AS rank
+          FROM in_level il
+          LEFT JOIN quest_user_names qn ON il.user_uuid = qn.user_uuid
+          LEFT JOIN app_users        au ON il.user_uuid = au.uuid AND au.event_id = $1
+          WHERE il.user_uuid = $${maxXpFilter ? '4' : '3'}
         `, maxXpFilter ? [currentEventId, min_xp, max_xp, currentUuid] : [currentEventId, min_xp, currentUuid]);
 
         if (rankRows.length > 0) {
@@ -287,26 +302,37 @@ export async function GET(request) {
     // Current user's overall rank (may be outside top-N)
     let currentUser = null;
     if (currentUuid) {
+      // Same approach as the level branch above: `totals` is the RAW
+      // per-user pool (no exclusion filter) so the viewer's own row is
+      // always found even if THEY are excluded; rank is a scalar "how many
+      // non-excluded users strictly outrank me" subquery, so excluded users
+      // never consume a rank position for anyone (including themselves --
+      // their own numeric result is nulled below regardless).
       const { rows: rankRows } = await query(`
         WITH combined AS (
           SELECT user_uuid, xp_earned AS xp FROM quest_scans WHERE event_id = $1
           UNION ALL
           SELECT user_uuid, xp_amount AS xp FROM quest_xp_grants WHERE event_id = $1
         ),
-        ranked AS (
-          SELECT
-            user_uuid,
-            SUM(xp)::int                               AS total_xp,
-            RANK() OVER (ORDER BY SUM(xp) DESC)::int   AS rank
+        totals AS (
+          SELECT user_uuid, SUM(xp)::int AS total_xp
           FROM combined
           GROUP BY user_uuid
         )
-        SELECT r.rank, r.total_xp, qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo,
-               au.excluded_from_leaderboard
-        FROM ranked r
-        LEFT JOIN quest_user_names qn ON r.user_uuid = qn.user_uuid
-        LEFT JOIN app_users        au ON r.user_uuid = au.uuid AND au.event_id = $1
-        WHERE r.user_uuid = $2
+        SELECT
+          t.total_xp, qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo,
+          au.excluded_from_leaderboard,
+          (
+            SELECT COUNT(*)::int + 1
+            FROM totals t2
+            LEFT JOIN app_users au2 ON t2.user_uuid = au2.uuid AND au2.event_id = $1
+            WHERE (au2.excluded_from_leaderboard IS NOT TRUE)
+              AND t2.total_xp > t.total_xp
+          ) AS rank
+        FROM totals t
+        LEFT JOIN quest_user_names qn ON t.user_uuid = qn.user_uuid
+        LEFT JOIN app_users        au ON t.user_uuid = au.uuid AND au.event_id = $1
+        WHERE t.user_uuid = $2
       `, [currentEventId, currentUuid]);
 
       if (rankRows.length > 0) {
