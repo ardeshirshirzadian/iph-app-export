@@ -141,6 +141,7 @@ export const translations = {
     chat_disclaimer: 'پاسخ‌ها بر اساس اطلاعات ثبت‌شده در پایگاه دانش نمایشگاه ارائه می‌شوند.',
     // Push banner
     push_done: 'اعلان‌ها فعال شد ✓',
+    push_loading: 'در حال فعال‌سازی...',
     push_denied: 'برای فعال‌سازی، دسترسی اعلان را در تنظیمات مرورگر فعال کنید.',
     push_ios_hint: 'برای دریافت اعلان‌ها در آیفون، لطفاً ابتدا اپ را به صفحه اصلی اضافه کنید.',
     // Push settings
@@ -398,6 +399,7 @@ export const translations = {
     book_cancel_order: 'Cancel Order',
     // Push banner
     push_done: 'Notifications enabled ✓',
+    push_loading: 'Enabling...',
     push_denied: 'To enable, turn on notification access in your browser settings.',
     push_ios_hint: 'To receive notifications on iPhone, add this app to your Home Screen first.',
     // Push settings

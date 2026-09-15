@@ -173,8 +173,24 @@ export default function SettingsClient({ title, subtitle, title_en, subtitle_en,
                   <p className="font-medium text-sm leading-7" style={{ color: "var(--text)" }}>
                     {t(lang, "push_notifications_label")}
                   </p>
-                  <p className="text-xs leading-relaxed" style={{ color: (pushPermission === 'granted' && pushActionStatus !== 'subscribe-error') ? "var(--accent)" : "var(--text-dim)" }}>
-                    {pushPermission === 'granted' && pushActionStatus !== 'subscribe-error'
+                  <p className="text-xs leading-relaxed flex items-center gap-1.5" style={{ color: (pushPermission === 'granted' && pushActionStatus !== 'subscribe-error' && pushActionStatus !== 'loading') ? "var(--accent)" : "var(--text-dim)" }}>
+                    {pushActionStatus === 'loading' ? (
+                      <>
+                        {/* requestNotificationPermission()+subscribeToPush() can
+                            take a few real seconds -- the native OS prompt, then
+                            the browser's own round trip to FCM/APNs to mint a
+                            push endpoint (outside our control). This spans BOTH
+                            legs of handleEnablePush(), including the second leg
+                            where pushPermission has already flipped to 'granted'
+                            but the subscribe call is still in flight -- checked
+                            first so that window doesn't show a premature "done". */}
+                        <svg className="animate-spin flex-shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none">
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25" />
+                          <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                        </svg>
+                        {t(lang, 'push_loading')}
+                      </>
+                    ) : pushPermission === 'granted' && pushActionStatus !== 'subscribe-error'
                       ? t(lang, 'push_done')
                       : pushPermission === 'denied'
                       ? t(lang, 'push_denied')
@@ -199,7 +215,7 @@ export default function SettingsClient({ title, subtitle, title_en, subtitle_en,
                   </button>
                 )}
 
-                {((pushPermission === 'granted' && pushActionStatus !== 'subscribe-error') || pushActionStatus === 'done') && (
+                {((pushPermission === 'granted' && pushActionStatus !== 'subscribe-error') || pushActionStatus === 'done') && pushActionStatus !== 'loading' && (
                   <span className="flex-shrink-0 text-lg" style={{ color: "var(--accent)" }}>✓</span>
                 )}
               </div>

@@ -43,11 +43,15 @@ export async function subscribeToPush() {
       });
     }
 
-    // Send subscription to server
+    // Send subscription to server. This route does no outbound network call
+    // of its own (just one indexed upsert), so a hang here would mean our
+    // own server/DB is in trouble -- bounded defensively rather than left to
+    // hang indefinitely, same class of gap as the OTP routes.
     const res = await fetch('/api/push/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(subscription.toJSON()),
+      signal: AbortSignal.timeout(12000),
     });
 
     if (!res.ok) {

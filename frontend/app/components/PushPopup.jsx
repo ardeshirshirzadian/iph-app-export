@@ -129,6 +129,22 @@ export default function PushPopup({ pushPrompt, lang }) {
               <p className="text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
                 {t(lang, 'push_denied')}
               </p>
+            ) : status === 'loading' ? (
+              // requestNotificationPermission()+subscribeToPush() can take a
+              // few real seconds (the native OS prompt, then the browser's
+              // own round trip to FCM/APNs to mint a push endpoint -- outside
+              // our control). Without this, the idle prompt just sat there
+              // with only the button label reading "..." -- reading as stuck
+              // rather than working.
+              <div className="flex items-center gap-2.5 py-1">
+                <svg className="animate-spin flex-shrink-0" width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25" style={{ color: "var(--accent)" }} />
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" style={{ color: "var(--accent)" }} />
+                </svg>
+                <p className="text-sm font-semibold" style={{ color: "var(--text)" }}>
+                  {t(lang, 'push_loading')}
+                </p>
+              </div>
             ) : (
               <>
                 <p className="text-base font-semibold mb-1.5" style={{ color: "var(--text)" }}>
