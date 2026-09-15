@@ -1758,6 +1758,11 @@ function ScannedBoothsHistory({ history, loading, lang, logoBaseUrl }) {
 function QuizModal({ quiz, onClose, onComplete, lang }) {
   const [phase, setPhase] = useState(quiz?.quiz_hint_type && quiz.quiz_hint_type !== 'none' ? 'hint' : 'question');
   const [videoEnded, setVideoEnded] = useState(false);
+  // Starts muted (required for reliable autoplay); the only playback control
+  // exposed to the user is this mute toggle -- no play/pause/seek, so the
+  // hint video can't be skipped.
+  const [videoMuted, setVideoMuted] = useState(true);
+  const videoRef = useRef(null);
   const [selected, setSelected] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null); // null | 'correct' | 'wrong' | 'already'
@@ -1829,14 +1834,39 @@ function QuizModal({ quiz, onClose, onComplete, lang }) {
             ) : quiz.quiz_hint_type === 'video' ? (
               <div className="relative mb-4">
                 <video
+                  ref={videoRef}
                   src={hintUrl}
                   className="w-full rounded-2xl"
                   autoPlay
+                  muted={videoMuted}
                   playsInline
-                  controlsList="nodownload nofullscreen noremoteplayback"
+                  disablePictureInPicture
+                  controlsList="nodownload noplaybackrate nofullscreen"
                   onEnded={() => setVideoEnded(true)}
-                  style={{ pointerEvents: videoEnded ? 'auto' : 'none' }}
                 />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !videoMuted;
+                    if (videoRef.current) videoRef.current.muted = next;
+                    setVideoMuted(next);
+                  }}
+                  className="absolute bottom-2 left-2 w-7 h-7 rounded-full flex items-center justify-center"
+                  style={{ background: 'rgba(0,0,0,0.6)', color: '#fff' }}
+                  aria-label={lang === 'fa' ? (videoMuted ? 'باز کردن صدا' : 'قطع صدا') : (videoMuted ? 'Unmute' : 'Mute')}
+                >
+                  {videoMuted ? (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                      <line x1="23" y1="9" x2="17" y2="15" /><line x1="17" y1="9" x2="23" y2="15" />
+                    </svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                    </svg>
+                  )}
+                </button>
                 {!videoEnded && (
                   <div className="absolute bottom-2 right-2 text-xs px-2 py-0.5 rounded-full"
                     style={{ background: 'rgba(0,0,0,0.6)', color: 'rgba(255,255,255,0.6)' }}>

@@ -9,6 +9,8 @@ const MIME = {
   '.gif':  'image/gif',
   '.webp': 'image/webp',
   '.svg':  'image/svg+xml',
+  '.mp4':  'video/mp4',
+  '.webm': 'video/webm',
 };
 
 export async function GET(request, { params }) {
