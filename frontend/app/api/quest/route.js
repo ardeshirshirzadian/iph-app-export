@@ -236,12 +236,26 @@ export async function GET() {
               // (the surrogate id), not the global company id -- match on
               // each pool row's own id, not its company_id.
               const ids = poolRows.map(r => r.id);
+              // Rotation-aware, same threshold scan/route.js's own dedup check
+              // uses (scanned_at >= state.selected_at) -- a scan from BEFORE
+              // the current cycle started must not still show as checked/
+              // claimed here, since the user IS allowed to re-scan it (2026-
+              // 09-14 live bug report: this query was the one spot that never
+              // got updated when the scan-time dedup became rotation-aware --
+              // it used to check "has this user EVER scanned this company",
+              // unbounded, which is a different, stale answer from what the
+              // scan endpoint itself would actually allow). fbState can be
+              // null (misconfigured/empty pool) -- the IS NULL branch then
+              // falls back to the old unconditional (ever-scanned) behavior,
+              // matching this endpoint's own pre-existing null-state handling
+              // elsewhere in this block.
               const { rows: scanRows } = await query(
                 `SELECT company_id, bool_or(is_featured_booth_bonus) AS got_bonus
                  FROM quest_scans
                  WHERE user_uuid = $1 AND company_id = ANY($2::int[]) AND event_id = $3
+                   AND ($4::timestamp IS NULL OR scanned_at >= $4::timestamp)
                  GROUP BY company_id`,
-                [userUuid, ids, currentEventId]
+                [userUuid, ids, currentEventId, fbState?.selected_at ?? null]
               ).catch(() => ({ rows: [] }));
               for (const sr of scanRows) {
                 // sr.company_id is quest_scans' column, which now holds a
