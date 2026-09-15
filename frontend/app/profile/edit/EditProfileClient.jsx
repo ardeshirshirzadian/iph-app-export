@@ -363,9 +363,17 @@ export default function EditProfileClient() {
 
   // ── Photo upload handlers ─────────────────────────────────────────────────
 
+  const MAX_PHOTO_SIZE = 15 * 1024 * 1024; // 15MB -- covers large iPhone photos
+
   function onFileChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > MAX_PHOTO_SIZE) {
+      setPhotoError("حجم تصویر باید کمتر از ۱۵ مگابایت باشد");
+      e.target.value = ""; // allow re-selecting the same file
+      return;
+    }
+    setPhotoError("");
     const reader = new FileReader();
     reader.onload = () => {
       setCrop({ x: 0, y: 0 });
