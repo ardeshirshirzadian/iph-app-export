@@ -215,6 +215,37 @@ function SaveButton({ onClick, saving, saved }) {
   );
 }
 
+// Shared with the lazy `form` useState initializer below -- same mapping,
+// used both to seed the form instantly on a warm mount (attendeeData already
+// sitting in AttendeeProvider's context from earlier this session, e.g.
+// navigating back into /profile/edit after a save elsewhere) and by the
+// resync effect for the cold-start case (attendeeData arrives async after
+// mount) and any later update. Keeping this in one place means the two call
+// sites can't drift out of sync with each other.
+const EMPTY_FORM = {
+  firstnameFa: "", lastnameFa: "", firstnameEn: "", lastnameEn: "",
+  jobTitleFa: "", jobTitleEn: "", nationalCode: "",
+  email: "", phone: "",
+  occupationId: "", fieldOfActivities: [], educationLevelId: "",
+};
+
+function mapAttendeeToForm(attendeeData) {
+  return {
+    firstnameFa:      attendeeData.firstname_fa   || "",
+    lastnameFa:       attendeeData.lastname_fa    || "",
+    firstnameEn:      attendeeData.firstname_en   || "",
+    lastnameEn:       attendeeData.lastname_en    || "",
+    jobTitleFa:       attendeeData.job_title_fa   || "",
+    jobTitleEn:       attendeeData.job_title_en   || "",
+    nationalCode:     attendeeData.national_code  || "",
+    email:            attendeeData.email          || "",
+    phone:            attendeeData.phone          || "",
+    occupationId:     String(attendeeData.occupation_id      ?? ""),
+    educationLevelId: String(attendeeData.education_level_id ?? ""),
+    fieldOfActivities: (attendeeData.field_of_activities ?? []).map(f => f?.id ?? f),
+  };
+}
+
 export default function EditProfileClient() {
   const { user } = useAuth();
   const router = useRouter();
@@ -223,12 +254,23 @@ export default function EditProfileClient() {
 
   const [editLang, setEditLang] = useState(isEN ? "en" : "fa");
 
-  const [form, setForm] = useState({
-    firstnameFa: "", lastnameFa: "", firstnameEn: "", lastnameEn: "",
-    jobTitleFa: "", jobTitleEn: "", nationalCode: "",
-    email: "", phone: "",
-    occupationId: "", fieldOfActivities: [], educationLevelId: "",
-  });
+  // Shared attendee data — fetched once at login by AttendeeProvider, kept
+  // fresh here via refetch() after each save below. Read before `form`'s
+  // useState below so its lazy initializer can use it: AttendeeProvider is
+  // mounted at the root layout and never remounts on client-side navigation,
+  // so on a warm mount (navigating back into /profile/edit after a save
+  // elsewhere this session) attendeeData is already sitting in context here
+  // with no network round-trip needed.
+  const { attendee: attendeeData, refetch } = useAttendee();
+
+  // Lazy initializer: seeds the form from attendeeData instantly when it's
+  // already available (warm mount), instead of always starting from empty
+  // defaults and waiting for the resync effect below to correct it one
+  // render later. The resync effect still runs and still owns the
+  // cold-start case (attendeeData arrives async after this component's
+  // first paint) and any later update -- this only closes the gap for the
+  // common case where the data was already there from frame one.
+  const [form, setForm] = useState(() => attendeeData ? mapAttendeeToForm(attendeeData) : EMPTY_FORM);
 
   const [formOptions, setFormOptions] = useState({ occupations: [], fieldOfActivities: [], educationLevels: [] });
   const [optionsLoading, setOptionsLoading] = useState(true);
@@ -248,10 +290,6 @@ export default function EditProfileClient() {
   const [phoneVerifyLoading, setPhoneVerifyLoading] = useState(false);
   const [phoneVerifyError,   setPhoneVerifyError]   = useState("");
   const [phoneSuccess,       setPhoneSuccess]       = useState("");
-
-  // Shared attendee data — fetched once at login by AttendeeProvider, kept
-  // fresh here via refetch() after each save below.
-  const { attendee: attendeeData, refetch } = useAttendee();
 
   // Profile photo state
   const [profileUrl,       setProfileUrl]       = useState(null);
@@ -276,23 +314,14 @@ export default function EditProfileClient() {
     }));
   }, [user]);
 
-  // Overwrite all form fields with fresh server data whenever attendeeData changes
+  // Overwrite all form fields with fresh server data whenever attendeeData
+  // changes -- still needed for the cold-start case (attendeeData arrives
+  // async after this component's first paint) and any later update (e.g.
+  // refetch() after a save). Same mapping as the lazy initializer above,
+  // via the shared mapAttendeeToForm() helper so the two can't drift apart.
   useEffect(() => {
     if (!attendeeData) return;
-    setForm({
-      firstnameFa:      attendeeData.firstname_fa   || "",
-      lastnameFa:       attendeeData.lastname_fa    || "",
-      firstnameEn:      attendeeData.firstname_en   || "",
-      lastnameEn:       attendeeData.lastname_en    || "",
-      jobTitleFa:       attendeeData.job_title_fa   || "",
-      jobTitleEn:       attendeeData.job_title_en   || "",
-      nationalCode:     attendeeData.national_code  || "",
-      email:            attendeeData.email          || "",
-      phone:            attendeeData.phone          || "",
-      occupationId:     String(attendeeData.occupation_id      ?? ""),
-      educationLevelId: String(attendeeData.education_level_id ?? ""),
-      fieldOfActivities: (attendeeData.field_of_activities ?? []).map(f => f?.id ?? f),
-    });
+    setForm(mapAttendeeToForm(attendeeData));
   }, [attendeeData]);
 
   // Sync the local photo preview from shared attendee data (initial load and
