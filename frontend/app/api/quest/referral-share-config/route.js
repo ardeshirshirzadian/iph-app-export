@@ -73,13 +73,12 @@ export async function GET() {
     }
 
     const config = await getCachedReferralShareConfig(currentEventId);
-    const hasCustomTemplate = !!config && Array.isArray(config.elements) && config.elements.length > 0;
 
-    // Cascade: site template (if the toggle is on and Rasayesh actually
-    // returns something usable) -> our own custom template (if configured)
-    // -> hidden entirely. Never a half-broken image for a real user --
-    // same inert-when-unconfigured principle as every other gate in this
-    // feature, just with one more fallback step.
+    // Strictly either/or, matching exactly what the admin configured -- no
+    // silent substitution from one mode to the other. If the toggle is on
+    // but Rasayesh's template turns out to be unusable, hide the share
+    // entry point entirely (same inert-when-unconfigured principle as every
+    // other gate in this feature), never fall back to the custom template.
     if (config?.use_site_template) {
       let siteTemplate = null;
       try {
@@ -95,9 +94,10 @@ export async function GET() {
           overlay: config.overlay || null,
         });
       }
-      // Fell through: toggle is on but Rasayesh gave us nothing usable.
+      return NextResponse.json({ active: false, mode: null });
     }
 
+    const hasCustomTemplate = !!config && Array.isArray(config.elements) && config.elements.length > 0;
     if (hasCustomTemplate) {
       return NextResponse.json({ active: true, mode: 'custom', template: { editor: config.editor, elements: config.elements } });
     }
