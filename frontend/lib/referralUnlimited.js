@@ -41,3 +41,25 @@ export async function grantUnlimitedReferralXp(referrerUuid, eventId, redemption
     [referrerUuid, redemptionId, perInviteXp, eventId]
   );
 }
+
+// Shared gate: is there a currently active unlimited-mode referral_code
+// mission for this event? Used by both the leaderboard route (Part 2a's
+// per-row count + Part 2b's new segment/tab) and the segment's own public
+// config route, so the two can never disagree about whether the feature is
+// "on" -- same "invisible and inert when not applicable" principle as the
+// login page's referralCodeAvailable check.
+export async function isUnlimitedReferralActive(eventId) {
+  try {
+    const { rows } = await query(
+      `SELECT EXISTS (
+         SELECT 1 FROM quest_content
+         WHERE event_id = $1 AND mission_type = 'referral_code'
+           AND referral_is_unlimited = true AND is_active = true
+       ) AS active`,
+      [eventId]
+    );
+    return rows[0]?.active === true;
+  } catch {
+    return false;
+  }
+}

@@ -791,7 +791,7 @@ function LeaderboardRow({ user, isMe, badgeColor, badgeLabel, xpUnit, lang, rank
   );
 }
 
-function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUnit, lang, levels, rankIcons }) {
+function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUnit, lang, levels, rankIcons, referralSegment }) {
   const [subTab, setSubTab] = useState('overall');
   const [levelCache, setLevelCache] = useState({});
 
@@ -811,13 +811,14 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
     const key = subTab;
     if (levelCache[key] !== undefined) return;
     setLevelCache(c => ({ ...c, [key]: null }));
-    fetch(`/api/quest/leaderboard?level=${key}`)
+    const url = key === 'referral' ? '/api/quest/leaderboard?segment=referral' : `/api/quest/leaderboard?level=${key}`;
+    fetch(url)
       .then(r => r.json())
       .then(d => setLevelCache(c => ({ ...c, [key]: { leaderboard: d.leaderboard || [], currentUser: d.currentUser || null } })))
       .catch(() => setLevelCache(c => ({ ...c, [key]: { leaderboard: [], currentUser: null } })));
   }, [subTab]);
 
-  const subTabBar = activeLevels.length > 0 ? (
+  const subTabBar = (activeLevels.length > 0 || referralSegment?.active) ? (
     <div className="flex gap-1.5 mb-4 overflow-x-auto pb-1 scrollbar-hide">
       <button
         onClick={() => setSubTab('overall')}
@@ -855,6 +856,30 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
           </button>
         );
       })}
+      {referralSegment?.active && (() => {
+        const isActive = subTab === 'referral';
+        const color = referralSegment.color || '#3b82f6';
+        const name = lang === 'en' ? (referralSegment.name_en || referralSegment.name_fa) : referralSegment.name_fa;
+        const iconIsImg = referralSegment.icon_type === 'image' && referralSegment.icon_value?.startsWith('/');
+        return (
+          <button
+            key="referral"
+            onClick={() => setSubTab('referral')}
+            className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold transition-all"
+            style={{
+              background: isActive ? color + '22' : "var(--surface-2)",
+              color: isActive ? color : "var(--text-dim)",
+              border: `1px solid ${isActive ? color + '66' : 'var(--border)'}`,
+            }}
+          >
+            {iconIsImg
+              ? <img src={referralSegment.icon_value} alt="" style={{ width: referralSegment.icon_size ?? 14, height: referralSegment.icon_size ?? 14, objectFit: 'contain', flexShrink: 0 }} />
+              : <span style={{ fontSize: referralSegment.icon_size ?? 14, lineHeight: 1 }}>{referralSegment.icon_value || '🔗'}</span>
+            }
+            {name}
+          </button>
+        );
+      })()}
     </div>
   ) : null;
 
@@ -878,6 +903,87 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
               <LeaderboardRow key={user.rank} user={user} isMe={isMe} badgeColor={color} badgeLabel={user.level} xpUnit={xpUnit} lang={lang} rankIcons={rankIcons} />
             );
           })
+        )}
+      </div>
+    );
+  }
+
+  if (subTab === 'referral') {
+    const cache = levelCache.referral;
+    if (cache === null || cache === undefined) {
+      return (
+        <div className="space-y-2">
+          {subTabBar}
+          <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
+            {lang === 'en' ? 'Loading...' : 'در حال بارگذاری...'}
+          </div>
+        </div>
+      );
+    }
+
+    const referralUnit = referralSegment
+      ? (lang === 'en' ? (referralSegment.name_en || referralSegment.name_fa) : referralSegment.name_fa)
+      : (lang === 'en' ? 'Referrals' : 'دعوت');
+    const referralColor = referralSegment?.color || '#3b82f6';
+
+    // xp holds the confirmed-invite count here (this segment's own ranking
+    // metric) -- referral_count is deliberately NOT set on these rows (only
+    // Part 2a's level/overall rows set it), since showing the small "N
+    // دعوت" line under the name here would just repeat the same number
+    // already shown big on the right.
+    const referralRows = cache.leaderboard.map(item => ({
+      rank:              item.rank,
+      user_uuid:         item.user_uuid,
+      name:              lang === 'en' ? (item.display_name_en || item.display_name_fa || 'شرکت‌کننده') : (item.display_name_fa || 'شرکت‌کننده'),
+      company:           '',
+      xp:                item.referral_count,
+      profile_photo_url: item.profile_photo_url || null,
+    }));
+
+    const currentInList = referralRows.find(r => r.user_uuid === currentUserUuid);
+    const cu = cache.currentUser;
+    const showExtraMe = cu && !currentInList;
+
+    return (
+      <div className="space-y-2">
+        {subTabBar}
+        {referralRows.length === 0 ? (
+          <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
+            {lang === 'en' ? 'No referrals yet' : 'هنوز کسی کد معرف تأییدشده‌ای ندارد'}
+          </div>
+        ) : (
+          referralRows.map(user => (
+            <LeaderboardRow
+              key={user.rank}
+              user={user}
+              isMe={!!currentUserUuid && user.user_uuid === currentUserUuid}
+              badgeColor={referralColor}
+              xpUnit={referralUnit}
+              lang={lang}
+              rankIcons={rankIcons}
+            />
+          ))
+        )}
+        {showExtraMe && (
+          <>
+            <div className="text-center text-xs py-1" style={{ color: "var(--text-dim)" }}>• • •</div>
+            <LeaderboardRow
+              key="current-user-extra"
+              user={{
+                rank:              cu.rank,
+                user_uuid:         cu.user_uuid || currentUserUuid,
+                name:              lang === 'en' ? (cu.display_name_en || cu.display_name_fa || 'شما') : (cu.display_name_fa || 'شما'),
+                company:           '',
+                xp:                cu.referral_count,
+                profile_photo_url: cu.profile_photo_url || null,
+              }}
+              isMe={true}
+              badgeColor={referralColor}
+              xpUnit={referralUnit}
+              lang={lang}
+              rankIcons={rankIcons}
+            />
+          </>
         )}
       </div>
     );
@@ -2583,6 +2689,11 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
   const [currentUserUuid, setCurrentUserUuid] = useState(null);
   const [currentUserRank, setCurrentUserRank] = useState(null);
   const [liveLevels, setLiveLevels] = useState(null);
+  // Part 2b: null while loading/inactive -- {active:true, ...config} only
+  // when an unlimited-mode referral_code mission is currently active for
+  // the event. LeaderboardTab renders the "دعوت" tab pill purely off this
+  // being truthy, never a separate/local check.
+  const [referralSegment, setReferralSegment] = useState(null);
 
   // Each flips true once its fetch SETTLES (success or failure) — distinct
   // from the live-data state being null, which also covers "still loading".
@@ -2673,6 +2784,13 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
       .then(d => { if (Array.isArray(d.levels) && d.levels.length > 0) setLiveLevels(d.levels); })
       .catch(() => {})
       .finally(() => setLevelsReady(true));
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/quest/referral-leaderboard-config')
+      .then(r => r.json())
+      .then(d => { if (d.active && d.config) setReferralSegment({ active: true, ...d.config }); })
+      .catch(() => {});
   }, []);
 
   const c = useMemo(() => ({
@@ -3163,6 +3281,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
               xpUnit={labels.xpUnit}
               lang={lang}
               levels={liveLevels || []}
+              referralSegment={referralSegment}
             />
           ) : (
             <div className="space-y-2">

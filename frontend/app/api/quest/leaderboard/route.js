@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { isUnlimitedReferralActive } from '@/lib/referralUnlimited';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,28 +57,9 @@ async function getLeaderboardLimit(eventId) {
   }
 }
 
-// Part 2a's invite-count column is gated on there being a currently ACTIVE
-// unlimited-mode referral_code mission for this event -- the same
-// "invisible and inert when not applicable" principle the login page's
-// referralCodeAvailable check already uses. Tiered referral missions (one-
-// time threshold rewards) already show their own progress on the mission
-// card itself and deliberately do NOT surface here -- this display is
-// specifically for the ongoing/ continuous unlimited-mode reward model.
-async function isUnlimitedReferralActive(eventId) {
-  try {
-    const { rows } = await query(
-      `SELECT EXISTS (
-         SELECT 1 FROM quest_content
-         WHERE event_id = $1 AND mission_type = 'referral_code'
-           AND referral_is_unlimited = true AND is_active = true
-       ) AS active`,
-      [eventId]
-    );
-    return rows[0]?.active === true;
-  } catch {
-    return false;
-  }
-}
+// isUnlimitedReferralActive now lives in lib/referralUnlimited.js, shared
+// with the segment-config route below so the two can never disagree about
+// whether the feature is "on" -- see that file for the full comment.
 
 // Returns the SQL fragment for the referral_count column (including its
 // leading comma), or '' when no unlimited-mode mission is active -- omitted
@@ -156,9 +138,114 @@ export async function GET(request) {
   // caller only needs currentUser.rank -- e.g. QuestClient's live-XP poll,
   // which refetches on every XP change purely to keep the rank stat current.
   const rankOnly = searchParams.get('rankOnly') === 'true';
+  const segment = searchParams.get('segment');
 
   try {
     await ensureQuestUserNamesTable();
+
+    // ── REFERRAL LEADERBOARD SEGMENT (Part 2b) ──────────────────────────────
+    // Entirely gated on referralLeaderboardActive (computed above, shared
+    // with the segment-config route) -- returns empty rather than erroring
+    // if hit directly while inactive, defense in depth on top of the
+    // frontend simply never requesting this segment when the tab is hidden.
+    if (segment === 'referral') {
+      if (!referralLeaderboardActive) {
+        return NextResponse.json({ leaderboard: [], currentUser: null });
+      }
+
+      let leaderboard = [];
+      if (!rankOnly) {
+        const limitResult = await query(
+          "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'referral_leaderboard_config'",
+          [currentEventId]
+        );
+        const rawLimit = parseInt(limitResult.rows[0]?.value?.leaderboard_limit, 10);
+        const limit = Number.isFinite(rawLimit) && rawLimit >= 1 ? rawLimit : 20;
+
+        // referral_agg has no row at all for a user with zero confirmed
+        // referrals -- same "not in the ranking pool" treatment a zero-XP
+        // user already gets from the main XP_CTE's FULL OUTER JOIN above,
+        // not a new inconsistency introduced here.
+        const { rows: topRows } = await query(`
+          WITH referral_agg AS (
+            SELECT referrer_user_uuid AS user_uuid, COUNT(*)::int AS referral_count
+            FROM quest_referral_redemptions
+            WHERE event_id = $1 AND status = 'confirmed'
+            GROUP BY referrer_user_uuid
+          )
+          SELECT
+            ra.user_uuid, ra.referral_count,
+            COALESCE(
+              qn.display_name_fa,
+              NULLIF(TRIM(COALESCE(au.firstname_fa, '') || ' ' || COALESCE(au.lastname_fa, '')), ''),
+              'شرکت‌کننده'
+            ) AS display_name_fa,
+            COALESCE(
+              qn.display_name_en,
+              NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), '')
+            ) AS display_name_en,
+            qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo,
+            -- Same DENSE_RANK() convention as every other location in this file.
+            DENSE_RANK() OVER (ORDER BY ra.referral_count DESC)::int AS rank
+          FROM referral_agg ra
+          LEFT JOIN quest_user_names qn ON ra.user_uuid = qn.user_uuid
+          LEFT JOIN app_users        au ON ra.user_uuid = au.uuid AND au.event_id = $1
+          WHERE (au.excluded_from_leaderboard IS NOT TRUE)
+          ORDER BY ra.referral_count DESC, ra.user_uuid ASC
+          LIMIT $2
+        `, [currentEventId, limit]);
+
+        leaderboard = topRows.map(row => ({
+          rank:              row.rank,
+          user_uuid:         row.user_uuid,
+          display_name_fa:   row.display_name_fa,
+          display_name_en:   row.display_name_en || null,
+          referral_count:    row.referral_count,
+          profile_photo_url: resolvePhotoUrl(row.profile_photo_url, row.profile_image, row.hide_leaderboard_photo),
+        }));
+      }
+
+      let currentUser = null;
+      if (currentUuid) {
+        const { rows: rankRows } = await query(`
+          WITH referral_agg AS (
+            SELECT referrer_user_uuid AS user_uuid, COUNT(*)::int AS referral_count
+            FROM quest_referral_redemptions
+            WHERE event_id = $1 AND status = 'confirmed'
+            GROUP BY referrer_user_uuid
+          )
+          SELECT
+            ra.referral_count,
+            qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo,
+            au.excluded_from_leaderboard,
+            (
+              SELECT COUNT(DISTINCT ra2.referral_count)::int + 1
+              FROM referral_agg ra2
+              LEFT JOIN app_users au2 ON ra2.user_uuid = au2.uuid AND au2.event_id = $1
+              WHERE (au2.excluded_from_leaderboard IS NOT TRUE)
+                AND ra2.referral_count > ra.referral_count
+            ) AS rank
+          FROM referral_agg ra
+          LEFT JOIN quest_user_names qn ON ra.user_uuid = qn.user_uuid
+          LEFT JOIN app_users        au ON ra.user_uuid = au.uuid AND au.event_id = $1
+          WHERE ra.user_uuid = $2
+        `, [currentEventId, currentUuid]);
+
+        // No row = this user has zero confirmed referrals -- same as a
+        // zero-XP user on the main board, currentUser simply stays null;
+        // not an error case, not special-cased beyond that.
+        if (rankRows.length > 0) {
+          currentUser = {
+            user_uuid:         currentUuid,
+            rank:              rankRows[0].excluded_from_leaderboard ? null : rankRows[0].rank,
+            referral_count:    rankRows[0].referral_count,
+            profile_photo_url: resolvePhotoUrl(rankRows[0].profile_photo_url, rankRows[0].profile_image, rankRows[0].hide_leaderboard_photo),
+          };
+        }
+      }
+
+      return NextResponse.json({ leaderboard, currentUser });
+    }
 
     // ── LEVEL SUB-LEADERBOARD ──────────────────────────────────────────────
     if (levelId && Number.isFinite(levelId)) {
