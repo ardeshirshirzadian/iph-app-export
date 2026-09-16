@@ -56,6 +56,41 @@ async function getLeaderboardLimit(eventId) {
   }
 }
 
+// Part 2a's invite-count column is gated on there being a currently ACTIVE
+// unlimited-mode referral_code mission for this event -- the same
+// "invisible and inert when not applicable" principle the login page's
+// referralCodeAvailable check already uses. Tiered referral missions (one-
+// time threshold rewards) already show their own progress on the mission
+// card itself and deliberately do NOT surface here -- this display is
+// specifically for the ongoing/ continuous unlimited-mode reward model.
+async function isUnlimitedReferralActive(eventId) {
+  try {
+    const { rows } = await query(
+      `SELECT EXISTS (
+         SELECT 1 FROM quest_content
+         WHERE event_id = $1 AND mission_type = 'referral_code'
+           AND referral_is_unlimited = true AND is_active = true
+       ) AS active`,
+      [eventId]
+    );
+    return rows[0]?.active === true;
+  } catch {
+    return false;
+  }
+}
+
+// Returns the SQL fragment for the referral_count column (including its
+// leading comma), or '' when no unlimited-mode mission is active -- omitted
+// entirely from the SELECT in that case, not just hidden client-side, so an
+// inactive event pays zero extra query cost for this.
+function referralCountSelectFragment(alias, active) {
+  if (!active) return '';
+  return `,
+            (SELECT COUNT(*)::int FROM quest_referral_redemptions rr
+             WHERE rr.referrer_user_uuid = ${alias}.user_uuid AND rr.event_id = $1 AND rr.status = 'confirmed'
+            ) AS referral_count`;
+}
+
 // Shared CTE that computes total XP per user, scoped to one event.
 // event_id must always be bound as the query's FIRST parameter ($1) by every
 // caller below -- quest_scans.event_id / quest_xp_grants.event_id are what
@@ -112,6 +147,7 @@ export async function GET(request) {
   } catch {}
 
   const currentEventId = await getCurrentEventId();
+  const referralLeaderboardActive = await isUnlimitedReferralActive(currentEventId);
 
   const { searchParams } = new URL(request.url);
   const levelParam = searchParams.get('level');
@@ -182,7 +218,7 @@ export async function GET(request) {
             ) AS display_name_en,
             qn.profile_photo_url,
             au.profile_image,
-            au.hide_leaderboard_photo
+            au.hide_leaderboard_photo${referralCountSelectFragment('r', referralLeaderboardActive)}
           FROM ranked r
           LEFT JOIN quest_user_names qn ON r.user_uuid = qn.user_uuid
           LEFT JOIN app_users        au ON r.user_uuid = au.uuid AND au.event_id = $1
@@ -198,6 +234,7 @@ export async function GET(request) {
           total_xp:          row.total_xp,
           scan_count:        row.scan_count,
           profile_photo_url: resolvePhotoUrl(row.profile_photo_url, row.profile_image, row.hide_leaderboard_photo),
+          referral_count:    row.referral_count,
         }));
       }
 
@@ -241,7 +278,7 @@ export async function GET(request) {
               LEFT JOIN app_users au2 ON il2.user_uuid = au2.uuid AND au2.event_id = $1
               WHERE (au2.excluded_from_leaderboard IS NOT TRUE)
                 AND il2.total_xp > il.total_xp
-            ) AS rank
+            ) AS rank${referralCountSelectFragment('il', referralLeaderboardActive)}
           FROM in_level il
           LEFT JOIN quest_user_names qn ON il.user_uuid = qn.user_uuid
           LEFT JOIN app_users        au ON il.user_uuid = au.uuid AND au.event_id = $1
@@ -261,6 +298,7 @@ export async function GET(request) {
             display_name_fa:   rankRows[0].display_name_fa,
             display_name_en:   rankRows[0].display_name_en || null,
             profile_photo_url: resolvePhotoUrl(rankRows[0].profile_photo_url, rankRows[0].profile_image, rankRows[0].hide_leaderboard_photo),
+            referral_count:    rankRows[0].referral_count,
           };
         }
       }
@@ -307,7 +345,7 @@ export async function GET(request) {
           -- DENSE_RANK(), not RANK() -- see the level branch's matching
           -- comment above for why all four rank locations in this file must
           -- agree on the same ranking scheme.
-          DENSE_RANK() OVER (ORDER BY c.total_xp DESC)::int AS rank
+          DENSE_RANK() OVER (ORDER BY c.total_xp DESC)::int AS rank${referralCountSelectFragment('c', referralLeaderboardActive)}
         FROM combined c
         LEFT JOIN quest_user_names qn ON c.user_uuid = qn.user_uuid
         LEFT JOIN app_users        au ON c.user_uuid = au.uuid AND au.event_id = $1
@@ -324,6 +362,7 @@ export async function GET(request) {
         total_xp:          row.total_xp,
         scan_count:        row.scan_count,
         profile_photo_url: resolvePhotoUrl(row.profile_photo_url, row.profile_image, row.hide_leaderboard_photo),
+        referral_count:    row.referral_count,
       }));
     }
 
@@ -358,7 +397,7 @@ export async function GET(request) {
             LEFT JOIN app_users au2 ON t2.user_uuid = au2.uuid AND au2.event_id = $1
             WHERE (au2.excluded_from_leaderboard IS NOT TRUE)
               AND t2.total_xp > t.total_xp
-          ) AS rank
+          ) AS rank${referralCountSelectFragment('t', referralLeaderboardActive)}
         FROM totals t
         LEFT JOIN quest_user_names qn ON t.user_uuid = qn.user_uuid
         LEFT JOIN app_users        au ON t.user_uuid = au.uuid AND au.event_id = $1
@@ -373,6 +412,7 @@ export async function GET(request) {
           rank:              rankRows[0].excluded_from_leaderboard ? null : rankRows[0].rank,
           total_xp:          rankRows[0].total_xp,
           profile_photo_url: resolvePhotoUrl(rankRows[0].profile_photo_url, rankRows[0].profile_image, rankRows[0].hide_leaderboard_photo),
+          referral_count:    rankRows[0].referral_count,
         };
       }
     }

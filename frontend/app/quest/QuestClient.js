@@ -765,6 +765,13 @@ function LeaderboardRow({ user, isMe, badgeColor, badgeLabel, xpUnit, lang, rank
             {user.company}
           </p>
         ) : null}
+        {/* Confirmed-invite count -- hidden entirely at 0, never shown as
+            "0 دعوت", since most users will never have referred anyone. */}
+        {user.referral_count > 0 && (
+          <p className="text-[11px] leading-5 truncate" style={{ color: "var(--text-dim)" }}>
+            {lang === 'en' ? `${dNum(user.referral_count, lang)} referrals` : `${dNum(user.referral_count, lang)} دعوت`}
+          </p>
+        )}
       </div>
       <div className="text-left flex-shrink-0">
         <p className="font-black leading-5" style={{ fontSize: "var(--quest-lb-size)", color: isMe ? "var(--accent)" : "var(--quest-lb-color)" }}>
@@ -900,6 +907,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
     company:           '',
     xp:                item.total_xp,
     profile_photo_url: item.profile_photo_url || null,
+    referral_count:    item.referral_count,
   }));
 
   const currentInList = levelRows.find(r => r.user_uuid === currentUserUuid);
@@ -939,6 +947,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
               company:           '',
               xp:                cu.total_xp,
               profile_photo_url: cu.profile_photo_url || null,
+              referral_count:    cu.referral_count,
             }}
             isMe={true}
             badgeColor={levelColor}
@@ -2736,6 +2745,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
           xp:                item.total_xp,
           level:             current.name,
           profile_photo_url: item.profile_photo_url || null,
+          referral_count:    item.referral_count,
         };
       });
     }
