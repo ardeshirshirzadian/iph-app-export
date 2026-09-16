@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { extractProfilePhotoUrl } from '@/lib/utils';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { getOrCreateReferralCode } from '@/lib/referralCode';
 
 export async function POST(request) {
   let user;
@@ -64,7 +65,12 @@ export async function POST(request) {
 }
 
 async function upsertAppUser(u, eventId) {
-  await query(
+  // RETURNING (xmax = 0) AS was_inserted -- the standard Postgres idiom for
+  // telling a fresh INSERT apart from an ON CONFLICT DO UPDATE in one
+  // statement (xmax is only left at 0 by a real insert). Used below to
+  // eagerly generate this user's referral code exactly once, at the moment
+  // their app_users row is first created -- never on a later login/update.
+  const { rows } = await query(
     `INSERT INTO app_users (
       event_id, rasayesh_id, uuid, firstname_fa, lastname_fa, firstname_en, lastname_en,
       mobile, email, national_code, job_title_fa, job_title_en, phone,
@@ -101,7 +107,8 @@ async function upsertAppUser(u, eventId) {
       profile_image   = EXCLUDED.profile_image,
       raw_data        = EXCLUDED.raw_data,
       last_login_at   = NOW(),
-      login_count     = app_users.login_count + 1`,
+      login_count     = app_users.login_count + 1
+    RETURNING (xmax = 0) AS was_inserted`,
     [
       eventId,
       u.id ?? null,
@@ -130,4 +137,14 @@ async function upsertAppUser(u, eventId) {
       JSON.stringify(u),
     ]
   );
+
+  if (rows[0]?.was_inserted) {
+    // Brand-new user this event -- generate their referral code now. Every
+    // pre-existing user (was_inserted false, this was an UPDATE) gets theirs
+    // lazily instead, the first time they open the referral mission card
+    // (see referral/my-code/route.js) -- no backfill migration needed.
+    getOrCreateReferralCode(eventId, u.uuid).catch((err) =>
+      console.error('[referral code eager-generation error]', err)
+    );
+  }
 }

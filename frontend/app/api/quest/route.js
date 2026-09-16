@@ -127,6 +127,18 @@ async function calcProgress(mission, userUuid, eventId, currentEventId) {
         );
         return r.rows.length > 0 && r.rows[0].completed ? 1 : 0;
       }
+      case 'referral_code': {
+        // Cumulative confirmed-referral count for this user as REFERRER,
+        // compared against this tier's own referral_required_count (total,
+        // already generic below) -- same live-computed-count shape as
+        // hall_scan/booth_scan above, not a stored/incremented counter.
+        const r = await query(
+          `SELECT COUNT(*) FROM quest_referral_redemptions
+           WHERE referrer_user_uuid = $1 AND event_id = $2 AND status = 'confirmed'`,
+          [userUuid, currentEventId]
+        );
+        return parseInt(r.rows[0].count, 10);
+      }
       case 'social_share': {
         const r = await query(
           `SELECT status FROM quest_social_share_submissions

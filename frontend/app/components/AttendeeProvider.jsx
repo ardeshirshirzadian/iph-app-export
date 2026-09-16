@@ -108,6 +108,22 @@ function syncProfileInfo(attendee) {
 // chatter, not a correctness requirement.
 const PROFILE_PHOTO_RECHECK_MIN_INTERVAL_MS = 60_000;
 
+// Fire-and-forget: the only point a pending referral redemption (as referee)
+// can be re-checked without persisting an access/refresh token server-side --
+// this call rides the fresh token localStorage already holds at the exact
+// moment fetchAttendee() itself just used it, since tokens are never durable
+// server-side. No-op (server-side) if this user has no pending redemption.
+function recheckPendingReferral(uuid) {
+  if (!uuid || typeof window === "undefined") return;
+  const accessToken = localStorage.getItem("access_token");
+  if (!accessToken) return;
+  return fetch("/api/quest/referral/recheck-pending", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accessToken, uuid }),
+  }).catch(() => {});
+}
+
 export default function AttendeeProvider({ children, rasayeshEventId }) {
   const { user, isLoggedIn } = useAuth();
   // useAuth() resolves the iph_user cookie via queueMicrotask, so `user` is
@@ -152,6 +168,7 @@ export default function AttendeeProvider({ children, rasayeshEventId }) {
           // the server, on its own.
           syncProfilePhoto(data.getAttendee.profile);
           syncProfileInfo(data.getAttendee);
+          recheckPendingReferral(user?.uuid);
           lastProfilePhotoSyncRef.current = Date.now();
           break;
         }
@@ -166,7 +183,7 @@ export default function AttendeeProvider({ children, rasayeshEventId }) {
       await new Promise((r) => setTimeout(r, ATTENDEE_RETRY_DELAYS_MS[attempt]));
     }
     setLoading(false);
-  }, [rasayeshEventId]);
+  }, [rasayeshEventId, user]);
 
   useEffect(() => {
     if (!authChecked) return; // still resolving the iph_user cookie

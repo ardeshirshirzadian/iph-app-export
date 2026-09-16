@@ -419,7 +419,7 @@ function isMissionCompleted(mission) {
   return false;
 }
 
-function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyClick, onSocialShareClick, onProfilePhotoClick, onManualScanClick, lang: langProp, logoBaseUrl, sponsorLogoSize, sponsorNameColor, sponsorNameSize, missionIconColors }) {
+function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyClick, onSocialShareClick, onProfilePhotoClick, onManualScanClick, onReferralClick, lang: langProp, logoBaseUrl, sponsorLogoSize, sponsorNameColor, sponsorNameSize, missionIconColors }) {
   const pct = useMemo(
     () => (mission.total > 0 ? Math.round((mission.progress / mission.total) * 100) : 0),
     [mission.progress, mission.total]
@@ -437,6 +437,11 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
   const isChat = mission.mission_type === 'chat';
   const isAttendance = mission.mission_type === 'attendance';
   const isManual = mission.mission_type === 'manual';
+  // Tiered mission (progress = this referrer's cumulative confirmed-referral
+  // count, total = this tier's referral_required_count) -- deliberately NOT
+  // in the binary-fixed-total family above; it falls through to the generic
+  // progress-bar-plus-fraction branch below like hall_scan/booth_scan do.
+  const isReferral = mission.mission_type === 'referral_code';
   const quizAttempted = isQuiz && !!mission.quiz_attempted;
   // Wrong quiz answers ARE completed (isMissionCompleted treats any attempt
   // as done, regardless of correctness -- see MissionCard's `done` above),
@@ -464,6 +469,9 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
   const socialShareClickable = isSocialShare && !done && socialShareStatus !== 'pending' && typeof onSocialShareClick === 'function';
   const profilePhotoClickable = isProfilePhoto && !done && typeof onProfilePhotoClick === 'function';
   const manualScanClickable = isManual && !done && typeof onManualScanClick === 'function';
+  // Always clickable regardless of tier completion -- same as featuredClickable
+  // above, since "view my code" stays useful after this tier is done too.
+  const referralClickable = isReferral && typeof onReferralClick === 'function';
 
   const now = useLiveNow(isFeaturedBooth && !done);
   // Reason-specific message takes priority over the generic "next rotation"
@@ -487,6 +495,7 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
     : featuredClickable ? onFeaturedClick
     : profilePhotoClickable ? onProfilePhotoClick
     : manualScanClickable ? onManualScanClick
+    : referralClickable ? onReferralClick
     : undefined;
 
   // 44px (the old fixed w-11/h-11) already matched the 36px default icon plus
@@ -2410,6 +2419,124 @@ function SocialShareModal({ share, onClose, onComplete, lang }) {
   );
 }
 
+// Shows the viewer's own referral code (tap-to-copy) plus their confirmed/
+// pending/rejected redemption counts as a referrer, and -- if they redeemed
+// someone else's code themselves -- their own redemption's status. Fetches
+// fresh on every open rather than reusing mission-list data, since the
+// mission object here is one specific tier row and this needs the user's
+// aggregate counts, not any one tier's numbers.
+function ReferralModal({ onClose, lang }) {
+  const isRTL = lang === 'fa';
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/quest/referral/my-code')
+      .then(r => r.json())
+      .then(d => setData(d))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  function handleCopy() {
+    if (!data?.code || !navigator.clipboard) return;
+    navigator.clipboard.writeText(data.code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+  }
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-end justify-center" dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="relative w-full max-w-md rounded-t-3xl border-t border-x border-[var(--border-accent)] pb-10 overflow-hidden"
+        style={{ background: "var(--sheet-bg)", maxHeight: '90vh', overflowY: 'auto' }}
+      >
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+          <h2 className="font-bold text-base" style={{ color: "var(--text)" }}>
+            {lang === 'fa' ? 'کد معرف' : 'Referral Code'}
+          </h2>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full flex items-center justify-center"
+            style={{ background: "var(--surface-2)", color: "var(--text-dim)" }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2.5" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="px-5 pb-2">
+          {loading ? (
+            <p className="text-sm text-center py-6" style={{ color: 'var(--text-dim)' }}>
+              {lang === 'fa' ? 'در حال بارگذاری...' : 'Loading...'}
+            </p>
+          ) : !data?.code ? (
+            <p className="text-sm text-center py-6" style={{ color: 'var(--text-dim)' }}>
+              {lang === 'fa' ? 'خطا در دریافت کد' : 'Failed to load code'}
+            </p>
+          ) : (
+            <>
+              <p className="text-xs mb-2" style={{ color: 'var(--text-dim)' }}>
+                {lang === 'fa' ? 'کد من:' : 'My code:'}
+              </p>
+              <button
+                onClick={handleCopy}
+                className="w-full rounded-2xl py-4 flex items-center justify-center gap-2 mb-2 border"
+                style={{ background: 'var(--surface-2)', borderColor: 'var(--border-accent)' }}
+              >
+                <span dir="ltr" className="text-2xl font-black tracking-[0.2em]" style={{ color: 'var(--accent)' }}>
+                  {data.code}
+                </span>
+              </button>
+              <p className="text-xs text-center mb-5" style={{ color: copied ? 'var(--accent)' : 'var(--text-dim)' }}>
+                {copied
+                  ? (lang === 'fa' ? 'کپی شد ✓' : 'Copied ✓')
+                  : (lang === 'fa' ? 'برای کپی لمس کنید' : 'Tap to copy')}
+              </p>
+
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                <div className="rounded-xl py-3 text-center" style={{ background: 'var(--surface-2)' }}>
+                  <div className="text-lg font-bold" style={{ color: '#22c55e' }}>{data.confirmed_count}</div>
+                  <div className="text-[10px]" style={{ color: 'var(--text-dim)' }}>{lang === 'fa' ? 'تأییدشده' : 'Confirmed'}</div>
+                </div>
+                <div className="rounded-xl py-3 text-center" style={{ background: 'var(--surface-2)' }}>
+                  <div className="text-lg font-bold" style={{ color: '#f59e0b' }}>{data.pending_count}</div>
+                  <div className="text-[10px]" style={{ color: 'var(--text-dim)' }}>{lang === 'fa' ? 'در انتظار' : 'Pending'}</div>
+                </div>
+                <div className="rounded-xl py-3 text-center" style={{ background: 'var(--surface-2)' }}>
+                  <div className="text-lg font-bold" style={{ color: 'var(--text-dim)' }}>{data.rejected_count}</div>
+                  <div className="text-[10px]" style={{ color: 'var(--text-dim)' }}>{lang === 'fa' ? 'رد شده' : 'Rejected'}</div>
+                </div>
+              </div>
+
+              {data.own_redemption_status && (
+                <p className="text-[11px] text-center leading-5" style={{ color: 'var(--text-dim)' }}>
+                  {lang === 'fa'
+                    ? (data.own_redemption_status === 'confirmed'
+                        ? 'شما هم با یک کد معرف ثبت‌نام کرده‌اید ✓'
+                        : data.own_redemption_status === 'pending'
+                          ? 'کد معرفی که وارد کرده‌اید در حال بررسی است'
+                          : 'کد معرفی که وارد کرده بودید تأیید نشد')
+                    : (data.own_redemption_status === 'confirmed'
+                        ? 'You also signed up with a referral code ✓'
+                        : data.own_redemption_status === 'pending'
+                          ? 'The referral code you entered is still being checked'
+                          : 'The referral code you entered was not confirmed')}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main client component ───────────────────────────────────────────────────
 
 export default function QuestClient({ content, title, subtitle, title_en, subtitle_en, isHomeContext = false, showBack = true, appearanceConfig = {}, questSettings = {} }) {
@@ -2422,6 +2549,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
   const onManualScanClick = useCallback(() => router.push('/quest/scan'), [router]);
   const [boothsOpen, setBoothsOpen] = useState(false);
   const [openFeaturedPool, setOpenFeaturedPool] = useState(null);
+  const [openReferral, setOpenReferral] = useState(null);
   const [activeTab, setActiveTab] = useState("missions");
   const [completedMissionsOpen, setCompletedMissionsOpen] = useState(false);
   const [isDark, setIsDark] = useState(true);
@@ -2816,6 +2944,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         onFeaturedClick={m.mission_type === 'featured_booth' ? () => setOpenFeaturedPool(m) : undefined}
         onProfilePhotoClick={m.mission_type === 'profile_photo' ? onProfilePhotoClick : undefined}
         onManualScanClick={m.mission_type === 'manual' ? onManualScanClick : undefined}
+        onReferralClick={m.mission_type === 'referral_code' ? () => setOpenReferral(m) : undefined}
       />
     ),
     [labels.xpUnit, lang, logoBaseUrl, sponsorStyle, missionIconColors, onProfilePhotoClick, onManualScanClick]
@@ -3073,6 +3202,13 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         lang={lang}
         logoBaseUrl={logoBaseUrl}
       />
+
+      {openReferral && (
+        <ReferralModal
+          lang={lang}
+          onClose={() => { setOpenReferral(null); refreshQuest(); }}
+        />
+      )}
 
       {openQuiz && (
         <QuizModal

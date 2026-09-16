@@ -39,8 +39,26 @@ async function getLoginSettings(eventId) {
   }
 }
 
+// Gates the entire "کد معرف دارم" link/modal on the login page: when no
+// active referral_code mission exists for this event, LoginForm must render
+// with zero referral-code code paths engaged at all (no link, no modal, no
+// validate-code call) -- not just a hidden/disabled state.
+async function getReferralCodeAvailable(eventId) {
+  try {
+    const result = await query(
+      "SELECT 1 FROM quest_content WHERE event_id = $1 AND mission_type = 'referral_code' AND is_active = true LIMIT 1",
+      [eventId]
+    );
+    return result.rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export default async function LoginPage({ searchParams }) {
-  const settings = await getLoginSettings(await getCurrentEventId());
+  const currentEventId = await getCurrentEventId();
+  const settings = await getLoginSettings(currentEventId);
+  const referralCodeAvailable = await getReferralCodeAvailable(currentEventId);
   const sp = searchParams ? await Promise.resolve(searchParams) : {};
   return (
     <LoginForm
@@ -50,6 +68,7 @@ export default async function LoginPage({ searchParams }) {
       initialIsEmail={!!sp.email || (!sp.mobile && !!(sp.contact?.includes('@')))}
       quickMode={sp.quick === 'true'}
       fromPath={sp.from || '/'}
+      referralCodeAvailable={referralCodeAvailable}
     />
   );
 }

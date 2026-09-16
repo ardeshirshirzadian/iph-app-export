@@ -71,7 +71,7 @@ function blurDefaultBorder(e) {
   e.target.style.borderColor = "var(--border)";
 }
 
-export default function LoginForm({ settings, initialVerify, initialContact, initialIsEmail, quickMode = false, fromPath = '/' }) {
+export default function LoginForm({ settings, initialVerify, initialContact, initialIsEmail, quickMode = false, fromPath = '/', referralCodeAvailable = false }) {
   const router = useRouter();
   const { lang, isRTL } = useLang();
   const [step, setStep] = useState(initialVerify ? 2 : 1);
@@ -95,6 +95,21 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
   });
   const [formOptions, setFormOptions] = useState({ occupations: [], fieldOfActivities: [] });
   const [optionsLoading, setOptionsLoading] = useState(true);
+  // کد معرف (referral code) -- verified locally in the step-1 modal (no
+  // Rasayesh call, no OTP needed), carried as plain state across steps
+  // 1 -> 2/3 -> finalizeSession, where the real Rasayesh-dependent
+  // enrollment check runs. Deliberately NOT reset by the lang-switch effect
+  // below, unlike contact/step/otpDigits/profileForm -- switching fa/en
+  // mid-flow must not silently drop an already-verified code.
+  const [referralCode, setReferralCode] = useState("");
+  const [showReferralModal, setShowReferralModal] = useState(false);
+  const [referralInput, setReferralInput] = useState("");
+  const [referralChecking, setReferralChecking] = useState(false);
+  const [referralModalError, setReferralModalError] = useState("");
+  // Non-blocking informational message from the post-auth referral check
+  // (redeem/route.js's 'already_enrolled' or 'pending' outcome) -- shown
+  // briefly before finalizeSession's own redirect carries the user away.
+  const [postAuthMessage, setPostAuthMessage] = useState("");
   const otpRefs = useRef([]);
   const quickAutoSent = useRef(false);
   const sendOtpCoreRef = useRef(null);
@@ -210,6 +225,41 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
     await sendOtpCore();
   }
 
+  // Local-only validation (no Rasayesh call) -- code exists, is active,
+  // hasn't exceeded its usage cap, and this contact hasn't already redeemed
+  // something for this event. A green check here can only ever mean "this
+  // is a real code", not "you're eligible" -- eligibility can only be known
+  // post-auth (see finalizeSession above).
+  async function handleValidateReferralCode() {
+    const trimmed = referralInput.trim();
+    if (!trimmed || referralChecking) return;
+    setReferralChecking(true);
+    setReferralModalError("");
+    try {
+      const res = await fetch('/api/quest/referral/validate-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: trimmed, contact }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setReferralCode(trimmed.toUpperCase());
+        setShowReferralModal(false);
+        setReferralInput("");
+      } else if (data.error === 'already_used') {
+        setReferralModalError('این کد قبلاً استفاده شده');
+      } else if (data.error === 'rate_limited') {
+        setReferralModalError('تعداد تلاش‌های شما بیش از حد مجاز است. کمی دیگر دوباره امتحان کنید.');
+      } else {
+        setReferralModalError('کد معرف نامعتبر است');
+      }
+    } catch {
+      setReferralModalError(t(lang, "server_error"));
+    } finally {
+      setReferralChecking(false);
+    }
+  }
+
   // Shared by both the existing-user login success path and the
   // new-attendee-then-register success path — attendeeRegister returns the
   // same { user, accessToken, refreshToken } shape attendeeLoginValidateOTP
@@ -217,6 +267,42 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
   // login call needed.
   const finalizeSession = useCallback(
     async (result) => {
+      // Post-auth referral-code check -- only runs if a code was verified in
+      // step 1's modal. This is the one point a uuid + accessToken exist for
+      // BOTH the existing-account path (submitOtp) and the new-account path
+      // (handleRegisterSubmit), since both already funnel through this same
+      // shared function -- no separate insertion point needed for each.
+      // Must never block/fail login: any error here is swallowed silently.
+      if (referralCode && result.accessToken && result.user?.uuid) {
+        let infoMessage = "";
+        try {
+          const res = await fetch('/api/quest/referral/redeem', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              code: referralCode,
+              accessToken: result.accessToken,
+              uuid: result.user.uuid,
+            }),
+          });
+          const data = await res.json();
+          if (data.outcome === 'already_enrolled') {
+            infoMessage = 'شما قبلا ثبت‌نام کرده‌اید، امتیاز این کد معرف به شما تعلق نمی‌گیرد.';
+          } else if (data.outcome === 'pending') {
+            infoMessage = 'کد معرف شما ثبت شد؛ برای نهایی‌شدن، دفعه بعد که وارد می‌شوید بررسی می‌شود.';
+          }
+        } catch {
+          // Rasayesh/network failure here must not block login -- fall
+          // through to finalizeSession's normal body below regardless.
+        }
+        if (infoMessage) {
+          setPostAuthMessage(infoMessage);
+          // Brief pause so the message is actually readable before the
+          // router.push() below carries the user away from this screen.
+          await new Promise((r) => setTimeout(r, 1800));
+        }
+      }
+
       // Store tokens in localStorage
       localStorage.setItem('access_token', result.accessToken);
       localStorage.setItem('refresh_token', result.refreshToken);
@@ -266,7 +352,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
       }
       router.push(quickMode ? fromPath : "/");
     },
-    [quickMode, fromPath, router]
+    [quickMode, fromPath, router, referralCode]
   );
 
   const submitOtp = useCallback(
@@ -554,6 +640,14 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
           className="backdrop-blur-xl border border-[var(--border-accent)] rounded-3xl p-6"
           style={{ background: "var(--surface)" }}
         >
+          {postAuthMessage && (
+            <p
+              className="mb-3 text-xs text-center leading-5"
+              style={{ color: "var(--accent)" }}
+            >
+              {postAuthMessage}
+            </p>
+          )}
           {step === 1 ? (
             <form onSubmit={handleSendOtp}>
               <label
@@ -606,6 +700,29 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                   onFocus={focusAccentBorder}
                   onBlur={blurDefaultBorder}
                 />
+              )}
+
+              {/* کد معرف (referral code) -- only shown when an active
+                  referral_code mission exists for this event AND this isn't
+                  the quickMode deep-link path (which skips step 1's UI
+                  entirely and never gets referral-code capability). */}
+              {referralCodeAvailable && !quickMode && (
+                <div className="mt-2 text-center">
+                  {referralCode ? (
+                    <span className="text-xs font-bold" style={{ color: "var(--accent)" }}>
+                      ✓ کد معرف: <span dir="ltr">{referralCode}</span>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => { setShowReferralModal(true); setReferralModalError(""); }}
+                      className="text-xs"
+                      style={{ color: "var(--accent)" }}
+                    >
+                      کد معرف دارم
+                    </button>
+                  )}
+                </div>
               )}
 
               {error && (
@@ -943,6 +1060,64 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
           )}
         </div>
       </div>
+
+      {showReferralModal && (
+        <div
+          className="fixed inset-0 z-[300] flex items-center justify-center px-4"
+          dir={dir}
+        >
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => { setShowReferralModal(false); setReferralModalError(""); }}
+          />
+          <div
+            className="relative w-full max-w-sm rounded-3xl border border-[var(--border-accent)] p-6"
+            style={{ background: "var(--surface)" }}
+          >
+            <h3 className="font-bold text-sm mb-4 text-center" style={{ color: "var(--text)" }}>
+              کد معرف
+            </h3>
+            <input
+              type="text"
+              dir="ltr"
+              value={referralInput}
+              onChange={(e) => setReferralInput(e.target.value.toUpperCase().slice(0, 16))}
+              placeholder="کد معرف را وارد کنید"
+              className="w-full rounded-xl px-4 py-3 text-base outline-none border transition-colors text-center tracking-widest"
+              style={{
+                background: "var(--surface-2)",
+                color: "var(--text)",
+                borderColor: "var(--border)",
+              }}
+              onFocus={focusAccentBorder}
+              onBlur={blurDefaultBorder}
+            />
+            {referralModalError && (
+              <p className="mt-3 text-sm text-center" style={{ color: "#ff6b6b" }}>
+                {referralModalError}
+              </p>
+            )}
+            <Button
+              type="button"
+              onClick={handleValidateReferralCode}
+              disabled={referralChecking || !referralInput.trim()}
+              variant="primary"
+              className="w-full mt-4"
+              size="lg"
+            >
+              {referralChecking ? "در حال بررسی..." : "تأیید"}
+            </Button>
+            <button
+              type="button"
+              onClick={() => { setShowReferralModal(false); setReferralModalError(""); }}
+              className="w-full mt-3 text-xs"
+              style={{ color: "var(--text-dim)" }}
+            >
+              انصراف
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
