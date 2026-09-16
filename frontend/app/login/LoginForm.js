@@ -285,6 +285,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
         if (errors?.length) {
           hapticError();
           setError(isEmail ? "Incorrect code" : "کد وارد شده اشتباه است");
+          setLoading(false);
           return;
         }
 
@@ -298,21 +299,30 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
           // fabricated value for it.
           setPendingSignature(result.signature || "");
           setStep(3);
+          setLoading(false);
           return;
         }
 
         if (result?.status !== 'success') {
           hapticError();
           setError(result?.message || (isEmail ? "Incorrect code" : "کد وارد شده اشتباه است"));
+          setLoading(false);
           return;
         }
 
+        // Success -- finalizeSession() ends with an un-awaited router.push(),
+        // which only SCHEDULES the navigation, not waits for it. Resetting
+        // loading here (as a blanket finally used to) re-renders this same
+        // still-mounted step's UI -- e.g. step 3's "no account found, fill
+        // in details" text -- for whatever window remains before the real
+        // page swap completes. Leave loading=true; this component is being
+        // navigated away from regardless, so there's nothing to reset for.
         await finalizeSession(result);
       } catch {
         hapticError();
         setError(t(lang, "server_error"));
-      } finally {
         setLoading(false);
+      } finally {
         submittingRef.current = false;
       }
     },
@@ -342,8 +352,12 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
       ? profileForm.firstnameEn.trim() && profileForm.lastnameEn.trim()
       : profileForm.firstnameFa.trim() && profileForm.lastnameFa.trim()
         && profileForm.firstnameEn.trim() && profileForm.lastnameEn.trim();
+    // English-mode registrants have no second contact channel to fill in --
+    // foreign visitors typically have no Iranian mobile number, so the
+    // Mobile field is removed entirely for isEmail (see the JSX above);
+    // nothing left to validate here.
     const otherOk = isEmail
-      ? profileForm.otherContact.length === 11
+      ? true
       : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profileForm.otherContact);
     const activitiesOk =
       formOptions.fieldOfActivities.length === 0 || profileForm.fieldOfActivities.length > 0;
@@ -364,7 +378,10 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
         lastnameFa: profileForm.lastnameFa || profileForm.lastnameEn,
         firstnameEn: profileForm.firstnameEn || profileForm.firstnameFa,
         lastnameEn: profileForm.lastnameEn || profileForm.lastnameFa,
-        mobile: isEmail ? profileForm.otherContact : contact,
+        // No otherContact collected for isEmail (Mobile field removed above)
+        // -- $mobile is nullable on this mutation, and Apollo strips
+        // undefined variables from the request rather than sending "".
+        mobile: isEmail ? undefined : contact,
         email: isEmail ? contact : profileForm.otherContact,
         occupationId: profileForm.occupationId ? parseInt(profileForm.occupationId, 10) : undefined,
         fieldOfActivities: profileForm.fieldOfActivities.map(Number).filter(Boolean),
@@ -380,6 +397,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
       if (errors?.length) {
         hapticError();
         setError(errors[0].message || (isEmail ? "Failed to create account" : "خطا در ایجاد حساب"));
+        setLoading(false);
         return;
       }
 
@@ -389,14 +407,24 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
       if (result?.status !== 'success') {
         hapticError();
         setError(result?.message || (isEmail ? "Failed to create account" : "خطا در ایجاد حساب"));
+        setLoading(false);
         return;
       }
 
+      // Success -- finalizeSession() ends with an un-awaited router.push(),
+      // which only SCHEDULES the navigation, not waits for it. Resetting
+      // loading here (as a blanket finally used to) re-renders this same
+      // still-mounted step 3 -- including its "no account found, fill in
+      // details" intro text -- for whatever window remains before the real
+      // page swap completes (confirmed 2026-09-14: this was the actual
+      // source of the "یافت نشد" flash bug report -- not a new/separate
+      // error, just this step's own always-there subtitle reappearing).
+      // Leave loading=true; this component is being navigated away from
+      // regardless, so there's nothing to reset for.
       await finalizeSession(result);
     } catch {
       hapticError();
       setError(t(lang, "server_error"));
-    } finally {
       setLoading(false);
     }
   }
@@ -477,7 +505,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
     <main
       dir={dir}
       lang={lang}
-      className="min-h-dvh flex items-start justify-center px-4 pt-[12dvh] pb-10"
+      className="min-h-dvh flex items-center justify-center px-4"
       style={{ background: "var(--bg)", color: "var(--text)" }}
     >
       {/* Background glows */}
@@ -493,7 +521,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
 
       <div className="relative w-full max-w-sm">
         {/* Header */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-4">
           {(() => {
             // Fixed height, width auto -- same technique AppHeader.js's Logo
             // uses (h-8 w-auto object-contain) for its non-square logo+wordmark
@@ -502,7 +530,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
             // or letterboxed into a forced square.
             const height = parseInt(settings.logo_height ?? "80", 10) || 80;
             return (
-              <div className="mx-auto mb-8 flex items-center justify-center">
+              <div className="mx-auto mb-11 flex items-center justify-center">
                 {logoSrc && (
                   <img
                     src={logoSrc}
@@ -562,7 +590,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                   id="contact"
                   type="tel"
                   dir="ltr"
-                  value={toPersianDigits(contact)}
+                  value={isRTL ? toPersianDigits(contact) : contact}
                   onChange={(e) => setContact(toEnglishDigits(e.target.value).replace(/\D/g, "").slice(0, 11))}
                   placeholder={settings.mobile_placeholder}
                   maxLength={11}
@@ -616,7 +644,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                     inputMode="numeric"
                     autoComplete={index === 0 ? "one-time-code" : "off"}
                     maxLength={1}
-                    value={toPersianDigits(digit)}
+                    value={isRTL ? toPersianDigits(digit) : digit}
                     onChange={(e) => handleOtpChange(index, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(index, e)}
                     onPaste={handleOtpPaste}
@@ -725,26 +753,6 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                         onBlur={blurDefaultBorder}
                         placeholder="Last name"
                         autoComplete="family-name"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
-                        Mobile<span style={{ color: "var(--accent)" }}> *</span>
-                      </label>
-                      <input
-                        dir="ltr"
-                        type="tel"
-                        inputMode="numeric"
-                        value={profileForm.otherContact}
-                        onChange={(e) =>
-                          setProfileField("otherContact", toEnglishDigits(e.target.value).replace(/\D/g, "").slice(0, 11))
-                        }
-                        className="w-full rounded-xl px-4 py-3 text-base outline-none border"
-                        style={FIELD_STYLE}
-                        onFocus={focusAccentBorder}
-                        onBlur={blurDefaultBorder}
-                        placeholder="09xxxxxxxxx"
-                        maxLength={11}
                       />
                     </div>
                   </>
