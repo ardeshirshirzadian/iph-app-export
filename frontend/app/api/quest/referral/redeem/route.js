@@ -2,6 +2,7 @@ import { query } from '@/lib/db';
 import { getRasayeshEventInfo } from '@/lib/publicRasayeshClient';
 import { getCurrentEventId } from '@/lib/currentEvent';
 import { evaluateReferralTiers } from '@/lib/referralTiers';
+import { grantUnlimitedReferralXp } from '@/lib/referralUnlimited';
 
 const RASAYESH_URL = 'https://api.rasayesh.com/graphql';
 
@@ -173,6 +174,9 @@ export async function POST(request) {
     }
 
     await evaluateReferralTiers(codeRow.owner_user_uuid, currentEventId);
+    // Additive, independent reward path -- see lib/referralUnlimited.js.
+    // Never blocks or interferes with the tiered grant above.
+    await grantUnlimitedReferralXp(codeRow.owner_user_uuid, currentEventId, redemptionId);
 
     return Response.json({ outcome: 'confirmed' });
   } catch (err) {
