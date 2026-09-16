@@ -416,6 +416,13 @@ function featuredBoothClaimedMessage(mission, lang, minutes) {
 // - social_share stays active while 'rejected' (the card still offers a resubmit CTA);
 //   only 'pending' (awaiting review, nothing left to do) counts as completed here.
 function isMissionCompleted(mission) {
+  // Unlimited-mode referral_code missions never complete from user activity
+  // -- they repeat per-invite XP with no threshold (see
+  // lib/referralUnlimited.js) and stay open until an admin deactivates them,
+  // unlike tiered referral_code missions (which fall through to the
+  // progress>=total check below like any other tier) and every other
+  // mission type.
+  if (mission.mission_type === 'referral_code' && mission.referral_is_unlimited) return false;
   if (mission.progress >= mission.total) return true;
   if (mission.mission_type === 'quiz' && mission.quiz_attempted) return true;
   if (mission.mission_type === 'social_share' && mission.social_share_status === 'pending') return true;
@@ -444,7 +451,14 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
   // count, total = this tier's referral_required_count) -- deliberately NOT
   // in the binary-fixed-total family above; it falls through to the generic
   // progress-bar-plus-fraction branch below like hall_scan/booth_scan do.
+  // Unlimited-mode referral_code missions are the one exception: xp_reward/
+  // progress/total are all symbolic for them (real reward logic reads
+  // referral_referrer_xp/referral_per_invite_xp instead, see
+  // lib/referralUnlimited.js), so both the XP badge and the progress bar
+  // below are hidden entirely rather than showing a number that doesn't
+  // reflect what the mission actually pays out.
   const isReferral = mission.mission_type === 'referral_code';
+  const isUnlimitedReferral = isReferral && mission.referral_is_unlimited === true;
   const quizAttempted = isQuiz && !!mission.quiz_attempted;
   // Wrong quiz answers ARE completed (isMissionCompleted treats any attempt
   // as done, regardless of correctness -- see MissionCard's `done` above),
@@ -571,11 +585,13 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
           >
             {dNum(mission.title, langProp)}
           </span>
-          <span className="text-xs font-bold flex-shrink-0 mr-2" style={{ color: (quizWrongAnswer || socialShareRejected) ? "var(--text-dim)" : "var(--accent)" }}>
-            {langProp === 'fa'
-              ? `${dNum(isFeaturedBooth ? (mission.featuredBoothBonusXp ?? mission.xpReward) : mission.xpReward, langProp)}+ ${xpUnit || "XP"}`
-              : (<>+{dNum(isFeaturedBooth ? (mission.featuredBoothBonusXp ?? mission.xpReward) : mission.xpReward, langProp)} {xpUnit || "XP"}</>)}
-          </span>
+          {!isUnlimitedReferral && (
+            <span className="text-xs font-bold flex-shrink-0 mr-2" style={{ color: (quizWrongAnswer || socialShareRejected) ? "var(--text-dim)" : "var(--accent)" }}>
+              {langProp === 'fa'
+                ? `${dNum(isFeaturedBooth ? (mission.featuredBoothBonusXp ?? mission.xpReward) : mission.xpReward, langProp)}+ ${xpUnit || "XP"}`
+                : (<>+{dNum(isFeaturedBooth ? (mission.featuredBoothBonusXp ?? mission.xpReward) : mission.xpReward, langProp)} {xpUnit || "XP"}</>)}
+            </span>
+          )}
         </div>
         {mission.sponsor && (
           <div className="flex items-center gap-1.5 mb-1">
@@ -675,6 +691,14 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
             {socialShareStatus === 'rejected' && socialShareNote && (
               <p className="text-[10px] leading-4" style={{ color: 'var(--text-dim)' }}>{socialShareNote}</p>
             )}
+          </div>
+        ) : isUnlimitedReferral ? (
+          // No progress bar/fraction here either -- total is symbolic for
+          // this mission (see isReferral's own comment above), and a
+          // perpetually-open mission has no fixed target to show progress
+          // toward in the first place.
+          <div className="flex items-center justify-between gap-2">
+            <span />
           </div>
         ) : (
           <div className="flex items-center gap-2">

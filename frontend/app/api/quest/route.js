@@ -310,6 +310,14 @@ export async function GET() {
           xpReward: m.xp_reward,
           featuredBoothBonusXp: m.mission_type === 'featured_booth' ? (m.featured_booth_bonus_xp ?? 500) : undefined,
           mission_type: m.mission_type,
+          // Unlimited-mode referral_code missions repeat per-invite XP with
+          // no tier/threshold (see lib/referralUnlimited.js) -- the client
+          // needs this to know xp_reward/progress/total are symbolic for
+          // this specific mission and must not drive the XP badge, progress
+          // bar, or completion state the way they do for every other
+          // mission type (including tiered referral_code missions, which
+          // keep their existing behavior untouched).
+          referral_is_unlimited: m.mission_type === 'referral_code' ? (m.referral_is_unlimited === true) : undefined,
           total: m.total,
           progress: Math.min(progress, m.total),
           target_hall_name: m.target_hall_name ?? null,
