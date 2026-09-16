@@ -10,6 +10,8 @@ import PageHeader from "@/components/PageHeader";
 import { useAttendee } from "../components/AttendeeProvider";
 import { useLang } from "@/lib/useLang";
 import { toPersianDigits, toEnglishDigits, toRelativeTime } from "@/lib/utils";
+import AvatarPlaceholder from "@/components/AvatarPlaceholder";
+import ReferralShareCanvas from "@/components/ReferralShareCanvas";
 
 const RASAYESH_BASE = "https://api.rasayesh.com/";
 
@@ -700,16 +702,6 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
         </div>
       )}
     </div>
-  );
-}
-
-function AvatarPlaceholder({ size = 32 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"
-      style={{ borderRadius: '50%', background: 'rgba(255,255,255,0.08)', flexShrink: 0 }}>
-      <circle cx="16" cy="13" r="5" fill="rgba(255,255,255,0.25)" />
-      <path d="M6 27c0-5.523 4.477-10 10-10s10 4.477 10 10" stroke="rgba(255,255,255,0.25)" strokeWidth="2" strokeLinecap="round" />
-    </svg>
   );
 }
 
@@ -2540,11 +2532,44 @@ function SocialShareModal({ share, onClose, onComplete, lang }) {
 // fresh on every open rather than reusing mission-list data, since the
 // mission object here is one specific tier row and this needs the user's
 // aggregate counts, not any one tier's numbers.
+// Client-side "resolve for me" -- the genuinely new piece this feature
+// needed, per its own planning notes: every other template system in this
+// app (plaque, badge) resolves data for someone an ADMIN picked; this
+// resolves the CURRENTLY LOGGED-IN VIEWER's own data, already sitting in
+// state (useAttendee() + the my-code fetch above) with no new fetch at all.
+function makeReferralShareResolver(attendeeData, profilePhotoUrl, code) {
+  return {
+    resolve: (field, el) => {
+      if (field === '__static__') return el?.text || '';
+      if (field === 'referral_first_name_fa') return attendeeData?.firstname_fa || '';
+      if (field === 'referral_last_name_fa') return attendeeData?.lastname_fa || '';
+      if (field === 'referral_code_value') return code || '';
+      return '';
+    },
+    resolveImage: () => profilePhotoUrl,
+  };
+}
+
 function ReferralModal({ onClose, lang }) {
   const isRTL = lang === 'fa';
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   const [copied, setCopied] = useState(false);
+  const { attendee: attendeeData } = useAttendee();
+  const profilePhotoUrl = attendeeData?.profile?.jpg?.["128"]
+    ? RASAYESH_BASE + attendeeData.profile.jpg["128"]
+    : null;
+
+  // Part 3: shareable referral image -- fetched alongside the code, gated
+  // server-side the same way as everything else in this feature (see
+  // /api/quest/referral-share-config: same isUnlimitedReferralActive check
+  // as Parts 1/2, AND hidden unless the admin has actually placed at least
+  // one element). shareConfig stays null (button never shows) until this
+  // resolves truthy.
+  const [shareConfig, setShareConfig] = useState(null);
+  const [showSharePreview, setShowSharePreview] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const shareCanvasRef = useRef(null);
 
   useEffect(() => {
     fetch('/api/quest/referral/my-code')
@@ -2552,6 +2577,11 @@ function ReferralModal({ onClose, lang }) {
       .then(d => setData(d))
       .catch(() => {})
       .finally(() => setLoading(false));
+
+    fetch('/api/quest/referral-share-config')
+      .then(r => r.json())
+      .then(d => { if (d.active && d.template) setShareConfig(d.template); })
+      .catch(() => {});
   }, []);
 
   function handleCopy() {
@@ -2560,6 +2590,50 @@ function ReferralModal({ onClose, lang }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }).catch(() => {});
+  }
+
+  async function handleShareConfirm() {
+    const el = shareCanvasRef.current;
+    if (!el || sharing) return;
+    setSharing(true);
+    try {
+      const { default: html2canvas } = await import('html2canvas').catch(() => ({ default: null }));
+      if (!html2canvas) return;
+      // scale here is html2canvas's OWN upscale factor on top of whatever
+      // CSS size the preview is rendered at (see the ReferralShareCanvas
+      // scale prop below) -- same two-number approach BadgeClient.jsx's
+      // downloadCard() already uses (a modest on-screen size, a higher
+      // capture scale), not a second hidden full-resolution render pass.
+      const canvas = await html2canvas(el, { scale: 4, useCORS: true, allowTaint: false });
+
+      canvas.toBlob(async (blob) => {
+        if (!blob) { setSharing(false); return; }
+        const file = new File([blob], 'referral-code.png', { type: 'image/png' });
+        try {
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              files: [file],
+              title: lang === 'fa' ? 'کد معرف من' : 'My referral code',
+              text: lang === 'fa' ? `با کد معرف من ${data?.code || ''} ثبت‌نام کن!` : `Sign up with my referral code ${data?.code || ''}!`,
+            });
+          } else {
+            // Same <a download> synthetic-click pattern downloadCard() uses.
+            const link = document.createElement('a');
+            link.download = 'referral-code.png';
+            link.href = URL.createObjectURL(blob);
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+          }
+        } catch (err) {
+          // AbortError from a user-cancelled share sheet is expected, not a
+          // failure -- nothing to report either way.
+        } finally {
+          setSharing(false);
+        }
+      }, 'image/png');
+    } catch (err) {
+      setSharing(false);
+    }
   }
 
   return (
@@ -2585,7 +2659,7 @@ function ReferralModal({ onClose, lang }) {
           </button>
         </div>
 
-        <div className="px-5 pb-2">
+        <div className="px-5 pb-2" hidden={showSharePreview}>
           {loading ? (
             <p className="text-sm text-center py-6" style={{ color: 'var(--text-dim)' }}>
               {lang === 'fa' ? 'در حال بارگذاری...' : 'Loading...'}
@@ -2630,7 +2704,7 @@ function ReferralModal({ onClose, lang }) {
               </div>
 
               {data.own_redemption_status && (
-                <p className="text-[11px] text-center leading-5" style={{ color: 'var(--text-dim)' }}>
+                <p className="text-[11px] text-center leading-5 mb-4" style={{ color: 'var(--text-dim)' }}>
                   {lang === 'fa'
                     ? (data.own_redemption_status === 'confirmed'
                         ? 'شما هم با یک کد معرف ثبت‌نام کرده‌اید ✓'
@@ -2644,9 +2718,55 @@ function ReferralModal({ onClose, lang }) {
                           : 'The referral code you entered was not confirmed')}
                 </p>
               )}
+
+              {/* Hidden entirely until the config fetch resolves active+
+                  configured (see /api/quest/referral-share-config's own
+                  gate) -- never a disabled/placeholder button. */}
+              {shareConfig && (
+                <button
+                  onClick={() => setShowSharePreview(true)}
+                  className="w-full rounded-2xl py-3 flex items-center justify-center gap-2 border"
+                  style={{ background: 'var(--surface-2)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                >
+                  <span>📤</span>
+                  <span className="text-sm font-bold">{lang === 'fa' ? 'اشتراک‌گذاری کد من' : 'Share my code'}</span>
+                </button>
+              )}
             </>
           )}
         </div>
+
+        {/* Share preview -- shown BEFORE any share/download action, not a
+            blind generate-and-share, per the user's own explicit UX
+            decision for this feature. */}
+        {showSharePreview && shareConfig && (
+          <div className="px-5 pb-2 flex flex-col items-center">
+            <div ref={shareCanvasRef} style={{ borderRadius: 12, overflow: 'hidden' }}>
+              <ReferralShareCanvas
+                template={shareConfig}
+                scale={2.5}
+                {...makeReferralShareResolver(attendeeData, profilePhotoUrl, data?.code)}
+              />
+            </div>
+            <div className="w-full flex gap-2 mt-4">
+              <button
+                onClick={() => setShowSharePreview(false)}
+                className="flex-1 rounded-2xl py-3 border text-sm font-bold"
+                style={{ background: 'var(--surface-2)', borderColor: 'var(--border)', color: 'var(--text-dim)' }}
+              >
+                {lang === 'fa' ? 'بازگشت' : 'Back'}
+              </button>
+              <button
+                onClick={handleShareConfirm}
+                disabled={sharing}
+                className="flex-1 rounded-2xl py-3 text-sm font-bold"
+                style={{ background: 'var(--accent)', color: '#fff', opacity: sharing ? 0.6 : 1 }}
+              >
+                {sharing ? (lang === 'fa' ? 'در حال آماده‌سازی...' : 'Preparing...') : (lang === 'fa' ? 'اشتراک‌گذاری' : 'Share')}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
