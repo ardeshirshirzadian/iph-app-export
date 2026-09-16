@@ -110,6 +110,13 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
   // (redeem/route.js's 'already_enrolled' or 'pending' outcome) -- shown
   // briefly before finalizeSession's own redirect carries the user away.
   const [postAuthMessage, setPostAuthMessage] = useState("");
+  // 'already_enrolled' means the referral did NOT count -- this must read as
+  // a warning (same color as this form's error text), not a positive/accent
+  // confirmation. 'pending' is neutral -- still awaiting a real answer, not
+  // good or bad news yet. Only a genuinely accepted/counting code gets the
+  // green checkmark treatment, and that's the separate step-1 badge above
+  // (referralCode && ...), never this post-auth message.
+  const [postAuthMessageType, setPostAuthMessageType] = useState("info");
   const otpRefs = useRef([]);
   const quickAutoSent = useRef(false);
   const sendOtpCoreRef = useRef(null);
@@ -118,6 +125,12 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
   const submittingRef = useRef(false);
 
   const isEmail = lang === "en";
+  // English/email mode has no Mobile field at all (see the foreign-registrant
+  // flow above) -- so the referral-code contact-missing prompt must name
+  // whichever field this mode actually collects, not always "mobile number".
+  const referralContactMissingMessage = isEmail
+    ? "Please enter your email first"
+    : 'ابتدا شماره موبایل خود را وارد کنید';
 
   useEffect(() => {
     setIsLight(document.documentElement.classList.contains("light"));
@@ -233,6 +246,19 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
   async function handleValidateReferralCode() {
     const trimmed = referralInput.trim();
     if (!trimmed || referralChecking) return;
+    // Defense in depth -- the "کد معرف دارم" button already shows this same
+    // message on click when contact is empty (see its onClick below), so
+    // this shouldn't normally be reachable with an empty contact. Kept here
+    // too in case the modal was already open when contact got cleared.
+    // Without this, an empty contact silently 400s (missing_fields) and used
+    // to render as the same "کد معرف نامعتبر است" text as a genuinely wrong
+    // code (see 2026-09-16 فرخ ده بزرگی report -- the code was real and
+    // active; the request never got past this check because contact was
+    // empty).
+    if (!contact.trim()) {
+      setReferralModalError(referralContactMissingMessage);
+      return;
+    }
     setReferralChecking(true);
     setReferralModalError("");
     try {
@@ -250,6 +276,12 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
         setReferralModalError('این کد قبلاً استفاده شده');
       } else if (data.error === 'rate_limited') {
         setReferralModalError('تعداد تلاش‌های شما بیش از حد مجاز است. کمی دیگر دوباره امتحان کنید.');
+      } else if (data.error === 'missing_fields' || data.error === 'invalid_body') {
+        // Distinct from "invalid_code" -- this means the request itself was
+        // malformed (e.g. contact still empty), not that the code was
+        // checked and found wrong. Kept as its own branch so this doesn't
+        // masquerade as "invalid code" again if some other path ever hits it.
+        setReferralModalError(referralContactMissingMessage);
       } else {
         setReferralModalError('کد معرف نامعتبر است');
       }
@@ -275,6 +307,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
       // Must never block/fail login: any error here is swallowed silently.
       if (referralCode && result.accessToken && result.user?.uuid) {
         let infoMessage = "";
+        let infoMessageType = "info";
         try {
           const res = await fetch('/api/quest/referral/redeem', {
             method: 'POST',
@@ -287,9 +320,12 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
           });
           const data = await res.json();
           if (data.outcome === 'already_enrolled') {
+            // The referral did NOT count -- warning, not a success state.
             infoMessage = 'شما قبلا ثبت‌نام کرده‌اید، امتیاز این کد معرف به شما تعلق نمی‌گیرد.';
+            infoMessageType = 'warning';
           } else if (data.outcome === 'pending') {
             infoMessage = 'کد معرف شما ثبت شد؛ برای نهایی‌شدن، دفعه بعد که وارد می‌شوید بررسی می‌شود.';
+            infoMessageType = 'info';
           }
         } catch {
           // Rasayesh/network failure here must not block login -- fall
@@ -297,6 +333,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
         }
         if (infoMessage) {
           setPostAuthMessage(infoMessage);
+          setPostAuthMessageType(infoMessageType);
           // Brief pause so the message is actually readable before the
           // router.push() below carries the user away from this screen.
           await new Promise((r) => setTimeout(r, 1800));
@@ -643,7 +680,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
           {postAuthMessage && (
             <p
               className="mb-3 text-xs text-center leading-5"
-              style={{ color: "var(--accent)" }}
+              style={{ color: postAuthMessageType === "warning" ? "#ff6b6b" : "var(--accent)" }}
             >
               {postAuthMessage}
             </p>
@@ -715,7 +752,14 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                   ) : (
                     <button
                       type="button"
-                      onClick={() => { setShowReferralModal(true); setReferralModalError(""); }}
+                      onClick={() => {
+                        setShowReferralModal(true);
+                        // Always open the modal -- but if contact is still
+                        // empty, surface that immediately in the modal's own
+                        // message slot instead of silently doing nothing
+                        // (see 2026-09-16 فرخ ده بزرگی report).
+                        setReferralModalError(contact.trim() ? "" : referralContactMissingMessage);
+                      }}
                       className="text-xs"
                       style={{ color: "var(--accent)" }}
                     >
