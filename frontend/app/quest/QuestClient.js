@@ -2501,15 +2501,15 @@ function ReferralModal({ onClose, lang }) {
 
               <div className="grid grid-cols-3 gap-2 mb-4">
                 <div className="rounded-xl py-3 text-center" style={{ background: 'var(--surface-2)' }}>
-                  <div className="text-lg font-bold" style={{ color: '#22c55e' }}>{data.confirmed_count}</div>
+                  <div className="text-lg font-bold" style={{ color: '#22c55e' }}>{dNum(data.confirmed_count, lang)}</div>
                   <div className="text-[10px]" style={{ color: 'var(--text-dim)' }}>{lang === 'fa' ? 'تأییدشده' : 'Confirmed'}</div>
                 </div>
                 <div className="rounded-xl py-3 text-center" style={{ background: 'var(--surface-2)' }}>
-                  <div className="text-lg font-bold" style={{ color: '#f59e0b' }}>{data.pending_count}</div>
+                  <div className="text-lg font-bold" style={{ color: '#f59e0b' }}>{dNum(data.pending_count, lang)}</div>
                   <div className="text-[10px]" style={{ color: 'var(--text-dim)' }}>{lang === 'fa' ? 'در انتظار' : 'Pending'}</div>
                 </div>
                 <div className="rounded-xl py-3 text-center" style={{ background: 'var(--surface-2)' }}>
-                  <div className="text-lg font-bold" style={{ color: 'var(--text-dim)' }}>{data.rejected_count}</div>
+                  <div className="text-lg font-bold" style={{ color: 'var(--text-dim)' }}>{dNum(data.rejected_count, lang)}</div>
                   <div className="text-[10px]" style={{ color: 'var(--text-dim)' }}>{lang === 'fa' ? 'رد شده' : 'Rejected'}</div>
                 </div>
               </div>

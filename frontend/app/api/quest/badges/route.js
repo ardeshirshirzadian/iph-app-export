@@ -154,6 +154,19 @@ async function calcEarned(badge, userUuid, eventId, currentEventId) {
         ).catch(() => ({ rows: [] }));
         return r.rows.length > 0;
       }
+      case 'referral_code': {
+        // Running-counter type, same shape as booth_scan_count/hall_scan
+        // above -- badge.threshold is the admin-set bar (1 = "any confirmed
+        // referral", 3 = "reach 3", etc.), compared against this user's live
+        // cumulative CONFIRMED referral count as a referrer. Mirrors
+        // evaluateReferralTiers()'s own count query exactly.
+        const r = await query(
+          `SELECT COUNT(*) FROM quest_referral_redemptions
+           WHERE referrer_user_uuid = $1 AND event_id = $2 AND status = 'confirmed'`,
+          [userUuid, currentEventId]
+        );
+        return parseInt(r.rows[0].count, 10) >= badge.threshold;
+      }
       default:
         return false;
     }
