@@ -61,7 +61,7 @@ export async function POST(request) {
     }
 
     const codeResult = await query(
-      `SELECT rc.id, rc.is_active, rc.max_redemptions,
+      `SELECT rc.id, rc.owner_user_uuid, rc.is_active, rc.max_redemptions,
               (SELECT COUNT(*) FROM quest_referral_redemptions rr
                WHERE rr.code_id = rc.id AND rr.status != 'rejected') AS used_count
        FROM quest_referral_codes rc
@@ -76,6 +76,40 @@ export async function POST(request) {
     if (codeRow.max_redemptions != null && parseInt(codeRow.used_count, 10) >= codeRow.max_redemptions) {
       await recordFailure();
       return Response.json({ ok: false, error: 'invalid_code' });
+    }
+
+    // Live capacity check -- a code stops being redeemable once its owner's
+    // confirmed-referral count reaches the highest required_count among
+    // currently ACTIVE referral_code missions. Deliberately computed live
+    // on every call, not cached/stored as a static "exhausted" flag, so it
+    // self-corrects the moment an admin activates/deactivates a tier
+    // (activating a higher tier makes a previously-exhausted code usable
+    // again automatically). Independent of, and not a replacement for,
+    // quest_referral_codes.max_redemptions above (an unrelated, optional
+    // hard cap that's unset by default).
+    const maxTierResult = await query(
+      `SELECT MAX(referral_required_count) AS max_required
+       FROM quest_content
+       WHERE event_id = $1 AND mission_type = 'referral_code' AND is_active = true`,
+      [eventId]
+    );
+    const maxRequired = maxTierResult.rows[0]?.max_required;
+    if (maxRequired == null) {
+      // No active referral_code mission at all -- shouldn't normally be
+      // reachable (the login page's own referralCodeAvailable gate already
+      // hides the entry point in this case), but fail closed rather than
+      // let a stale code through or throw on the null comparison below.
+      return Response.json({ ok: false, error: 'invalid_code' });
+    }
+    const ownerConfirmedResult = await query(
+      `SELECT COUNT(*) FROM quest_referral_redemptions
+       WHERE referrer_user_uuid = $1 AND event_id = $2 AND status = 'confirmed'`,
+      [codeRow.owner_user_uuid, eventId]
+    );
+    if (parseInt(ownerConfirmedResult.rows[0].count, 10) >= maxRequired) {
+      // Legitimate state, not a guess -- does not count toward the fail
+      // counter, same reasoning as the duplicate-redemption guard below.
+      return Response.json({ ok: false, error: 'code_capacity_reached' });
     }
 
     // Local duplicate-redemption guard -- looked up by the raw, unverified

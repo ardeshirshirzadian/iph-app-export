@@ -276,6 +276,11 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
         setReferralModalError('این کد قبلاً استفاده شده');
       } else if (data.error === 'rate_limited') {
         setReferralModalError('تعداد تلاش‌های شما بیش از حد مجاز است. کمی دیگر دوباره امتحان کنید.');
+      } else if (data.error === 'code_capacity_reached') {
+        // Distinct from "invalid_code" -- the code is real, just no longer
+        // redeemable because its owner has already reached the highest
+        // active tier's required count (see validate-code/route.js).
+        setReferralModalError('ظرفیت این کد تکمیل شده است');
       } else if (data.error === 'missing_fields' || data.error === 'invalid_body') {
         // Distinct from "invalid_code" -- this means the request itself was
         // malformed (e.g. contact still empty), not that the code was
