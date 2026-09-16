@@ -2,12 +2,16 @@ import { NextResponse } from 'next/server';
 import { unstable_cache } from 'next/cache';
 import { query } from '@/lib/db';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { getRasayeshEventInfo } from '@/lib/publicRasayeshClient';
 import { isUnlimitedReferralActive } from '@/lib/referralUnlimited';
 
+const RASAYESH_URL = 'https://api.rasayesh.com/graphql';
+const SITE_TEMPLATE_KEY = 'attendance_poster';
+
 // Same split as every other config route in this feature: admin-authored
-// template content is cached (rarely changes), the "is this even on" gate
-// is checked live on every call.
-const getCachedReferralShareTemplate = unstable_cache(
+// content is cached (rarely changes), the "is this even on" gate is
+// checked live on every call.
+const getCachedReferralShareConfig = unstable_cache(
   async (currentEventId) => {
     const result = await query(
       "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'referral_share_template_config'",
@@ -19,30 +23,88 @@ const getCachedReferralShareTemplate = unstable_cache(
   { tags: ['referral-share-config'], revalidate: 300 }
 );
 
+// eventTemplate is confirmed public (no bearer token needed, unlike
+// attendeeEventCard) -- verified live via introspection + direct calls
+// during this feature's own investigation. Still resolves eventOrigin via
+// getRasayeshEventInfo and sends the standard origin/referer headers for
+// consistency with every other outbound Rasayesh call in this codebase,
+// even though a minimal test call without them also worked.
+async function fetchSiteTemplate(currentEventId) {
+  const regResult = await query(
+    "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'registration_config'",
+    [currentEventId]
+  );
+  const regConfig = regResult.rows[0]?.value ?? {};
+  const rasayeshEventId = regConfig.event_id ? Number(regConfig.event_id) : null;
+  if (!rasayeshEventId) return null;
+
+  const eventInfo = await getRasayeshEventInfo(rasayeshEventId);
+  const res = await fetch(RASAYESH_URL, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-rasayesh-site': 'event',
+      origin: eventInfo.website,
+      referer: `${eventInfo.website}/`,
+      lang: 'fa',
+    },
+    body: JSON.stringify({
+      query: `query($eventId: Int, $key: String){ eventTemplate(eventId: $eventId, key: $key) { value } }`,
+      variables: { eventId: rasayeshEventId, key: SITE_TEMPLATE_KEY },
+    }),
+    signal: AbortSignal.timeout(10000),
+  }).then((r) => r.json());
+
+  const value = res?.data?.eventTemplate?.value;
+  if (!value || !Array.isArray(value.elements) || value.elements.length === 0) return null;
+  return value;
+}
+
 export async function GET() {
   try {
     const currentEventId = await getCurrentEventId();
 
-    // Same gate as Parts 1/2 (per this round's decision 1) -- the share
-    // entry point is scoped to the same unlimited-mode mission being
-    // active, not to any referral_code mission existing at all.
+    // Same gate as Parts 1/2 -- the whole feature is scoped to the same
+    // unlimited-mode mission being active, not to any referral_code
+    // mission existing at all.
     const active = await isUnlimitedReferralActive(currentEventId);
     if (!active) {
-      return NextResponse.json({ active: false, template: null });
+      return NextResponse.json({ active: false, mode: null });
     }
 
-    const template = await getCachedReferralShareTemplate(currentEventId);
-    // Hidden until an admin has actually placed at least one element --
-    // "the key exists" (even the default template) is not enough on its
-    // own, since an admin who never opened this tab yet shouldn't have a
-    // half-designed/blank image go out to real users.
-    if (!template || !Array.isArray(template.elements) || template.elements.length === 0) {
-      return NextResponse.json({ active: false, template: null });
+    const config = await getCachedReferralShareConfig(currentEventId);
+    const hasCustomTemplate = !!config && Array.isArray(config.elements) && config.elements.length > 0;
+
+    // Cascade: site template (if the toggle is on and Rasayesh actually
+    // returns something usable) -> our own custom template (if configured)
+    // -> hidden entirely. Never a half-broken image for a real user --
+    // same inert-when-unconfigured principle as every other gate in this
+    // feature, just with one more fallback step.
+    if (config?.use_site_template) {
+      let siteTemplate = null;
+      try {
+        siteTemplate = await fetchSiteTemplate(currentEventId);
+      } catch (e) {
+        console.error('[quest/referral-share-config] site template fetch failed:', e.message);
+      }
+      if (siteTemplate) {
+        return NextResponse.json({
+          active: true,
+          mode: 'site',
+          siteTemplate,
+          overlay: config.overlay || null,
+        });
+      }
+      // Fell through: toggle is on but Rasayesh gave us nothing usable.
     }
 
-    return NextResponse.json({ active: true, template });
+    if (hasCustomTemplate) {
+      return NextResponse.json({ active: true, mode: 'custom', template: { editor: config.editor, elements: config.elements } });
+    }
+
+    return NextResponse.json({ active: false, mode: null });
   } catch (e) {
     console.error('[quest/referral-share-config GET]', e.message);
-    return NextResponse.json({ active: false, template: null });
+    return NextResponse.json({ active: false, mode: null });
   }
 }

@@ -12,6 +12,7 @@ import { useLang } from "@/lib/useLang";
 import { toPersianDigits, toEnglishDigits, toRelativeTime } from "@/lib/utils";
 import AvatarPlaceholder from "@/components/AvatarPlaceholder";
 import ReferralShareCanvas from "@/components/ReferralShareCanvas";
+import { renderRasayeshPoster } from "@/lib/rasayeshPosterRenderer";
 
 const RASAYESH_BASE = "https://api.rasayesh.com/";
 
@@ -2560,16 +2561,22 @@ function ReferralModal({ onClose, lang }) {
     ? RASAYESH_BASE + attendeeData.profile.jpg["128"]
     : null;
 
-  // Part 3: shareable referral image -- fetched alongside the code, gated
-  // server-side the same way as everything else in this feature (see
-  // /api/quest/referral-share-config: same isUnlimitedReferralActive check
-  // as Parts 1/2, AND hidden unless the admin has actually placed at least
-  // one element). shareConfig stays null (button never shows) until this
-  // resolves truthy.
-  const [shareConfig, setShareConfig] = useState(null);
+  // Part 3 (+ this round's "use site template" addition): shareable
+  // referral image, gated server-side the same way as everything else in
+  // this feature (/api/quest/referral-share-config: same
+  // isUnlimitedReferralActive check as Parts 1/2, cascading site-template
+  // -> custom-template -> hidden). shareMode stays null (button never
+  // shows) until this resolves to 'site' or 'custom'.
+  const [shareMode, setShareMode] = useState(null); // 'site' | 'custom' | null
+  const [shareTemplate, setShareTemplate] = useState(null);   // mode === 'custom'
+  const [siteTemplate, setSiteTemplate] = useState(null);     // mode === 'site'
+  const [siteOverlay, setSiteOverlay] = useState(null);       // mode === 'site'
   const [showSharePreview, setShowSharePreview] = useState(false);
+  const [siteRendering, setSiteRendering] = useState(false);
   const [sharing, setSharing] = useState(false);
-  const shareCanvasRef = useRef(null);
+  const [copyStatus, setCopyStatus] = useState(''); // '', 'copied', 'unsupported'
+  const shareCanvasRef = useRef(null);   // custom mode: a <div> (html2canvas target)
+  const siteCanvasElRef = useRef(null);  // site mode: a real <canvas>
 
   useEffect(() => {
     fetch('/api/quest/referral/my-code')
@@ -2580,9 +2587,39 @@ function ReferralModal({ onClose, lang }) {
 
     fetch('/api/quest/referral-share-config')
       .then(r => r.json())
-      .then(d => { if (d.active && d.template) setShareConfig(d.template); })
+      .then(d => {
+        if (!d.active) return;
+        if (d.mode === 'site' && d.siteTemplate) {
+          setShareMode('site');
+          setSiteTemplate(d.siteTemplate);
+          setSiteOverlay(d.overlay || null);
+        } else if (d.mode === 'custom' && d.template) {
+          setShareMode('custom');
+          setShareTemplate(d.template);
+        }
+      })
       .catch(() => {});
   }, []);
+
+  // Site-mode rendering runs once the preview is opened and the canvas
+  // node exists -- draws directly onto a native <canvas> (no html2canvas
+  // needed at all for this path, confirmed during this feature's own
+  // investigation: Rasayesh's own equivalent page never uses html2canvas
+  // either, since it already draws onto a real canvas).
+  useEffect(() => {
+    if (!showSharePreview || shareMode !== 'site' || !siteTemplate) return;
+    const canvasEl = siteCanvasElRef.current;
+    if (!canvasEl) return;
+    setSiteRendering(true);
+    renderRasayeshPoster(canvasEl, {
+      template: siteTemplate,
+      attendeeData,
+      profilePhotoUrl,
+      lang,
+      code: data?.code,
+      overlay: siteOverlay,
+    }).catch(() => {}).finally(() => setSiteRendering(false));
+  }, [showSharePreview, shareMode, siteTemplate, attendeeData, profilePhotoUrl, lang, data?.code, siteOverlay]);
 
   function handleCopy() {
     if (!data?.code || !navigator.clipboard) return;
@@ -2592,46 +2629,89 @@ function ReferralModal({ onClose, lang }) {
     }).catch(() => {});
   }
 
-  async function handleShareConfirm() {
+  // Resolves to an actual <canvas> element regardless of which mode
+  // produced it -- custom mode still needs html2canvas to rasterize the
+  // styled <div> ReferralShareCanvas rendered; site mode's ref already IS
+  // a canvas, drawn onto directly by renderRasayeshPoster above, so it
+  // skips html2canvas entirely. Everything downstream of this (toBlob,
+  // share, download, copy) is identical either way -- confirmed during
+  // this feature's own investigation that none of that plumbing cares how
+  // the pixels got there.
+  async function resolveExportCanvas() {
+    if (shareMode === 'site') return siteCanvasElRef.current;
     const el = shareCanvasRef.current;
-    if (!el || sharing) return;
+    if (!el) return null;
+    const { default: html2canvas } = await import('html2canvas').catch(() => ({ default: null }));
+    if (!html2canvas) return null;
+    // scale here is html2canvas's OWN upscale factor on top of whatever CSS
+    // size the preview is rendered at (see ReferralShareCanvas's scale prop
+    // below) -- same two-number approach BadgeClient.jsx's downloadCard()
+    // already uses (a modest on-screen size, a higher capture scale), not a
+    // second hidden full-resolution render pass.
+    return html2canvas(el, { scale: 4, useCORS: true, allowTaint: false });
+  }
+
+  function canvasToBlob(canvas) {
+    return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+  }
+
+  async function handleShareConfirm() {
+    if (sharing) return;
     setSharing(true);
     try {
-      const { default: html2canvas } = await import('html2canvas').catch(() => ({ default: null }));
-      if (!html2canvas) return;
-      // scale here is html2canvas's OWN upscale factor on top of whatever
-      // CSS size the preview is rendered at (see the ReferralShareCanvas
-      // scale prop below) -- same two-number approach BadgeClient.jsx's
-      // downloadCard() already uses (a modest on-screen size, a higher
-      // capture scale), not a second hidden full-resolution render pass.
-      const canvas = await html2canvas(el, { scale: 4, useCORS: true, allowTaint: false });
-
-      canvas.toBlob(async (blob) => {
-        if (!blob) { setSharing(false); return; }
-        const file = new File([blob], 'referral-code.png', { type: 'image/png' });
-        try {
-          if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({
-              files: [file],
-              title: lang === 'fa' ? 'کد معرف من' : 'My referral code',
-              text: lang === 'fa' ? `با کد معرف من ${data?.code || ''} ثبت‌نام کن!` : `Sign up with my referral code ${data?.code || ''}!`,
-            });
-          } else {
-            // Same <a download> synthetic-click pattern downloadCard() uses.
-            const link = document.createElement('a');
-            link.download = 'referral-code.png';
-            link.href = URL.createObjectURL(blob);
-            link.click();
-            setTimeout(() => URL.revokeObjectURL(link.href), 10000);
-          }
-        } catch (err) {
-          // AbortError from a user-cancelled share sheet is expected, not a
-          // failure -- nothing to report either way.
-        } finally {
-          setSharing(false);
+      const canvas = await resolveExportCanvas();
+      if (!canvas) { setSharing(false); return; }
+      const blob = await canvasToBlob(canvas);
+      if (!blob) { setSharing(false); return; }
+      const file = new File([blob], 'referral-code.png', { type: 'image/png' });
+      try {
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: lang === 'fa' ? 'کد معرف من' : 'My referral code',
+            text: lang === 'fa' ? `با کد معرف من ${data?.code || ''} ثبت‌نام کن!` : `Sign up with my referral code ${data?.code || ''}!`,
+          });
+        } else {
+          // Same <a download> synthetic-click pattern downloadCard() uses.
+          const link = document.createElement('a');
+          link.download = 'referral-code.png';
+          link.href = URL.createObjectURL(blob);
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(link.href), 10000);
         }
-      }, 'image/png');
+      } catch (err) {
+        // AbortError from a user-cancelled share sheet is expected, not a
+        // failure -- nothing to report either way.
+      }
+    } finally {
+      setSharing(false);
+    }
+  }
+
+  // Clipboard-copy -- new this round, found during the Rasayesh-poster
+  // investigation (navigator.clipboard.write + ClipboardItem). Added to
+  // both modes since it's a small, independent capability, not tied to
+  // which renderer produced the image.
+  async function handleCopyImage() {
+    if (sharing) return;
+    if (!navigator.clipboard || !window.ClipboardItem) {
+      setCopyStatus('unsupported');
+      setTimeout(() => setCopyStatus(''), 2500);
+      return;
+    }
+    setSharing(true);
+    try {
+      const canvas = await resolveExportCanvas();
+      if (!canvas) return;
+      const blob = await canvasToBlob(canvas);
+      if (!blob) return;
+      await navigator.clipboard.write([new window.ClipboardItem({ [blob.type]: blob })]);
+      setCopyStatus('copied');
+      setTimeout(() => setCopyStatus(''), 2500);
     } catch (err) {
+      setCopyStatus('unsupported');
+      setTimeout(() => setCopyStatus(''), 2500);
+    } finally {
       setSharing(false);
     }
   }
@@ -2719,10 +2799,11 @@ function ReferralModal({ onClose, lang }) {
                 </p>
               )}
 
-              {/* Hidden entirely until the config fetch resolves active+
-                  configured (see /api/quest/referral-share-config's own
-                  gate) -- never a disabled/placeholder button. */}
-              {shareConfig && (
+              {/* Hidden entirely until the config fetch resolves a usable
+                  mode (see /api/quest/referral-share-config's cascade:
+                  site template -> custom template -> hidden) -- never a
+                  disabled/placeholder button. */}
+              {shareMode && (
                 <button
                   onClick={() => setShowSharePreview(true)}
                   className="w-full rounded-2xl py-3 flex items-center justify-center gap-2 border"
@@ -2738,16 +2819,28 @@ function ReferralModal({ onClose, lang }) {
 
         {/* Share preview -- shown BEFORE any share/download action, not a
             blind generate-and-share, per the user's own explicit UX
-            decision for this feature. */}
-        {showSharePreview && shareConfig && (
+            decision for this feature. Two renderers, one downstream
+            export/share/copy flow -- see resolveExportCanvas() above. */}
+        {showSharePreview && shareMode && (
           <div className="px-5 pb-2 flex flex-col items-center">
-            <div ref={shareCanvasRef} style={{ borderRadius: 12, overflow: 'hidden' }}>
-              <ReferralShareCanvas
-                template={shareConfig}
-                scale={2.5}
-                {...makeReferralShareResolver(attendeeData, profilePhotoUrl, data?.code)}
-              />
-            </div>
+            {shareMode === 'custom' ? (
+              <div ref={shareCanvasRef} style={{ borderRadius: 12, overflow: 'hidden' }}>
+                <ReferralShareCanvas
+                  template={shareTemplate}
+                  scale={2.5}
+                  {...makeReferralShareResolver(attendeeData, profilePhotoUrl, data?.code)}
+                />
+              </div>
+            ) : (
+              <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', maxWidth: '100%' }}>
+                <canvas ref={siteCanvasElRef} style={{ width: '100%', maxWidth: 260, display: 'block' }} />
+                {siteRendering && (
+                  <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.35)' }}>
+                    <span className="text-xs" style={{ color: '#fff' }}>{lang === 'fa' ? 'در حال ساخت تصویر...' : 'Rendering...'}</span>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="w-full flex gap-2 mt-4">
               <button
                 onClick={() => setShowSharePreview(false)}
@@ -2757,14 +2850,29 @@ function ReferralModal({ onClose, lang }) {
                 {lang === 'fa' ? 'بازگشت' : 'Back'}
               </button>
               <button
+                onClick={handleCopyImage}
+                disabled={sharing || siteRendering}
+                className="flex-1 rounded-2xl py-3 border text-sm font-bold"
+                style={{ background: 'var(--surface-2)', borderColor: 'var(--border)', color: 'var(--text-dim)', opacity: (sharing || siteRendering) ? 0.6 : 1 }}
+              >
+                {lang === 'fa' ? 'کپی تصویر' : 'Copy image'}
+              </button>
+              <button
                 onClick={handleShareConfirm}
-                disabled={sharing}
+                disabled={sharing || siteRendering}
                 className="flex-1 rounded-2xl py-3 text-sm font-bold"
-                style={{ background: 'var(--accent)', color: '#fff', opacity: sharing ? 0.6 : 1 }}
+                style={{ background: 'var(--accent)', color: '#fff', opacity: (sharing || siteRendering) ? 0.6 : 1 }}
               >
                 {sharing ? (lang === 'fa' ? 'در حال آماده‌سازی...' : 'Preparing...') : (lang === 'fa' ? 'اشتراک‌گذاری' : 'Share')}
               </button>
             </div>
+            {copyStatus && (
+              <p className="text-xs text-center mt-2" style={{ color: copyStatus === 'copied' ? 'var(--accent)' : 'var(--text-dim)' }}>
+                {copyStatus === 'copied'
+                  ? (lang === 'fa' ? 'تصویر کپی شد ✓' : 'Image copied ✓')
+                  : (lang === 'fa' ? 'کپی تصویر در این مرورگر پشتیبانی نمی‌شود' : 'Image copy is not supported in this browser')}
+              </p>
+            )}
           </div>
         )}
       </div>
