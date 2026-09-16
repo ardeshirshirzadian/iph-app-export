@@ -274,8 +274,7 @@ export async function POST(request) {
       if (company.repeatable_scan) {
         const startH = company.repeatable_start_hour ?? 0;
         const endH = company.repeatable_end_hour ?? 24;
-        const currentHour = new Date().getHours();
-        if (currentHour < startH || currentHour >= endH) {
+        if (!isWithinDailyWindow(startH, endH)) {
           return NextResponse.json({
             status: 'outside_window',
             start_hour: startH,
