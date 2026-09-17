@@ -2604,6 +2604,35 @@ function makeReferralShareResolver(attendeeData, profilePhotoUrl, code) {
   };
 }
 
+// Last-resort fallback only -- my-code/route.js already merges its stored
+// referral_status_messages_config over these exact same strings server-side,
+// so `data.status_messages` is normally always complete. This copy only
+// matters if that response field is ever missing entirely (older cached
+// response, network hiccup), matching the same inert-by-default posture as
+// every other admin-configurable text in this feature.
+const REFERRAL_STATUS_MESSAGE_DEFAULTS = {
+  confirmed_fa: 'شما هم با یک کد معرف ثبت‌نام کرده‌اید ✓',
+  confirmed_en: 'You also signed up with a referral code ✓',
+  pending_fa: 'کد معرفی که وارد کرده‌اید در حال بررسی است',
+  pending_en: 'The referral code you entered is still being checked',
+  rejected_fa: 'کد معرفی که وارد کرده بودید تأیید نشد',
+  rejected_en: 'The referral code you entered was not confirmed',
+};
+
+// Plain string substitution (not regex), so a referrer name containing
+// regex-special characters can't break it. When the resolved template
+// contains the token but no referrer name is available (e.g. the referrer's
+// app_users row is gone), the token is stripped rather than left as a
+// literal "{referrer_name}" or a blank gap.
+function resolveReferralStatusMessage(status, lang, data) {
+  const key = `${status}_${lang}`;
+  const template = data?.status_messages?.[key] || REFERRAL_STATUS_MESSAGE_DEFAULTS[key];
+  const name = lang === 'fa' ? data?.referrer_name_fa : data?.referrer_name_en;
+  if (!template.includes('{referrer_name}')) return template;
+  if (name) return template.split('{referrer_name}').join(name);
+  return template.split('{referrer_name}').join('').replace(/\s+/g, ' ').trim();
+}
+
 function ReferralModal({ onClose, lang }) {
   const isRTL = lang === 'fa';
   const [loading, setLoading] = useState(true);
@@ -2846,17 +2875,7 @@ function ReferralModal({ onClose, lang }) {
 
               {data.own_redemption_status && (
                 <p className="text-[11px] text-center leading-5 mb-4" style={{ color: 'var(--text-dim)' }}>
-                  {lang === 'fa'
-                    ? (data.own_redemption_status === 'confirmed'
-                        ? 'شما هم با یک کد معرف ثبت‌نام کرده‌اید ✓'
-                        : data.own_redemption_status === 'pending'
-                          ? 'کد معرفی که وارد کرده‌اید در حال بررسی است'
-                          : 'کد معرفی که وارد کرده بودید تأیید نشد')
-                    : (data.own_redemption_status === 'confirmed'
-                        ? 'You also signed up with a referral code ✓'
-                        : data.own_redemption_status === 'pending'
-                          ? 'The referral code you entered is still being checked'
-                          : 'The referral code you entered was not confirmed')}
+                  {resolveReferralStatusMessage(data.own_redemption_status, lang, data)}
                 </p>
               )}
 
