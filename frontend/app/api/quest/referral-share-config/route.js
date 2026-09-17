@@ -23,6 +23,29 @@ const getCachedReferralShareConfig = unstable_cache(
   { tags: ['referral-share-config'], revalidate: 300 }
 );
 
+// Icon + label for the "اشتراک‌گذاری کد من" button itself -- admin-edited
+// from iph-apn's Quest "ظاهر" tab (a separate save flow from the share
+// IMAGE template above), so it's its own app_settings key + its own cache
+// entry/tag. Defaults here match exactly what was hardcoded in ReferralModal
+// before this became configurable, so an unconfigured event renders
+// byte-identical to before.
+const SHARE_BUTTON_DEFAULTS = {
+  icon_type: 'emoji', icon_value: '📤', icon_size: 18,
+  icon_color_dark: null, icon_color_light: null,
+  label_fa: 'اشتراک‌گذاری کد من', label_en: 'Share my code',
+};
+const getCachedShareButtonConfig = unstable_cache(
+  async (currentEventId) => {
+    const result = await query(
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'referral_share_button_config'",
+      [currentEventId]
+    );
+    return { ...SHARE_BUTTON_DEFAULTS, ...(result.rows[0]?.value || {}) };
+  },
+  ['referral-share-button-config'],
+  { tags: ['referral-share-button-config'], revalidate: 300 }
+);
+
 // eventTemplate is confirmed public (no bearer token needed, unlike
 // attendeeEventCard) -- verified live via introspection + direct calls
 // during this feature's own investigation. Still resolves eventOrigin via
@@ -73,6 +96,7 @@ export async function GET() {
     }
 
     const config = await getCachedReferralShareConfig(currentEventId);
+    const shareButton = await getCachedShareButtonConfig(currentEventId);
 
     // Strictly either/or, matching exactly what the admin configured -- no
     // silent substitution from one mode to the other. If the toggle is on
@@ -92,6 +116,7 @@ export async function GET() {
           mode: 'site',
           siteTemplate,
           overlay: config.overlay || null,
+          shareButton,
         });
       }
       return NextResponse.json({ active: false, mode: null });
@@ -99,7 +124,7 @@ export async function GET() {
 
     const hasCustomTemplate = !!config && Array.isArray(config.elements) && config.elements.length > 0;
     if (hasCustomTemplate) {
-      return NextResponse.json({ active: true, mode: 'custom', template: { editor: config.editor, elements: config.elements } });
+      return NextResponse.json({ active: true, mode: 'custom', template: { editor: config.editor, elements: config.elements }, shareButton });
     }
 
     return NextResponse.json({ active: false, mode: null });

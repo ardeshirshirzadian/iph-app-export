@@ -529,7 +529,7 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
     <div
       onClick={handleClick}
       className={`backdrop-blur-xl border rounded-2xl p-4 flex items-center gap-4 transition-colors ${
-        (quizClickable || surveyClickable || socialShareClickable || featuredClickable || profilePhotoClickable || manualScanClickable) ? "cursor-pointer active:scale-[0.98]" : ""
+        (quizClickable || surveyClickable || socialShareClickable || featuredClickable || profilePhotoClickable || manualScanClickable || referralClickable) ? "cursor-pointer active:scale-[0.98]" : ""
       }`}
       style={done
         ? { borderColor: "var(--quest-mission-completed-row-border)", background: "var(--quest-mission-completed-row-bg)" }
@@ -699,6 +699,35 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
           // toward in the first place.
           <div className="flex items-center justify-between gap-2">
             <span />
+            {referralClickable && (
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0"
+                style={{ background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent)" }}>
+                {langProp === 'fa' ? 'مشاهده ←' : 'View →'}
+              </span>
+            )}
+          </div>
+        ) : isReferral ? (
+          // Tiered referral: same progress-bar-plus-fraction as the generic
+          // branch below (progress = cumulative confirmed referrals, total =
+          // this tier's required count -- see isReferral's own comment
+          // above), plus the same action-button affordance every other
+          // clickable mission type gets, which this card was missing.
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
+              <div
+                className="h-full rounded-full transition-all duration-700"
+                style={{ width: `${pct}%`, background: "var(--accent)" }}
+              />
+            </div>
+            <span className="text-xs flex-shrink-0" style={{ color: "var(--text-dim)" }}>
+              {dNum(mission.progress, langProp)}/{dNum(mission.total, langProp)}
+            </span>
+            {referralClickable && (
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0"
+                style={{ background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent)" }}>
+                {langProp === 'fa' ? 'مشاهده ←' : 'View →'}
+              </span>
+            )}
           </div>
         ) : (
           <div className="flex items-center gap-2">
@@ -2594,6 +2623,13 @@ function ReferralModal({ onClose, lang }) {
   const [shareMode, setShareMode] = useState(null); // 'site' | 'custom' | null
   const [shareTemplate, setShareTemplate] = useState(null);   // mode === 'custom'
   const [siteTemplate, setSiteTemplate] = useState(null);     // mode === 'site'
+  // Admin-configurable icon/label for the "اشتراک‌گذاری کد من" button below
+  // (iph-apn Quest "ظاهر" tab -> /api/quest/referral-share-config's
+  // `shareButton`). Stays null until that fetch resolves so there's no
+  // hardcoded flash before the real (possibly still-default) values load;
+  // the button itself is already gated on shareMode, so this only ever
+  // renders once shareMode is also set.
+  const [shareButton, setShareButton] = useState(null);
   const [siteOverlay, setSiteOverlay] = useState(null);       // mode === 'site'
   const [showSharePreview, setShowSharePreview] = useState(false);
   const [siteRendering, setSiteRendering] = useState(false);
@@ -2621,6 +2657,7 @@ function ReferralModal({ onClose, lang }) {
           setShareMode('custom');
           setShareTemplate(d.template);
         }
+        if (d.shareButton) setShareButton(d.shareButton);
       })
       .catch(() => {});
   }, []);
@@ -2827,16 +2864,30 @@ function ReferralModal({ onClose, lang }) {
                   mode (see /api/quest/referral-share-config's cascade:
                   site template -> custom template -> hidden) -- never a
                   disabled/placeholder button. */}
-              {shareMode && (
-                <button
-                  onClick={() => setShowSharePreview(true)}
-                  className="w-full rounded-2xl py-3 flex items-center justify-center gap-2 border"
-                  style={{ background: 'var(--surface-2)', borderColor: 'var(--border)', color: 'var(--text)' }}
-                >
-                  <span>📤</span>
-                  <span className="text-sm font-bold">{lang === 'fa' ? 'اشتراک‌گذاری کد من' : 'Share my code'}</span>
-                </button>
-              )}
+              {shareMode && (() => {
+                const icon = shareButton?.icon_value ?? '📤';
+                const isSvgIcon = isSvgIconPath(icon);
+                const label = lang === 'fa'
+                  ? (shareButton?.label_fa || 'اشتراک‌گذاری کد من')
+                  : (shareButton?.label_en || 'Share my code');
+                return (
+                  <button
+                    onClick={() => setShowSharePreview(true)}
+                    className="w-full rounded-2xl py-3 flex items-center justify-center gap-2 border"
+                    style={{ background: 'var(--surface-2)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                  >
+                    {isSvgIcon ? (
+                      <QuestIcon path={icon} size={shareButton?.icon_size ?? 18}
+                        colorDark={shareButton?.icon_color_dark} colorLight={shareButton?.icon_color_light} />
+                    ) : icon.startsWith('/') ? (
+                      <img src={icon} alt="" style={{ width: shareButton?.icon_size ?? 18, height: shareButton?.icon_size ?? 18, objectFit: 'contain' }} />
+                    ) : (
+                      <span style={{ fontSize: shareButton?.icon_size ?? 18, lineHeight: 1 }}>{icon}</span>
+                    )}
+                    <span className="text-sm font-bold">{label}</span>
+                  </button>
+                );
+              })()}
             </>
           )}
         </div>
