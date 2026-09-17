@@ -2890,7 +2890,13 @@ function ReferralModal({ onClose, lang }) {
                 >
                   <div className="rounded-xl py-3 px-2 text-center" style={{ background: 'var(--surface-2)' }}>
                     {data.referral_rewards.referrer.mode === 'unlimited' ? (
-                      <div className="text-lg font-bold" style={{ color: 'var(--accent)' }}>
+                      // dir="ltr" -- without it, "+" (a plain ET character
+                      // with no directional run of its own next to it,
+                      // unlike within a single number) visually renders
+                      // AFTER the Persian-digit run inside this RTL modal
+                      // (empirically confirmed: "۵۰+" instead of "+۵۰"),
+                      // same fix already used for the code display above.
+                      <div dir="ltr" className="text-lg font-bold" style={{ color: 'var(--accent)' }}>
                         +{dNum(data.referral_rewards.referrer.per_invite_xp, lang)}
                       </div>
                     ) : (
@@ -2898,6 +2904,7 @@ function ReferralModal({ onClose, lang }) {
                         {data.referral_rewards.referrer.tiers.map((t, i) => (
                           <span
                             key={i}
+                            dir="ltr"
                             className="text-[11px] font-bold rounded-full px-2 py-0.5"
                             style={{ background: 'color-mix(in srgb, var(--accent) 15%, transparent)', color: 'var(--accent)' }}
                           >
@@ -2914,7 +2921,7 @@ function ReferralModal({ onClose, lang }) {
                   </div>
                   {(data.referral_rewards.referee_xp || 0) > 0 && (
                     <div className="rounded-xl py-3 px-2 text-center" style={{ background: 'var(--surface-2)' }}>
-                      <div className="text-lg font-bold" style={{ color: 'var(--accent)' }}>
+                      <div dir="ltr" className="text-lg font-bold" style={{ color: 'var(--accent)' }}>
                         +{dNum(data.referral_rewards.referee_xp, lang)}
                       </div>
                       <div className="text-[10px]" style={{ color: 'var(--text-dim)' }}>
