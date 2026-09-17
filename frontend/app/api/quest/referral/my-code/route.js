@@ -18,6 +18,18 @@ const STATUS_MESSAGE_DEFAULTS = {
   rejected_en: 'The referral code you entered was not confirmed',
 };
 
+// Admin-editable (same Quest -> ظاهر tab, referral_reward_labels_config,
+// /api/admin/quest-referral-reward-labels) captions for the two reward-
+// amount stat boxes ReferralModal shows. Only the caption text is
+// configurable here -- the XP numbers themselves are always computed live
+// from quest_content below, never admin-typed.
+const REWARD_LABEL_DEFAULTS = {
+  referrer_fa: 'امتیاز به ازای هر دعوت',
+  referrer_en: 'per invite',
+  referee_fa: 'امتیاز دعوت‌شده',
+  referee_en: 'for your friend',
+};
+
 export async function GET() {
   const cookieStore = await cookies();
   const userRaw = cookieStore.get('iph_user')?.value;
@@ -76,6 +88,48 @@ export async function GET() {
       status_messages[key] = storedMessages[key] || STATUS_MESSAGE_DEFAULTS[key];
     }
 
+    const labelsResult = await query(
+      `SELECT value FROM app_settings WHERE event_id = $1 AND key = 'referral_reward_labels_config'`,
+      [eventId]
+    );
+    const storedLabels = labelsResult.rows[0]?.value || {};
+    const reward_labels = {};
+    for (const key of Object.keys(REWARD_LABEL_DEFAULTS)) {
+      reward_labels[key] = storedLabels[key] || REWARD_LABEL_DEFAULTS[key];
+    }
+
+    // Every currently-active referral_code mission for this event, in one
+    // query. Unlimited-mode row (referral_is_unlimited) is checked first and
+    // takes priority for the referrer stat when present -- same precedence
+    // grantUnlimitedReferralXp() gives it over evaluateReferralTiers() at
+    // grant time (see that file's own comment on the "at most one active
+    // unlimited mission" assumption). referee_xp reuses the exact same
+    // "lowest active required_count row" the redeem route itself pays out
+    // from (referral/redeem/route.js's `lowestTier` query), just read off
+    // this one shared fetch instead of a second query, so the displayed
+    // number can never drift from what a real redemption actually grants.
+    const rewardRows = await query(
+      `SELECT referral_is_unlimited, referral_required_count, referral_referrer_xp, referral_referee_xp, referral_per_invite_xp
+       FROM quest_content
+       WHERE event_id = $1 AND mission_type = 'referral_code' AND is_active = true
+       ORDER BY referral_required_count ASC NULLS LAST`,
+      [eventId]
+    );
+    const unlimitedRow = rewardRows.rows.find((r) => r.referral_is_unlimited === true) || null;
+    const tierRows = rewardRows.rows.filter((r) => !r.referral_is_unlimited && r.referral_required_count != null);
+    const refereeSourceRow = rewardRows.rows.find((r) => r.referral_required_count != null) || null;
+
+    const referrerReward = unlimitedRow
+      ? { mode: 'unlimited', per_invite_xp: unlimitedRow.referral_per_invite_xp || 0 }
+      : tierRows.length > 0
+        ? { mode: 'tiers', tiers: tierRows.map((r) => ({ required_count: r.referral_required_count, xp: r.referral_referrer_xp || 0 })) }
+        : null;
+
+    const referral_rewards = {
+      referrer: referrerReward,
+      referee_xp: refereeSourceRow?.referral_referee_xp || 0,
+    };
+
     return Response.json({
       code,
       confirmed_count: parseInt(counts.confirmed_count, 10) || 0,
@@ -85,6 +139,8 @@ export async function GET() {
       referrer_name_fa: referrerNameFaRaw || referrerNameEnRaw,
       referrer_name_en: referrerNameEnRaw || referrerNameFaRaw,
       status_messages,
+      referral_rewards,
+      reward_labels,
     });
   } catch (err) {
     console.error('[referral/my-code] error:', err.message);

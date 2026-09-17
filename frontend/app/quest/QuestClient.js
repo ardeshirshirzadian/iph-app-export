@@ -2619,6 +2619,16 @@ const REFERRAL_STATUS_MESSAGE_DEFAULTS = {
   rejected_en: 'The referral code you entered was not confirmed',
 };
 
+// Last-resort fallback only, mirroring REFERRAL_STATUS_MESSAGE_DEFAULTS
+// above -- my-code/route.js already merges its stored
+// referral_reward_labels_config over these exact same strings server-side.
+const REWARD_LABEL_DEFAULTS = {
+  referrer_fa: 'امتیاز به ازای هر دعوت',
+  referrer_en: 'per invite',
+  referee_fa: 'امتیاز دعوت‌شده',
+  referee_en: 'for your friend',
+};
+
 // Plain string substitution (not regex), so a referrer name containing
 // regex-special characters can't break it. When the resolved template
 // contains the token but no referrer name is available (e.g. the referrer's
@@ -2857,6 +2867,65 @@ function ReferralModal({ onClose, lang }) {
                   ? (lang === 'fa' ? 'کپی شد ✓' : 'Copied ✓')
                   : (lang === 'fa' ? 'برای کپی لمس کنید' : 'Tap to copy')}
               </p>
+
+              {/* Reward-amount stats: how many points inviting (referrer)
+                  or being invited (referee) is worth. referrer.mode splits
+                  on which reward structure is actually active for this
+                  event (see my-code/route.js) -- unlimited-mode missions pay
+                  a flat per-invite amount, tiered missions pay a different
+                  amount per invite-count threshold, so 'tiers' renders a row
+                  of small chips instead of a single number. Both boxes (and
+                  the whole block) hide gracefully when nothing/zero is
+                  configured, same inert-by-default posture as everything
+                  else in this feature. Captions are admin-editable
+                  (referral_reward_labels_config); only the XP numbers are
+                  always live-computed, never admin-typed. */}
+              {data.referral_rewards?.referrer && (
+                <div
+                  className={
+                    (data.referral_rewards.referee_xp || 0) > 0
+                      ? 'grid grid-cols-2 gap-2 mb-4'
+                      : 'grid grid-cols-1 gap-2 mb-4'
+                  }
+                >
+                  <div className="rounded-xl py-3 px-2 text-center" style={{ background: 'var(--surface-2)' }}>
+                    {data.referral_rewards.referrer.mode === 'unlimited' ? (
+                      <div className="text-lg font-bold" style={{ color: 'var(--accent)' }}>
+                        +{dNum(data.referral_rewards.referrer.per_invite_xp, lang)}
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center justify-center gap-1">
+                        {data.referral_rewards.referrer.tiers.map((t, i) => (
+                          <span
+                            key={i}
+                            className="text-[11px] font-bold rounded-full px-2 py-0.5"
+                            style={{ background: 'color-mix(in srgb, var(--accent) 15%, transparent)', color: 'var(--accent)' }}
+                          >
+                            {dNum(t.required_count, lang)}:+{dNum(t.xp, lang)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="text-[10px] mt-1" style={{ color: 'var(--text-dim)' }}>
+                      {lang === 'fa'
+                        ? (data.reward_labels?.referrer_fa || REWARD_LABEL_DEFAULTS.referrer_fa)
+                        : (data.reward_labels?.referrer_en || REWARD_LABEL_DEFAULTS.referrer_en)}
+                    </div>
+                  </div>
+                  {(data.referral_rewards.referee_xp || 0) > 0 && (
+                    <div className="rounded-xl py-3 px-2 text-center" style={{ background: 'var(--surface-2)' }}>
+                      <div className="text-lg font-bold" style={{ color: 'var(--accent)' }}>
+                        +{dNum(data.referral_rewards.referee_xp, lang)}
+                      </div>
+                      <div className="text-[10px]" style={{ color: 'var(--text-dim)' }}>
+                        {lang === 'fa'
+                          ? (data.reward_labels?.referee_fa || REWARD_LABEL_DEFAULTS.referee_fa)
+                          : (data.reward_labels?.referee_en || REWARD_LABEL_DEFAULTS.referee_en)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="grid grid-cols-3 gap-2 mb-4">
                 <div className="rounded-xl py-3 text-center" style={{ background: 'var(--surface-2)' }}>
