@@ -31,6 +31,15 @@ const EVENT_PANELS_QUERY = `
       starts_at
       ends_at
       disabled
+      secretary {
+        id
+        firstname_fa
+        firstname_en
+        lastname_fa
+        lastname_en
+        job_title_fa
+        speaker { profile }
+      }
       speakers {
         id
         firstname_fa
@@ -38,6 +47,7 @@ const EVENT_PANELS_QUERY = `
         lastname_fa
         lastname_en
         job_title_fa
+        speaker { profile }
       }
     }
     eventPanelsCount(search: $search, eventId: $eventId)
@@ -107,6 +117,65 @@ function getThumbnailUrl(thumbnail, baseUrl) {
   return path ? baseUrl + path : null;
 }
 
+// EventSpeaker.profile (the per-panel snapshot) is always null in practice
+// (confirmed live against Rasayesh) -- the real photo lives one level
+// deeper, on the master Speaker record reached via EventSpeaker.speaker
+// (see EVENT_PANELS_QUERY's `speaker { profile }` sub-selection on both
+// `secretary` and `speakers`). Same {jpg:{...}} shape and same
+// baseUrl-prefixing convention as getThumbnailUrl() above. Returns null
+// (not a broken-image URL) when the master record genuinely has no photo,
+// so callers fall back to the existing initial-letter circle.
+function getSpeakerPhotoUrl(sp, baseUrl) {
+  const profile = sp?.speaker?.profile;
+  if (!profile) return null;
+  const path = profile.jpg?.["128"] || profile.jpg?.["256"] || profile.jpg?.original;
+  return path ? baseUrl + path : null;
+}
+
+function speakerName(sp, lang) {
+  return (
+    (sp.firstname_fa ? sp.firstname_fa + " " + (sp.lastname_fa || "") : null) ||
+    (sp.firstname_en ? sp.firstname_en + " " + (sp.lastname_en || "") : null) ||
+    t(lang, "panel_speaker_fallback")
+  ).trim();
+}
+
+// Real photo (getSpeakerPhotoUrl) when the master Speaker record has one,
+// else the pre-existing initial-letter circle -- same colors/border either
+// way, so a panel with a mix of photographed and non-photographed speakers
+// still reads as one consistent design, not a jarring photo/placeholder mix.
+function SpeakerAvatar({ sp, size, baseUrl }) {
+  const photoUrl = getSpeakerPhotoUrl(sp, baseUrl);
+  if (photoUrl) {
+    return (
+      <img
+        src={photoUrl}
+        alt=""
+        className="rounded-full flex-shrink-0"
+        style={{
+          width: size, height: size, objectFit: "cover",
+          border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
+        }}
+      />
+    );
+  }
+  const initial = (sp.firstname_fa || sp.firstname_en || "؟").charAt(0);
+  return (
+    <div
+      className="flex items-center justify-center rounded-full font-bold flex-shrink-0"
+      style={{
+        width: size, height: size,
+        fontSize: size >= 32 ? 14 : 12,
+        background: "color-mix(in srgb, var(--accent) 15%, transparent)",
+        border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
+        color: "var(--accent)",
+      }}
+    >
+      {initial}
+    </div>
+  );
+}
+
 // ── Kind badge labels ─────────────────────────────────────────────────────────
 
 function kindLabel(kind, lang) {
@@ -145,6 +214,7 @@ function PanelCard({ panel, visibleFields, logoBaseUrl, lang }) {
     : null;
 
   const speakers = Array.isArray(panel.speakers) ? panel.speakers : [];
+  const secretary = panel.secretary || null;
   const label = kindLabel(panel.kind, lang);
 
   const capacityText = panel.capacity
@@ -251,51 +321,62 @@ function PanelCard({ panel, visibleFields, logoBaseUrl, lang }) {
           </p>
         )}
 
-        {visibleFields.speakers && speakers.length > 0 && (
+        {visibleFields.speakers && (secretary || speakers.length > 0) && (
           <div
             className="pt-3"
             style={{ borderTop: "1px solid var(--border)" }}
           >
-            <p
-              className="text-xs font-medium mb-2"
-              style={{ color: "var(--text-dim)" }}
-            >
-              {t(lang, "panel_speakers_label")}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {speakers.map((sp, i) => {
-                const name =
-                  (sp.firstname_fa ? sp.firstname_fa + " " + (sp.lastname_fa || "") : null) ||
-                  (sp.firstname_en ? sp.firstname_en + " " + (sp.lastname_en || "") : null) ||
-                  t(lang, "panel_speaker_fallback");
-                const initial = (sp.firstname_fa || sp.firstname_en || "؟").charAt(0);
-                return (
-                  <div key={sp.id || i} className="flex items-center gap-1.5">
-                    <div
-                      className="flex items-center justify-center rounded-full text-xs font-bold flex-shrink-0"
-                      style={{
-                        width: 26, height: 26,
-                        background: "color-mix(in srgb, var(--accent) 15%, transparent)",
-                        border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
-                        color: "var(--accent)",
-                      }}
-                    >
-                      {initial}
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium" style={{ color: "var(--text)" }}>
-                        {name.trim()}
-                      </p>
-                      {sp.job_title_fa && (
-                        <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                          {sp.job_title_fa}
+            {secretary && (
+              <div
+                className="flex items-center gap-2 p-2 rounded-xl mb-3"
+                style={{
+                  background: "color-mix(in srgb, var(--accent) 8%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)",
+                }}
+              >
+                <SpeakerAvatar sp={secretary} size={34} baseUrl={logoBaseUrl} />
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold" style={{ color: "var(--accent)" }}>
+                    {t(lang, "panel_chair_label")}
+                  </p>
+                  <p className="text-xs font-medium truncate" style={{ color: "var(--text)" }}>
+                    {speakerName(secretary, lang)}
+                  </p>
+                  {secretary.job_title_fa && (
+                    <p className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>
+                      {secretary.job_title_fa}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+            {speakers.length > 0 && (
+              <>
+                <p
+                  className="text-xs font-medium mb-2"
+                  style={{ color: "var(--text-dim)" }}
+                >
+                  {t(lang, "panel_speakers_label")}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {speakers.map((sp, i) => (
+                    <div key={sp.id || i} className="flex items-center gap-1.5">
+                      <SpeakerAvatar sp={sp} size={26} baseUrl={logoBaseUrl} />
+                      <div>
+                        <p className="text-xs font-medium" style={{ color: "var(--text)" }}>
+                          {speakerName(sp, lang)}
                         </p>
-                      )}
+                        {sp.job_title_fa && (
+                          <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                            {sp.job_title_fa}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
