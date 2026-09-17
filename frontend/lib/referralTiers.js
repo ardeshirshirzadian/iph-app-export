@@ -15,11 +15,21 @@ export async function evaluateReferralTiers(referrerUuid, eventId) {
   );
   const confirmedCount = parseInt(countRows[0].count, 10);
 
+  // referral_is_unlimited exclusion is defense in depth, not just belt-and-
+  // suspenders: referral_required_count IS NOT NULL alone let a mission
+  // that was BOTH unlimited and (due to a since-fixed admin-route bug)
+  // stuck with a leftover required_count get double-counted here AND by
+  // grantUnlimitedReferralXp() -- see that file's own comment, which used
+  // to (incorrectly) claim this filter alone already excluded unlimited
+  // rows. Confirmed live 2026-09-17: exactly this double-grant paid two
+  // referrers a one-time extra 250xp on top of their correct per-invite
+  // unlimited reward.
   const { rows: tiers } = await query(
     `SELECT id, referral_required_count, referral_referrer_xp
      FROM quest_content
      WHERE event_id = $1 AND mission_type = 'referral_code' AND is_active = true
        AND referral_required_count IS NOT NULL
+       AND (referral_is_unlimited = false OR referral_is_unlimited IS NULL)
      ORDER BY referral_required_count ASC`,
     [eventId]
   );

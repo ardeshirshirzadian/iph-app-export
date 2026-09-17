@@ -4,11 +4,16 @@ import { query } from '@/lib/db';
 // called from both the synchronous redeem route and the async
 // recheck-pending route, alongside (not instead of) evaluateReferralTiers().
 // A referrer's code can carry both an active tiered mission and an active
-// unlimited-mode mission at once (they're independent quest_content rows,
-// evaluateReferralTiers() already excludes unlimited rows via its own
-// `referral_required_count IS NOT NULL` filter) -- this grants the
-// unlimited-mode reward for exactly this one redemption, every time,
-// no threshold, no cap.
+// unlimited-mode mission at once (they're independent quest_content rows).
+// evaluateReferralTiers() now explicitly excludes referral_is_unlimited=true
+// rows (not just `referral_required_count IS NOT NULL`, which this comment
+// used to (incorrectly) claim was already sufficient -- a since-fixed
+// admin-route bug could leave an unlimited mission with a leftover non-NULL
+// required_count, and on 2026-09-17 that let this same row double-grant:
+// this function's per-invite reward AND evaluateReferralTiers()' one-time
+// "tier" reward, on top of each other, for two real referrers) -- this
+// grants the unlimited-mode reward for exactly this one redemption, every
+// time, no threshold, no cap.
 //
 // Assumption: at most one active referral_is_unlimited mission exists per
 // event at a time. If two were ever simultaneously active, both would
