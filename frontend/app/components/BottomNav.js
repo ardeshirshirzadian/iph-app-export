@@ -166,27 +166,55 @@ export default function BottomNav() {
           // (Snapp-style center action button) via a negative bottom offset
           // on an absolutely-positioned wrapper anchored to the slot's top
           // edge. Renders the exact same ScanButton used previously inline
-          // on the quest page -- unchanged visuals/glow/ping animation.
+          // on the quest page -- unchanged visuals/glow/ping animation
+          // (this circle/glow/animation is intentionally fixed/non-
+          // configurable per the admin UI's own description -- only its
+          // color is admin-settable, via scan_glow_color).
+          //
+          // The label is deliberately NOT rendered by ScanButton itself
+          // (always showLabel={false} here) -- since the whole ScanButton
+          // block is what's floated upward via the absolute+overlap trick
+          // below, a label living inside it would float up right along
+          // with the circle and land above the bar's normal label row,
+          // visibly offset from every sibling's label baseline (regression
+          // found and fixed here). Instead, an invisible spacer matching a
+          // sibling's icon height (28px) sits in this wrapper's own normal
+          // flex-col flow, and the REAL label renders right after it --
+          // giving this wrapper the exact same icon-height+gap+label-height
+          // total that every sibling's flex-col centering math uses, so the
+          // label lands at the identical baseline while the glowing circle
+          // keeps floating above, completely unaffected (it's positioned
+          // absolute, outside this normal-flow content entirely).
           if (item.icon_type === "qr_scan") {
-            // How far the button overlaps down into the bar scales with
-            // icon_size -- at 0.6 (60% of the button sits inside the bar,
-            // 40% protrudes above it) this matches the Snapp reference's
-            // modest elevation, roughly a third to half the button's own
-            // height poking above the bar line, not floating mostly clear
-            // of it. (Was 0.4 -- too shallow an overlap, left ~60% of the
-            // button floating above the bar.)
             const overlap = -(item.icon_size * 0.6);
             return (
-              <div key={item.id} className="relative flex-1 flex items-center justify-center">
+              <div
+                key={item.id}
+                className={
+                  showTitles
+                    ? "relative flex-1 flex flex-col items-center justify-center gap-1 py-3"
+                    : "relative flex-1 flex items-center justify-center"
+                }
+              >
                 <div className="absolute" style={{ bottom: "100%", marginBottom: overlap }}>
                   <ScanButton
                     isDark={isDark}
-                    label={item.title}
                     glowColor={isDark ? scanGlow?.dark : scanGlow?.light}
                     size={item.icon_size}
-                    showLabel={showTitles}
+                    showLabel={false}
                   />
                 </div>
+                {showTitles && (
+                  <>
+                    <span aria-hidden="true" style={{ display: "block", width: 28, height: 28 }} />
+                    <span
+                      className="text-[10px] font-medium leading-tight truncate max-w-full px-1"
+                      style={{ color: "var(--text-dim)" }}
+                    >
+                      {item.title}
+                    </span>
+                  </>
+                )}
               </div>
             );
           }
