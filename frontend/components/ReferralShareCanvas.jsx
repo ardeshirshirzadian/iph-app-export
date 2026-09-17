@@ -12,7 +12,6 @@
 // ReferralModal) -- the defaults below only exist as a safety fallback, they
 // are never the normal path in this file.
 
-import AvatarPlaceholder from '@/components/AvatarPlaceholder';
 import { STATIC_FIELD } from '@/lib/referralShareFields';
 
 function defaultResolve(field, el) {
@@ -84,7 +83,10 @@ export default function ReferralShareCanvas({
                   style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                 />
               ) : (
-                <AvatarPlaceholder size={Math.min(el.width, el.height) * scale} />
+                // No real profile photo -- render nothing so the template's
+                // own background design shows through this slot, instead of
+                // a placeholder icon.
+                null
               )}
             </div>
           );

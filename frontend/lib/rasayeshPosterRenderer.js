@@ -106,8 +106,10 @@ function langFor(el, lang) {
 //   useAttendee() already provides elsewhere in this app.
 // profilePhotoUrl: the viewer's own resolved photo URL, or null -- same
 //   value QuestClient.js already computes today for the leaderboard/custom
-//   share path. null here means "unconditional fallback to the template's
-//   own default image", matching the pasted source's behavior exactly.
+//   share path. null here means the image slot is left empty/transparent
+//   (deliberately diverging from the pasted source, which fell back to the
+//   template's own baked-in default image) so the template's own background
+//   design shows through instead of a placeholder.
 // code / overlay: our own referral-code text + its admin-configured
 //   { x, y, width, height, fontSize, color, isBold } position (all
 //   fractions 0-1 except fontSize, same convention as every other element).
@@ -120,14 +122,14 @@ export async function renderRasayeshPoster(canvas, { template, attendeeData, pro
   const jobElement = elements.find((el) => el.type === 'text' && el.content.startsWith('JOB'));
 
   const loads = [];
-  let backgroundImg = null, defaultImg = null, userImg = null;
+  let backgroundImg = null, userImg = null;
   if (editor.background) loads.push(loadImage(`${RASAYESH_API_URL}/${editor.background}`).then((img) => { backgroundImg = img; }));
-  if (imageElement?.image) loads.push(loadImage(`${RASAYESH_API_URL}/${imageElement.image}`).then((img) => { defaultImg = img; }));
   if (profilePhotoUrl) {
     // Best-effort: a failed user-photo load must not abort the whole
-    // render (the template's own default image is the fallback either
-    // way) -- unlike background/default-image loads, which are template
-    // content and should fail loudly if broken.
+    // render -- it just leaves the image slot empty (see the no-userImg
+    // branch below), the same outcome as never having a photo at all --
+    // unlike the background load, which is template content and should
+    // fail loudly if broken.
     loads.push(loadImage(profilePhotoUrl).then((img) => { userImg = img; }).catch(() => {}));
   }
   await Promise.all(loads);
@@ -140,11 +142,11 @@ export async function renderRasayeshPoster(canvas, { template, attendeeData, pro
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (backgroundImg) ctx.drawImage(backgroundImg, 0, 0, canvas.width, canvas.height);
 
-  // Unconditional substitution, no marker/opt-out -- confirmed from the
-  // pasted source: the one image element always gets the user's own photo
-  // if available, else the template's own baked-in default image.
-  const photoToDraw = userImg || defaultImg;
-  if (imageElement && photoToDraw) {
+  // No real profile photo -> draw nothing in this slot at all (leave it
+  // empty/transparent) rather than falling back to the template's own
+  // baked-in default image, so the design's own background (already drawn
+  // above) shows through instead of a placeholder.
+  if (imageElement && userImg) {
     const ix = (imageElement.left / editor.width) * canvas.width;
     const iy = (imageElement.top / editor.height) * canvas.height;
     const iw = (imageElement.width / editor.width) * canvas.width;
@@ -153,7 +155,7 @@ export async function renderRasayeshPoster(canvas, { template, attendeeData, pro
     ctx.beginPath();
     ctx.roundRect(ix, iy, iw, ih, [iw / 2, 0, 0, 0]);
     ctx.clip();
-    ctx.drawImage(photoToDraw, ix, iy, iw, ih);
+    ctx.drawImage(userImg, ix, iy, iw, ih);
     ctx.restore();
   }
 

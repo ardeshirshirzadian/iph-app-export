@@ -946,7 +946,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
             const isMe = !!currentUserUuid && user.user_uuid === currentUserUuid;
             const color = levelNameToColor[user.level] || levelColors[0];
             return (
-              <LeaderboardRow key={user.rank} user={user} isMe={isMe} badgeColor={color} badgeLabel={user.level} xpUnit={xpUnit} lang={lang} rankIcons={rankIcons} />
+              <LeaderboardRow key={`${subTab}-${user.user_uuid}`} user={user} isMe={isMe} badgeColor={color} badgeLabel={user.level} xpUnit={xpUnit} lang={lang} rankIcons={rankIcons} />
             );
           })
         )}
@@ -1000,7 +1000,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
         ) : (
           referralRows.map(user => (
             <LeaderboardRow
-              key={user.rank}
+              key={`${subTab}-${user.user_uuid}`}
               user={user}
               isMe={!!currentUserUuid && user.user_uuid === currentUserUuid}
               badgeColor={referralColor}
@@ -1076,7 +1076,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
       ) : (
         levelRows.map(user => (
           <LeaderboardRow
-            key={user.rank}
+            key={`${subTab}-${user.user_uuid}`}
             user={user}
             isMe={!!currentUserUuid && user.user_uuid === currentUserUuid}
             badgeColor={levelColor}
