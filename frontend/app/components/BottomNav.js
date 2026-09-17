@@ -15,6 +15,7 @@ import ScanButton from "./ScanButton";
 // load (new JS execution context).
 let _navCache = null;
 let _scanGlowCache = null;
+let _showTitlesCache = false;
 
 function iconMaskStyle(iconPath, size) {
   return {
@@ -40,6 +41,7 @@ export default function BottomNav() {
   // remount without waiting for a new fetch.
   const [navItems, setNavItems] = useState(_navCache);
   const [scanGlow, setScanGlow] = useState(_scanGlowCache);
+  const [showTitles, setShowTitles] = useState(_showTitlesCache);
 
   const fetchNav = useCallback(() => {
     fetch("/api/nav")
@@ -52,6 +54,13 @@ export default function BottomNav() {
         if (data.scanGlow) {
           _scanGlowCache = data.scanGlow;
           setScanGlow(data.scanGlow);
+        }
+        // Boolean, so checked explicitly (not truthiness) -- an admin
+        // turning it back off must actually update the cache to false,
+        // not be skipped by a falsy-value guard.
+        if (typeof data.showTitles === "boolean") {
+          _showTitlesCache = data.showTitles;
+          setShowTitles(data.showTitles);
         }
       })
       .catch(() => {});
@@ -175,7 +184,7 @@ export default function BottomNav() {
                     label={item.title}
                     glowColor={isDark ? scanGlow?.dark : scanGlow?.light}
                     size={item.icon_size}
-                    showLabel={false}
+                    showLabel={showTitles}
                   />
                 </div>
               </div>
@@ -188,11 +197,18 @@ export default function BottomNav() {
             return (
               <div
                 key={item.id}
-                className="relative flex-1 flex items-center justify-center py-3 select-none"
+                className={
+                  showTitles
+                    ? "relative flex-1 flex flex-col items-center justify-center gap-1 py-3 select-none"
+                    : "relative flex-1 flex items-center justify-center py-3 select-none"
+                }
                 style={{ color: "var(--text-dim)", opacity: 0.55, cursor: "default" }}
                 aria-disabled="true"
               >
                 <span style={iconMaskStyle(item.icon_path, item.icon_size)} />
+                {showTitles && (
+                  <span className="text-[10px] font-medium leading-tight truncate max-w-full px-1">{item.title}</span>
+                )}
                 {!item.no_badge && (
                   <span
                     className="absolute top-0.5 rounded-full text-[9px] font-bold leading-none whitespace-nowrap"
@@ -218,10 +234,17 @@ export default function BottomNav() {
             <Link
               key={item.id}
               href={item.href}
-              className="flex-1 flex items-center justify-center py-3 transition-colors"
+              className={
+                showTitles
+                  ? "flex-1 flex flex-col items-center justify-center gap-1 py-3 transition-colors"
+                  : "flex-1 flex items-center justify-center py-3 transition-colors"
+              }
               style={{ color: active ? "var(--accent)" : "var(--text-dim)" }}
             >
               <span style={iconMaskStyle(item.icon_path, item.icon_size)} />
+              {showTitles && (
+                <span className="text-[10px] font-medium leading-tight truncate max-w-full px-1">{item.title}</span>
+              )}
             </Link>
           );
         })}

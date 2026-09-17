@@ -44,14 +44,33 @@ const getCachedScanGlow = unstable_cache(
   { tags: ['quest-appearance-config'], revalidate: 300 }
 );
 
+// Global (not per-item) toggle: whether the title under each icon renders
+// at all. Its own tiny app_settings blob (bottom_nav_settings), own cache
+// tag -- an admin flipping this shouldn't wait on nav-items' unrelated
+// revalidation, and vice versa. Defaults to false (titles hidden), matching
+// the current icon-only look until an admin explicitly opts in.
+const getCachedNavSettings = unstable_cache(
+  async (eventId) => {
+    const result = await query(
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'bottom_nav_settings'",
+      [eventId]
+    );
+    const config = result.rows[0]?.value ?? {};
+    return { showTitles: config.show_titles === true };
+  },
+  ['nav-settings'],
+  { tags: ['nav-settings'], revalidate: 300 }
+);
+
 export async function GET() {
   try {
     const eventId = await getCurrentEventId();
-    const [items, scanGlow] = await Promise.all([
+    const [items, scanGlow, navSettings] = await Promise.all([
       getCachedNavItems(eventId),
       getCachedScanGlow(eventId),
+      getCachedNavSettings(eventId),
     ]);
-    return NextResponse.json({ items, scanGlow });
+    return NextResponse.json({ items, scanGlow, showTitles: navSettings.showTitles });
   } catch (error) {
     console.error('Get nav items error:', error);
     return NextResponse.json({ error: 'Failed to get nav items' }, { status: 500 });
