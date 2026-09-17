@@ -46,6 +46,36 @@ const getCachedShareButtonConfig = unstable_cache(
   { tags: ['referral-share-button-config'], revalidate: 300 }
 );
 
+// Title/text passed to navigator.share() when the user shares their
+// generated poster (ReferralModal's handleShareConfirm, shared by both the
+// custom-template and site-template paths). Own tiny app_settings key/cache
+// tag, same reasoning as SHARE_BUTTON_DEFAULTS above. Defaults match exactly
+// what was hardcoded before this became configurable; text_fa/text_en
+// support a literal `{code}` token, substituted client-side.
+const SHARE_CAPTION_DEFAULTS = {
+  title_fa: 'کد معرف من', title_en: 'My referral code',
+  text_fa: 'با کد معرف من {code} ثبت‌نام کن!', text_en: 'Sign up with my referral code {code}!',
+};
+const getCachedShareCaptionConfig = unstable_cache(
+  async (currentEventId) => {
+    const result = await query(
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'referral_share_caption_config'",
+      [currentEventId]
+    );
+    const stored = result.rows[0]?.value || {};
+    // Per-field `stored[key] || default` (not a raw spread) -- a field the
+    // admin explicitly cleared back to null must fall back to its default,
+    // not render as an empty string.
+    const merged = {};
+    for (const key of Object.keys(SHARE_CAPTION_DEFAULTS)) {
+      merged[key] = stored[key] || SHARE_CAPTION_DEFAULTS[key];
+    }
+    return merged;
+  },
+  ['referral-share-caption-config'],
+  { tags: ['referral-share-caption-config'], revalidate: 300 }
+);
+
 // eventTemplate is confirmed public (no bearer token needed, unlike
 // attendeeEventCard) -- verified live via introspection + direct calls
 // during this feature's own investigation. Still resolves eventOrigin via
@@ -97,6 +127,7 @@ export async function GET() {
 
     const config = await getCachedReferralShareConfig(currentEventId);
     const shareButton = await getCachedShareButtonConfig(currentEventId);
+    const shareCaption = await getCachedShareCaptionConfig(currentEventId);
 
     // Strictly either/or, matching exactly what the admin configured -- no
     // silent substitution from one mode to the other. If the toggle is on
@@ -117,6 +148,7 @@ export async function GET() {
           siteTemplate,
           overlay: config.overlay || null,
           shareButton,
+          shareCaption,
         });
       }
       return NextResponse.json({ active: false, mode: null });
@@ -124,7 +156,7 @@ export async function GET() {
 
     const hasCustomTemplate = !!config && Array.isArray(config.elements) && config.elements.length > 0;
     if (hasCustomTemplate) {
-      return NextResponse.json({ active: true, mode: 'custom', template: { editor: config.editor, elements: config.elements }, shareButton });
+      return NextResponse.json({ active: true, mode: 'custom', template: { editor: config.editor, elements: config.elements }, shareButton, shareCaption });
     }
 
     return NextResponse.json({ active: false, mode: null });

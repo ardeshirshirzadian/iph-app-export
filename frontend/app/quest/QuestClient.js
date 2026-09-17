@@ -2629,6 +2629,25 @@ const REWARD_LABEL_DEFAULTS = {
   referee_en: 'for your friend',
 };
 
+// Last-resort fallback only, mirroring REWARD_LABEL_DEFAULTS above -- the
+// public referral-share-config route already merges its stored
+// referral_share_caption_config over these exact same strings server-side.
+// Used by handleShareConfirm's navigator.share() call below.
+const SHARE_CAPTION_DEFAULTS = {
+  title_fa: 'کد معرف من', title_en: 'My referral code',
+  text_fa: 'با کد معرف من {code} ثبت‌نام کن!', text_en: 'Sign up with my referral code {code}!',
+};
+
+// Plain string substitution (not regex) for the `{code}` token, same
+// reasoning as resolveReferralStatusMessage's `{referrer_name}` handling
+// below -- a referral code is alphanumeric by construction so this is
+// mostly precautionary, kept for consistency with that helper.
+function resolveShareCaption(field, lang, shareCaption, code) {
+  const key = `${field}_${lang}`;
+  const template = shareCaption?.[key] || SHARE_CAPTION_DEFAULTS[key];
+  return template.includes('{code}') ? template.split('{code}').join(code || '') : template;
+}
+
 // Plain string substitution (not regex), so a referrer name containing
 // regex-special characters can't break it. When the resolved template
 // contains the token but no referrer name is available (e.g. the referrer's
@@ -2669,6 +2688,10 @@ function ReferralModal({ onClose, lang }) {
   // the button itself is already gated on shareMode, so this only ever
   // renders once shareMode is also set.
   const [shareButton, setShareButton] = useState(null);
+  // Admin-configurable title/text passed to navigator.share() in
+  // handleShareConfirm below (same `referral-share-config` response,
+  // `shareCaption`) -- same null-until-loaded posture as shareButton above.
+  const [shareCaption, setShareCaption] = useState(null);
   const [siteOverlay, setSiteOverlay] = useState(null);       // mode === 'site'
   const [showSharePreview, setShowSharePreview] = useState(false);
   const [siteRendering, setSiteRendering] = useState(false);
@@ -2697,6 +2720,7 @@ function ReferralModal({ onClose, lang }) {
           setShareTemplate(d.template);
         }
         if (d.shareButton) setShareButton(d.shareButton);
+        if (d.shareCaption) setShareCaption(d.shareCaption);
       })
       .catch(() => {});
   }, []);
@@ -2768,8 +2792,8 @@ function ReferralModal({ onClose, lang }) {
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
           await navigator.share({
             files: [file],
-            title: lang === 'fa' ? 'کد معرف من' : 'My referral code',
-            text: lang === 'fa' ? `با کد معرف من ${data?.code || ''} ثبت‌نام کن!` : `Sign up with my referral code ${data?.code || ''}!`,
+            title: resolveShareCaption('title', lang, shareCaption, data?.code),
+            text: resolveShareCaption('text', lang, shareCaption, data?.code),
           });
         } else {
           // Same <a download> synthetic-click pattern downloadCard() uses.
