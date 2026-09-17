@@ -117,7 +117,17 @@ export async function GET() {
     );
     const unlimitedRow = rewardRows.rows.find((r) => r.referral_is_unlimited === true) || null;
     const tierRows = rewardRows.rows.filter((r) => !r.referral_is_unlimited && r.referral_required_count != null);
-    const refereeSourceRow = rewardRows.rows.find((r) => r.referral_required_count != null) || null;
+    // referral_referee_xp isn't mode-specific (unlike referral_per_invite_xp/
+    // referral_referrer_xp) -- it's a flat one-time reward that exists on
+    // every active referral_code row regardless of tiered vs unlimited, so
+    // the source row is just "the first row" of this already-correctly-
+    // ordered (ASC NULLS LAST) result: lowest tier if any tiered mission is
+    // active, or the (only) unlimited row as a valid fallback otherwise.
+    // Previously filtered to `referral_required_count != null`, which
+    // excluded unlimited-only events entirely -- found live 2026-09-17 (same
+    // root cause as redeem/route.js's identical bug): with only an unlimited
+    // mission active, this returned null, silently showing referee_xp: 0.
+    const refereeSourceRow = rewardRows.rows[0] || null;
 
     const referrerReward = unlimitedRow
       ? { mode: 'unlimited', per_invite_xp: unlimitedRow.referral_per_invite_xp || 0 }

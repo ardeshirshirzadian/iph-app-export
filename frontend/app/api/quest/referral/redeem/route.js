@@ -143,14 +143,20 @@ export async function POST(request) {
       return Response.json({ outcome: 'already_enrolled' });
     }
 
-    // Not enrolled -- confirm. Referee gets a flat one-time XP amount
-    // sourced from the lowest-threshold active referral_code mission;
-    // referrer's reward is tiered, evaluated separately below.
+    // Not enrolled -- confirm. Referee gets a flat one-time XP amount --
+    // referral_referee_xp isn't mode-specific (unlike referral_per_invite_xp/
+    // referral_referrer_xp), so any active referral_code mission is a valid
+    // source; prefer the lowest-threshold TIERED mission when one exists
+    // (NULLS LAST), otherwise fall back to an active unlimited mission's own
+    // referee_xp. Previously required referral_required_count IS NOT NULL,
+    // which excluded unlimited-only events entirely and silently paid
+    // referees 0 XP -- found live 2026-09-17, same root cause as
+    // validate-code/route.js's capacity-check bug. Referrer's reward is
+    // tiered/unlimited, evaluated separately below.
     const lowestTier = await query(
       `SELECT referral_referee_xp FROM quest_content
        WHERE event_id = $1 AND mission_type = 'referral_code' AND is_active = true
-         AND referral_required_count IS NOT NULL
-       ORDER BY referral_required_count ASC LIMIT 1`,
+       ORDER BY referral_required_count ASC NULLS LAST LIMIT 1`,
       [currentEventId]
     );
     const refereeXp = lowestTier.rows[0]?.referral_referee_xp || 0;

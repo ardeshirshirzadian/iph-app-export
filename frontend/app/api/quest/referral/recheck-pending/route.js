@@ -118,11 +118,14 @@ export async function POST(request) {
       return Response.json({ outcome: 'already_enrolled' });
     }
 
+    // Same fix as redeem/route.js's identical query (found live 2026-09-17):
+    // referral_referee_xp isn't mode-specific, so don't exclude unlimited
+    // missions from being the source -- prefer the lowest tiered mission
+    // (NULLS LAST) but fall back to an active unlimited mission otherwise.
     const lowestTier = await query(
       `SELECT referral_referee_xp FROM quest_content
        WHERE event_id = $1 AND mission_type = 'referral_code' AND is_active = true
-         AND referral_required_count IS NOT NULL
-       ORDER BY referral_required_count ASC LIMIT 1`,
+       ORDER BY referral_required_count ASC NULLS LAST LIMIT 1`,
       [currentEventId]
     );
     const refereeXp = lowestTier.rows[0]?.referral_referee_xp || 0;
