@@ -864,7 +864,11 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
       .catch(() => setLevelCache(c => ({ ...c, [key]: { leaderboard: [], currentUser: null } })));
   }, [subTab]);
 
-  const subTabBar = (activeLevels.length > 0 || referralSegment?.active) ? (
+  // Level segments (تازه‌وارد/کاوشگر/کاربلد) intentionally removed from this
+  // bar -- level PROGRESS elsewhere (UserCard/LevelTimeline on the profile
+  // card) is untouched, this only affects which leaderboard segments are
+  // switchable here. A "companies" segment is planned for a later round.
+  const subTabBar = referralSegment?.active ? (
     <div className="flex gap-1.5 mb-4 overflow-x-auto pb-1 scrollbar-hide">
       <button
         onClick={() => setSubTab('overall')}
@@ -877,31 +881,6 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
       >
         {lang === 'en' ? 'Overall' : 'کلی'}
       </button>
-      {activeLevels.map(level => {
-        const key = String(level.id);
-        const isActive = subTab === key;
-        const color = level.color || '#64748b';
-        const name = lang === 'en' ? (level.name_en || level.name_fa) : level.name_fa;
-        const iconIsImg = level.icon_type === 'image' && level.icon_value?.startsWith('/');
-        return (
-          <button
-            key={level.id}
-            onClick={() => setSubTab(key)}
-            className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold transition-all"
-            style={{
-              background: isActive ? color + '22' : "var(--surface-2)",
-              color: isActive ? color : "var(--text-dim)",
-              border: `1px solid ${isActive ? color + '66' : 'var(--border)'}`,
-            }}
-          >
-            {iconIsImg
-              ? <img src={level.icon_value} alt="" style={{ width: level.icon_size ?? 14, height: level.icon_size ?? 14, objectFit: 'contain', flexShrink: 0 }} />
-              : <span style={{ fontSize: level.icon_size ?? 14, lineHeight: 1 }}>{level.icon_value || '⭐'}</span>
-            }
-            {name}
-          </button>
-        );
-      })}
       {referralSegment?.active && (() => {
         const isActive = subTab === 'referral';
         const color = referralSegment.color || '#3b82f6';
