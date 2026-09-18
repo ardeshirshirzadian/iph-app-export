@@ -30,6 +30,13 @@ const getCachedBoothDefinitions = unstable_cache(
     // companies_placement row stores its own literal rasayesh_event_id, so
     // this filter is unambiguous per row without needing a separate local
     // event_id param on this cached fn.
+    //
+    // is_active = true excludes a company that withdrew/cancelled and is no
+    // longer in Rasayesh's own current roster (see companiesSync.js's second
+    // deactivation pass) -- without this, a withdrawn exhibitor stayed a
+    // live, scannable "booth" in the Quest app indefinitely. Manual-reward
+    // rows (سایت ایران‌فارما etc.) are unaffected either way: they're
+    // is_active=true and never touched by that deactivation pass.
     const companiesResult = await query(
       `SELECT id, company_id, brand_name_fa, brand_name_en, hall_name, booth_no,
               booth_uuid, logo, is_sponsor, sponsor_level, sponsor_title_en,
@@ -38,6 +45,7 @@ const getCachedBoothDefinitions = unstable_cache(
               repeatable_start_hour, repeatable_end_hour
        FROM companies_placement
        WHERE hall_name IS NOT NULL AND booth_uuid IS NOT NULL AND rasayesh_event_id = $1
+         AND is_active = true
        ORDER BY repeatable_scan DESC, hall_name ASC, booth_no ASC`,
       [eventId]
     );
