@@ -2,17 +2,21 @@ import { NextResponse } from 'next/server';
 import { unstable_cache } from 'next/cache';
 import { query } from '@/lib/db';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { getExpoScreenConfig, DEFAULT_EXPO_SCREEN_CONFIG } from '@/lib/expoScreenConfig';
 
-// Public, unauthenticated, cached top-3 leaderboard for the exhibition kiosk
-// screen (/expo). Unlike quest/leaderboard/route.js, this has no per-user
-// concept at all -- every physical screen shows the same top 3, so the
-// result is wrapped in unstable_cache keyed by event_id with a short
-// revalidate window. This is the "compute once, serve many" fix the
-// investigation called for: an unbounded number of always-on kiosk screens
-// polling this endpoint must not turn into that many DENSE_RANK() aggregate
-// queries against quest_scans/quest_xp_grants -- with revalidate below, the
-// query runs at most once per window per container process (3 containers ->
-// worst case 3 real executions per window, regardless of screen count).
+// Public, unauthenticated, cached data for the exhibition kiosk screen
+// (/expo) -- Phase 1 renames Phase 0's /api/expo/leaderboard to this, now
+// that it also carries admin-configured display settings, not just the
+// leaderboard. One combined endpoint (not two) so ExpoClient.jsx keeps a
+// single poll loop: the kiosk is already polling on an interval anyway, so
+// a second independent fetch loop just for occasionally-changing config
+// would be pure overhead for no benefit -- the config rides along on the
+// same request and simply gets applied whenever it arrives.
+//
+// The two halves are still cached separately under the hood (see below):
+// the leaderboard needs a short, load-driven revalidate window; the config
+// only changes when an admin explicitly saves, so it uses a long safety-net
+// ceiling plus on-demand revalidateTag() from iph-apn's save handler.
 export const dynamic = 'force-dynamic';
 
 const RASAYESH_BASE = 'https://api.rasayesh.com/';
@@ -40,9 +44,17 @@ function resolvePhotoUrl(profilePhotoUrl, profileImage, hideLeaderboardPhoto) {
 // exclusion filter (au.excluded_from_leaderboard). Copied rather than
 // imported for the same isolation reason as resolvePhotoUrl above. If the
 // ranking rules there ever change, mirror the change here too.
+//
+// revalidate: 5 is a fixed floor independent of the admin's own
+// poll_interval_seconds setting (which only controls how often the CLIENT
+// fetches this endpoint, min 5s, enforced in iph-apn's PUT). Keeping the
+// server cache's own floor fixed means the DB can never be hit more than
+// once per 5s here no matter what any admin configures client-side -- two
+// independent layers of protection, per the exhibition-screen investigation's
+// "compute once, serve many" load section.
 const getCachedTop3 = unstable_cache(
   async (currentEventId) => {
-    console.log('[expo/leaderboard] cache miss — querying DB for event', currentEventId);
+    console.log('[expo/screen] leaderboard cache miss — querying DB for event', currentEventId);
     const { rows } = await query(
       `WITH scan_agg AS (
          SELECT user_uuid, SUM(xp_earned)::int AS xp, COUNT(*)::int AS scan_count
@@ -92,16 +104,30 @@ const getCachedTop3 = unstable_cache(
     }));
   },
   ['expo-leaderboard-top3'],
-  { tags: ['expo-leaderboard-top3'], revalidate: 8 }
+  { tags: ['expo-leaderboard-top3'], revalidate: 5 }
+);
+
+// revalidate: 60 is a safety-net ceiling only (same convention as
+// app/layout.js's getCachedActiveFont etc.) -- the real invalidation path is
+// iph-apn's PUT handler calling revalidateIphApp('expo-screen-config'),
+// which hits this app's /api/internal/revalidate -> revalidateTag(...,
+// {expire: 0}), so an admin's save reflects within seconds, not up to 60s.
+const getCachedConfig = unstable_cache(
+  (currentEventId) => getExpoScreenConfig(currentEventId),
+  ['expo-screen-config'],
+  { tags: ['expo-screen-config'], revalidate: 60 }
 );
 
 export async function GET() {
   try {
     const currentEventId = await getCurrentEventId();
-    const leaderboard = await getCachedTop3(currentEventId);
-    return NextResponse.json({ leaderboard });
+    const [leaderboard, config] = await Promise.all([
+      getCachedTop3(currentEventId),
+      getCachedConfig(currentEventId),
+    ]);
+    return NextResponse.json({ leaderboard, config });
   } catch (err) {
-    console.error('[GET /api/expo/leaderboard]', err.message);
-    return NextResponse.json({ leaderboard: [] });
+    console.error('[GET /api/expo/screen]', err.message);
+    return NextResponse.json({ leaderboard: [], config: DEFAULT_EXPO_SCREEN_CONFIG });
   }
 }
