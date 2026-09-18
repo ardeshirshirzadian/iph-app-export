@@ -837,7 +837,7 @@ function LeaderboardRow({ user, isMe, badgeColor, badgeLabel, xpUnit, lang, rank
   );
 }
 
-function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUnit, lang, levels, rankIcons, referralSegment, boothSegment, logoBaseUrl }) {
+function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUnit, lang, levels, rankIcons, referralSegment, boothSegment, overallSegment, logoBaseUrl }) {
   const [subTab, setSubTab] = useState('overall');
   const [levelCache, setLevelCache] = useState({});
 
@@ -872,17 +872,35 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
   // switchable here. A "companies" segment is planned for a later round.
   const subTabBar = (referralSegment?.active || boothSegment?.active) ? (
     <div className="flex gap-1.5 mb-4 overflow-x-auto pb-1 scrollbar-hide">
-      <button
-        onClick={() => setSubTab('overall')}
-        className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-all"
-        style={{
-          background: subTab === 'overall' ? "var(--accent)" : "var(--surface-2)",
-          color: subTab === 'overall' ? "var(--bg)" : "var(--text-dim)",
-          border: subTab === 'overall' ? '1px solid transparent' : '1px solid var(--border)',
-        }}
-      >
-        {lang === 'en' ? 'Overall' : 'کلی'}
-      </button>
+      {(() => {
+        // Falls back to these same defaults server-side returns
+        // (overall-leaderboard-config/route.js) so there's no icon-less
+        // flash before the fetch resolves -- Overall has no ?.active gate
+        // (always the default tab), unlike referralSegment/boothSegment.
+        const ov = overallSegment || { name_fa: 'کلی', name_en: 'Overall', icon_type: 'emoji', icon_value: '🏆', icon_size: 14, color: '#f59e0b' };
+        const isActive = subTab === 'overall';
+        const color = ov.color || '#f59e0b';
+        const name = lang === 'en' ? (ov.name_en || ov.name_fa) : ov.name_fa;
+        const iconIsImg = ov.icon_type === 'image' && ov.icon_value?.startsWith('/');
+        return (
+          <button
+            key="overall"
+            onClick={() => setSubTab('overall')}
+            className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold transition-all"
+            style={{
+              background: isActive ? color + '22' : "var(--surface-2)",
+              color: isActive ? color : "var(--text-dim)",
+              border: `1px solid ${isActive ? color + '66' : 'var(--border)'}`,
+            }}
+          >
+            {iconIsImg
+              ? <img src={ov.icon_value} alt="" style={{ width: ov.icon_size ?? 14, height: ov.icon_size ?? 14, objectFit: 'contain', flexShrink: 0 }} />
+              : <span style={{ fontSize: ov.icon_size ?? 14, lineHeight: 1 }}>{ov.icon_value || '🏆'}</span>
+            }
+            {name}
+          </button>
+        );
+      })()}
       {referralSegment?.active && (() => {
         const isActive = subTab === 'referral';
         const color = referralSegment.color || '#3b82f6';
@@ -3186,6 +3204,12 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
   // decision), so LeaderboardTab's existing `?.active` checks stay uniform
   // across both segments without a special case.
   const [boothSegment, setBoothSegment] = useState(null);
+  // The "کلی" (overall) segment's own icon/label/color config -- same
+  // always-{active:true} treatment as boothSegment (no on/off gate; Overall
+  // is always the default tab). LeaderboardTab falls back to fixed defaults
+  // matching this route's own server-side defaults while this is still
+  // null, so the always-visible primary tab never flickers icon-less.
+  const [overallSegment, setOverallSegment] = useState(null);
 
   // Each flips true once its fetch SETTLES (success or failure) — distinct
   // from the live-data state being null, which also covers "still loading".
@@ -3289,6 +3313,13 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     fetch('/api/quest/booth-leaderboard-config')
       .then(r => r.json())
       .then(d => { if (d.active && d.config) setBoothSegment({ active: true, ...d.config }); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/quest/overall-leaderboard-config')
+      .then(r => r.json())
+      .then(d => { if (d.active && d.config) setOverallSegment({ active: true, ...d.config }); })
       .catch(() => {});
   }, []);
 
@@ -3782,6 +3813,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
               levels={liveLevels || []}
               referralSegment={referralSegment}
               boothSegment={boothSegment}
+              overallSegment={overallSegment}
               logoBaseUrl={logoBaseUrl}
             />
           ) : (
