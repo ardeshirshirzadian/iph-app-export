@@ -1053,9 +1053,14 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
       );
     }
 
-    const boothUnit = boothSegment
-      ? (lang === 'en' ? (boothSegment.name_en || boothSegment.name_fa) : boothSegment.name_fa)
-      : (lang === 'en' ? 'Booths' : 'غرفه‌ها');
+    // Deliberately NOT boothSegment.name_fa/name_en (unlike referralUnit
+    // above) -- that field is the TAB's own admin-configurable label
+    // (e.g. 'غرفه‌ها'), which would read as 'N غرفه‌ها' (N booths) next to
+    // a count that's actually a scan count. 'اسکن'/'Scans' describes what the
+    // number IS, not what the segment is called, so it's a fixed string
+    // tied to the segment TYPE, same as every other hardcoded string in
+    // this branch (the empty-state text, the fallback company name, etc).
+    const boothUnit = lang === 'en' ? 'Scans' : 'اسکن';
     const boothColor = boothSegment?.color || '#10b981';
 
     // xp holds the real-scan count here (this segment's own ranking metric)
