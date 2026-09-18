@@ -305,6 +305,13 @@ export async function proxy(request) {
     return proceed()
   }
 
+  // Exhibition kiosk screen ({event-domain}/expo) — public, unattended
+  // display meant to run on a physical touch-stand/venue screen with no
+  // login. Same shape as the /book/callback, /cart/callback exceptions above.
+  if (pathname === '/expo' || pathname.startsWith('/expo/')) {
+    return proceed()
+  }
+
   // Kick off the token-version check now, in parallel with the app-pages
   // lookup below — it depends on neither resolvedEventId nor getAppPages'
   // result, so there's no reason to pay for it strictly after them. Only
