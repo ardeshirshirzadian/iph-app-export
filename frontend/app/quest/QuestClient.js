@@ -837,7 +837,7 @@ function LeaderboardRow({ user, isMe, badgeColor, badgeLabel, xpUnit, lang, rank
   );
 }
 
-function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUnit, lang, levels, rankIcons, referralSegment }) {
+function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUnit, lang, levels, rankIcons, referralSegment, boothSegment, logoBaseUrl }) {
   const [subTab, setSubTab] = useState('overall');
   const [levelCache, setLevelCache] = useState({});
 
@@ -857,7 +857,9 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
     const key = subTab;
     if (levelCache[key] !== undefined) return;
     setLevelCache(c => ({ ...c, [key]: null }));
-    const url = key === 'referral' ? '/api/quest/leaderboard?segment=referral' : `/api/quest/leaderboard?level=${key}`;
+    const url = key === 'referral' ? '/api/quest/leaderboard?segment=referral'
+      : key === 'booths' ? '/api/quest/leaderboard?segment=booths'
+      : `/api/quest/leaderboard?level=${key}`;
     fetch(url)
       .then(r => r.json())
       .then(d => setLevelCache(c => ({ ...c, [key]: { leaderboard: d.leaderboard || [], currentUser: d.currentUser || null } })))
@@ -868,7 +870,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
   // bar -- level PROGRESS elsewhere (UserCard/LevelTimeline on the profile
   // card) is untouched, this only affects which leaderboard segments are
   // switchable here. A "companies" segment is planned for a later round.
-  const subTabBar = referralSegment?.active ? (
+  const subTabBar = (referralSegment?.active || boothSegment?.active) ? (
     <div className="flex gap-1.5 mb-4 overflow-x-auto pb-1 scrollbar-hide">
       <button
         onClick={() => setSubTab('overall')}
@@ -900,6 +902,30 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
             {iconIsImg
               ? <img src={referralSegment.icon_value} alt="" style={{ width: referralSegment.icon_size ?? 14, height: referralSegment.icon_size ?? 14, objectFit: 'contain', flexShrink: 0 }} />
               : <span style={{ fontSize: referralSegment.icon_size ?? 14, lineHeight: 1 }}>{referralSegment.icon_value || '🔗'}</span>
+            }
+            {name}
+          </button>
+        );
+      })()}
+      {boothSegment?.active && (() => {
+        const isActive = subTab === 'booths';
+        const color = boothSegment.color || '#10b981';
+        const name = lang === 'en' ? (boothSegment.name_en || boothSegment.name_fa) : boothSegment.name_fa;
+        const iconIsImg = boothSegment.icon_type === 'image' && boothSegment.icon_value?.startsWith('/');
+        return (
+          <button
+            key="booths"
+            onClick={() => setSubTab('booths')}
+            className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold transition-all"
+            style={{
+              background: isActive ? color + '22' : "var(--surface-2)",
+              color: isActive ? color : "var(--text-dim)",
+              border: `1px solid ${isActive ? color + '66' : 'var(--border)'}`,
+            }}
+          >
+            {iconIsImg
+              ? <img src={boothSegment.icon_value} alt="" style={{ width: boothSegment.icon_size ?? 14, height: boothSegment.icon_size ?? 14, objectFit: 'contain', flexShrink: 0 }} />
+              : <span style={{ fontSize: boothSegment.icon_size ?? 14, lineHeight: 1 }}>{boothSegment.icon_value || '🏭'}</span>
             }
             {name}
           </button>
@@ -1009,6 +1035,60 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
               rankIcons={rankIcons}
             />
           </>
+        )}
+      </div>
+    );
+  }
+
+  if (subTab === 'booths') {
+    const cache = levelCache.booths;
+    if (cache === null || cache === undefined) {
+      return (
+        <div className="space-y-2">
+          {subTabBar}
+          <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
+            {lang === 'en' ? 'Loading...' : 'در حال بارگذاری...'}
+          </div>
+        </div>
+      );
+    }
+
+    const boothUnit = boothSegment
+      ? (lang === 'en' ? (boothSegment.name_en || boothSegment.name_fa) : boothSegment.name_fa)
+      : (lang === 'en' ? 'Booths' : 'غرفه‌ها');
+    const boothColor = boothSegment?.color || '#10b981';
+
+    // xp holds the real-scan count here (this segment's own ranking metric)
+    // -- same "count reused into the shared xp/xpUnit slot" convention the
+    // referral segment above already uses for its own invite-count.
+    const boothRows = cache.leaderboard.map(item => ({
+      rank:              item.rank,
+      user_uuid:         String(item.company_id),
+      name:              lang === 'en' ? (item.brand_name_en || item.brand_name_fa || 'غرفه') : (item.brand_name_fa || 'غرفه'),
+      company:           '',
+      xp:                item.scan_count,
+      profile_photo_url: getLogoUrl(item.logo, logoBaseUrl),
+    }));
+
+    return (
+      <div className="space-y-2">
+        {subTabBar}
+        {boothRows.length === 0 ? (
+          <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
+            {lang === 'en' ? 'No booths scanned yet' : 'هنوز هیچ غرفه‌ای اسکن نشده'}
+          </div>
+        ) : (
+          boothRows.map(row => (
+            <LeaderboardRow
+              key={`${subTab}-${row.user_uuid}`}
+              user={row}
+              isMe={false}
+              badgeColor={boothColor}
+              xpUnit={boothUnit}
+              lang={lang}
+              rankIcons={rankIcons}
+            />
+          ))
         )}
       </div>
     );
@@ -3095,6 +3175,12 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
   // the event. LeaderboardTab renders the "دعوت" tab pill purely off this
   // being truthy, never a separate/local check.
   const [referralSegment, setReferralSegment] = useState(null);
+  // The "غرفه‌ها" (booths) leaderboard segment's own icon/label/color config
+  // -- unlike referralSegment, always {active:true} once the fetch settles
+  // (no mission-style on/off gate for this segment, per Ardeshir's explicit
+  // decision), so LeaderboardTab's existing `?.active` checks stay uniform
+  // across both segments without a special case.
+  const [boothSegment, setBoothSegment] = useState(null);
 
   // Each flips true once its fetch SETTLES (success or failure) — distinct
   // from the live-data state being null, which also covers "still loading".
@@ -3191,6 +3277,13 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     fetch('/api/quest/referral-leaderboard-config')
       .then(r => r.json())
       .then(d => { if (d.active && d.config) setReferralSegment({ active: true, ...d.config }); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/quest/booth-leaderboard-config')
+      .then(r => r.json())
+      .then(d => { if (d.active && d.config) setBoothSegment({ active: true, ...d.config }); })
       .catch(() => {});
   }, []);
 
@@ -3683,6 +3776,8 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
               lang={lang}
               levels={liveLevels || []}
               referralSegment={referralSegment}
+              boothSegment={boothSegment}
+              logoBaseUrl={logoBaseUrl}
             />
           ) : (
             <div className="space-y-2">

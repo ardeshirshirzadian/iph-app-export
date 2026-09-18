@@ -247,6 +247,57 @@ export async function GET(request) {
       return NextResponse.json({ leaderboard, currentUser });
     }
 
+    // ── BOOTH LEADERBOARD SEGMENT (companies ranked by real scan count) ────
+    // Always available (no active/inactive gate, unlike the referral
+    // segment above -- see booth-leaderboard-config/route.js's own comment).
+    // Ranks companies_placement rows by how many quest_scans rows exist for
+    // them, restricted to cp.is_manual = false: "غرفه" means a physical
+    // exhibition booth specifically, so QR-gimmick "missions" like the
+    // hidden-QR-on-our-website one (is_manual = true) are deliberately
+    // excluded -- per Ardeshir's explicit decision, even though this means
+    // the segment shows very little (often just one company) until real
+    // booth-scan volume picks up over the event. No "current viewer rank"
+    // query here (unlike every other segment in this file): this ranks
+    // companies, not people, so there is no equivalent concept.
+    if (segment === 'booths') {
+      const limitResult = await query(
+        "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'booth_leaderboard_config'",
+        [currentEventId]
+      );
+      const rawLimit = parseInt(limitResult.rows[0]?.value?.leaderboard_limit, 10);
+      const limit = Number.isFinite(rawLimit) && rawLimit >= 1 ? rawLimit : 20;
+
+      let leaderboard = [];
+      if (!rankOnly) {
+        const { rows: topRows } = await query(`
+          WITH scan_agg AS (
+            SELECT qs.company_id, COUNT(*)::int AS scan_count
+            FROM quest_scans qs
+            JOIN companies_placement cp ON cp.id = qs.company_id AND cp.event_id = qs.event_id
+            WHERE qs.event_id = $1 AND cp.is_manual = false
+            GROUP BY qs.company_id
+          )
+          SELECT cp.id, cp.brand_name_fa, cp.brand_name_en, cp.logo, sa.scan_count,
+                 DENSE_RANK() OVER (ORDER BY sa.scan_count DESC)::int AS rank
+          FROM scan_agg sa
+          JOIN companies_placement cp ON cp.id = sa.company_id AND cp.event_id = $1
+          ORDER BY sa.scan_count DESC, cp.id ASC
+          LIMIT $2
+        `, [currentEventId, limit]);
+
+        leaderboard = topRows.map(row => ({
+          rank:           row.rank,
+          company_id:     row.id,
+          brand_name_fa:  row.brand_name_fa,
+          brand_name_en:  row.brand_name_en || null,
+          logo:           row.logo,
+          scan_count:     row.scan_count,
+        }));
+      }
+
+      return NextResponse.json({ leaderboard, currentUser: null });
+    }
+
     // ── LEVEL SUB-LEADERBOARD ──────────────────────────────────────────────
     if (levelId && Number.isFinite(levelId)) {
       const { rows: levelRows } = await query(
