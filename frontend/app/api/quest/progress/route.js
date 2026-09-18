@@ -32,9 +32,24 @@ export async function POST(request) {
     // current event -- mission_id comes straight from the client, so without
     // the event_id check a request could mark another event's mission
     // complete for this user.
+    //
+    // A deactivated mission still passes this check for a user who already
+    // has a completed row (so it doesn't retroactively break their existing
+    // completion), but stays blocked for anyone trying a first-time
+    // completion after deactivation -- same intent as the 2026-09-15
+    // manual-mission inactive-scan fix.
     const { rows } = await query(
-      `SELECT id, mission_type FROM quest_content WHERE id = $1 AND is_active = true AND event_id = $2`,
-      [mission_id, currentEventId]
+      `SELECT qc.id, qc.mission_type
+       FROM quest_content qc
+       WHERE qc.id = $1 AND qc.event_id = $2
+         AND (
+           qc.is_active = true
+           OR EXISTS (
+             SELECT 1 FROM quest_user_progress qup
+             WHERE qup.mission_id = qc.id AND qup.user_uuid = $3 AND qup.completed = true
+           )
+         )`,
+      [mission_id, currentEventId, userUuid]
     );
     if (rows.length === 0) {
       return NextResponse.json({ error: 'Mission not found' }, { status: 404 });

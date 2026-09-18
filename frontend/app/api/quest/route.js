@@ -10,6 +10,13 @@ import { getCurrentEventId } from '@/lib/currentEvent';
 // field (progress, quiz_attempted, survey_submitted, social_share_status,
 // featured-booth pool scan status) is computed below via calcProgress() and
 // friends, per request, per user, completely untouched by this change.
+//
+// Deliberately NOT filtered on is_active here: this cache is keyed only by
+// event_id and shared across every user (unstable_cache, 300s TTL) -- it
+// cannot know per-user completion, so per-user "still show if I already
+// completed it" logic can't live in this query without a cache entry per
+// user. Inactive missions are fetched too; GET below decides visibility per
+// request/per user via isMissionCompletedForUser().
 const getCachedMissionDefinitions = unstable_cache(
   async (currentEventId) => {
     // LEFT JOIN: sponsor_company_id is optional (nullable) -- resolves the
@@ -21,7 +28,7 @@ const getCachedMissionDefinitions = unstable_cache(
               cp.logo AS sponsor_logo
        FROM quest_content qc
        LEFT JOIN companies_placement cp ON cp.id = qc.sponsor_company_id
-       WHERE qc.is_active = true AND qc.event_id = $1 ORDER BY qc.sort_order ASC, qc.id ASC`,
+       WHERE qc.event_id = $1 ORDER BY qc.sort_order ASC, qc.id ASC`,
       [currentEventId]
     );
     return rows;
@@ -156,6 +163,18 @@ async function calcProgress(mission, userUuid, eventId, currentEventId) {
   }
 }
 
+// Mirrors QuestClient.js's isMissionCompleted() (client-side "done" check) so
+// a deactivated mission is hidden/shown by the exact same completion rule
+// the UI already uses to render the checkmark -- keeps the two in sync
+// instead of inventing a second definition of "completed".
+function isMissionCompletedForUser(m, progress, quiz_attempted, social_share_status) {
+  if (m.mission_type === 'referral_code' && m.referral_is_unlimited) return false;
+  if (progress >= m.total) return true;
+  if (m.mission_type === 'quiz' && quiz_attempted) return true;
+  if (m.mission_type === 'social_share' && social_share_status === 'pending') return true;
+  return false;
+}
+
 export async function GET() {
   try {
     const currentEventId = await getCurrentEventId();
@@ -169,7 +188,7 @@ export async function GET() {
 
     const rows = await getCachedMissionDefinitions(currentEventId);
 
-    const missions = await Promise.all(
+    const missions = (await Promise.all(
       rows.map(async (m) => {
         const progress = await calcProgress(m, userUuid, eventId, currentEventId);
         let quiz_attempted = false;
@@ -202,6 +221,13 @@ export async function GET() {
             social_share_status = ssR.rows[0].status;
             social_share_note = ssR.rows[0].admin_note || null;
           }
+        }
+
+        // Deactivated missions stay hidden for users who never completed
+        // them, but a user who already earned this mission's XP/completion
+        // keeps seeing it (and its completed state) in their own list.
+        if (!m.is_active && !isMissionCompletedForUser(m, progress, quiz_attempted, social_share_status)) {
+          return null;
         }
 
         // Countdown for featured_booth: return next rotation timestamp (no golden
@@ -361,7 +387,7 @@ export async function GET() {
           } : null,
         };
       })
-    );
+    )).filter(Boolean);
 
     return NextResponse.json({ missions });
   } catch (err) {
