@@ -470,14 +470,12 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
   const socialShareStatus = isSocialShare ? (mission.social_share_status || null) : null;
   // Rejected social-share stays ACTIVE and clickable (resubmit CTA) -- unlike
   // quizWrongAnswer this is NOT a terminal state and must NOT move into
-  // isMissionCompleted/the completed accordion. Only the icon/XP/label get
-  // the same muted treatment; `done` itself (row background/border, and
-  // whether this mission is even in the active vs completed list) is
-  // untouched by this flag.
-  const socialShareRejected = isSocialShare && socialShareStatus === 'rejected';
-  // Icon box + QuestIcon color specifically reuse the completed-mission look
-  // for a rejected submission too, even though the mission is still active.
-  const iconUsesCompletedStyle = done || socialShareRejected;
+  // isMissionCompleted/the completed accordion, and the card (icon box, XP
+  // badge color) must read as a normal active mission too, not a muted
+  // completed one -- a rejected submission is exactly as available as one
+  // that was never submitted (see 2026-09-19 report: this card was
+  // incorrectly reusing the completed-mission look for a rejected state).
+  const iconUsesCompletedStyle = done;
   const socialShareNote = isSocialShare ? (mission.social_share_note || null) : null;
   const quizClickable = isQuiz && !done && !quizAttempted && typeof onQuizClick === 'function';
   const surveyClickable = isSurvey && !done && !surveySubmitted && typeof onSurveyClick === 'function';
@@ -586,7 +584,7 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
             {dNum(mission.title, langProp)}
           </span>
           {!isUnlimitedReferral && (
-            <span className="text-xs font-bold flex-shrink-0 mr-2" style={{ color: (quizWrongAnswer || socialShareRejected) ? "var(--text-dim)" : "var(--accent)" }}>
+            <span className="text-xs font-bold flex-shrink-0 mr-2" style={{ color: quizWrongAnswer ? "var(--text-dim)" : "var(--accent)" }}>
               {langProp === 'fa'
                 ? `${dNum(isFeaturedBooth ? (mission.featuredBoothBonusXp ?? mission.xpReward) : mission.xpReward, langProp)}+ ${xpUnit || "XP"}`
                 : (<>+{dNum(isFeaturedBooth ? (mission.featuredBoothBonusXp ?? mission.xpReward) : mission.xpReward, langProp)} {xpUnit || "XP"}</>)}
@@ -672,7 +670,13 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
         ) : isSocialShare ? (
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center justify-between gap-2">
-              {done || socialShareStatus === 'approved' ? (
+              {/* Must check social_share_status directly, NOT `done` -- done
+                  is also true for a still-PENDING submission (see
+                  isMissionCompleted above: pending is folded into "done" so
+                  it moves out of the active-missions list), which used to
+                  make this branch fire for pending too and show "تایید شد"
+                  (approved) on a submission still awaiting review. */}
+              {socialShareStatus === 'approved' ? (
                 <span className="text-[11px] font-bold" style={{ color: "var(--accent)" }}>تایید شد</span>
               ) : socialShareStatus === 'pending' ? (
                 <span className="text-[11px] font-medium" style={{ color: '#f59e0b' }}>در انتظار بررسی ⏳</span>
@@ -2501,8 +2505,8 @@ function SurveyModal({ survey, onClose, onComplete, lang }) {
 
 // ── Social Share Modal ─────────────────────────────────────────────────────
 
-const PLATFORMS = ['Instagram', 'Telegram', 'WhatsApp', 'Other'];
-const PLATFORM_FA = { Instagram: 'اینستاگرام', Telegram: 'تلگرام', WhatsApp: 'واتساپ', Other: 'سایر' };
+const PLATFORMS = ['Instagram', 'Telegram', 'WhatsApp', 'LinkedIn', 'Other'];
+const PLATFORM_FA = { Instagram: 'اینستاگرام', Telegram: 'تلگرام', WhatsApp: 'واتساپ', LinkedIn: 'لینکدین', Other: 'سایر' };
 
 function isValidUrl(s) {
   return typeof s === 'string' && /^https?:\/\/.{2,}\..{2,}/.test(s.trim());
@@ -2613,6 +2617,11 @@ function SocialShareModal({ share, onClose, onComplete, lang }) {
                   textAlign: 'left',
                 }}
               />
+              <p className="text-[11px] mt-1.5 leading-5" style={{ color: 'var(--text-dim)' }}>
+                {isRTL
+                  ? 'پست/استوری باید عمومی (Public) باشد تا ادمین بتواند آن را برای بررسی مشاهده کند.'
+                  : 'Your post/story must be set to public so an admin can view it for review.'}
+              </p>
             </div>
 
             <div className="mb-5">

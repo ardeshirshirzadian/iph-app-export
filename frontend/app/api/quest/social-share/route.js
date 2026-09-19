@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { getCurrentEventId } from '@/lib/currentEvent';
 
-const VALID_PLATFORMS = ['Instagram', 'Telegram', 'WhatsApp', 'Other'];
+const VALID_PLATFORMS = ['Instagram', 'Telegram', 'WhatsApp', 'LinkedIn', 'Other'];
 
 function isValidUrl(s) {
   if (!s || typeof s !== 'string') return false;
