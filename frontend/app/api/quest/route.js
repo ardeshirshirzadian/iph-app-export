@@ -360,6 +360,11 @@ export async function GET() {
           survey_submitted: m.mission_type === 'survey' ? survey_submitted : undefined,
           social_share_status: m.mission_type === 'social_share' ? (social_share_status ?? null) : undefined,
           social_share_note: m.mission_type === 'social_share' ? (social_share_note ?? null) : undefined,
+          // Admin-editable "your post must be public" hint (quest_content),
+          // shown in SocialShareModal -- iph-app falls back to its own
+          // hardcoded default text when the admin has left this blank.
+          social_share_hint_fa: m.mission_type === 'social_share' ? (m.social_share_hint_fa ?? null) : undefined,
+          social_share_hint_en: m.mission_type === 'social_share' ? (m.social_share_hint_en ?? null) : undefined,
           featured_booth_next_rotation,
           featured_booth_claimed,
           featured_booth_pool_companies,

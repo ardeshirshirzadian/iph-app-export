@@ -2618,9 +2618,13 @@ function SocialShareModal({ share, onClose, onComplete, lang }) {
                 }}
               />
               <p className="text-[11px] mt-1.5 leading-5" style={{ color: 'var(--text-dim)' }}>
+                {/* Admin-editable per-mission hint (quest_content.social_share_hint_fa/en,
+                    set on this mission's own edit form in iph-apn) -- falls
+                    back to this hardcoded default when left blank, or for a
+                    badge (badges have no such field of their own). */}
                 {isRTL
-                  ? 'پست/استوری باید عمومی (Public) باشد تا ادمین بتواند آن را برای بررسی مشاهده کند.'
-                  : 'Your post/story must be set to public so an admin can view it for review.'}
+                  ? (share.social_share_hint_fa || 'پست/استوری باید عمومی (Public) باشد تا ادمین بتواند آن را برای بررسی مشاهده کند.')
+                  : (share.social_share_hint_en || 'Your post/story must be set to public so an admin can view it for review.')}
               </p>
             </div>
 
