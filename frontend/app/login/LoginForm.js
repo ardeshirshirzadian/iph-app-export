@@ -273,14 +273,16 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
         setShowReferralModal(false);
         setReferralInput("");
       } else if (data.error === 'already_used') {
-        setReferralModalError('این کد قبلاً استفاده شده');
+        setReferralModalError(isEmail ? "This code has already been used" : 'این کد قبلاً استفاده شده');
       } else if (data.error === 'rate_limited') {
-        setReferralModalError('تعداد تلاش‌های شما بیش از حد مجاز است. کمی دیگر دوباره امتحان کنید.');
+        setReferralModalError(isEmail
+          ? "Too many attempts. Please try again later."
+          : 'تعداد تلاش‌های شما بیش از حد مجاز است. کمی دیگر دوباره امتحان کنید.');
       } else if (data.error === 'code_capacity_reached') {
         // Distinct from "invalid_code" -- the code is real, just no longer
         // redeemable because its owner has already reached the highest
         // active tier's required count (see validate-code/route.js).
-        setReferralModalError('ظرفیت این کد تکمیل شده است');
+        setReferralModalError(isEmail ? "This code has reached its capacity" : 'ظرفیت این کد تکمیل شده است');
       } else if (data.error === 'missing_fields' || data.error === 'invalid_body') {
         // Distinct from "invalid_code" -- this means the request itself was
         // malformed (e.g. contact still empty), not that the code was
@@ -288,7 +290,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
         // masquerade as "invalid code" again if some other path ever hits it.
         setReferralModalError(referralContactMissingMessage);
       } else {
-        setReferralModalError('کد معرف نامعتبر است');
+        setReferralModalError(isEmail ? "Invalid referral code" : 'کد معرف نامعتبر است');
       }
     } catch {
       setReferralModalError(t(lang, "server_error"));
@@ -326,10 +328,14 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
           const data = await res.json();
           if (data.outcome === 'already_enrolled') {
             // The referral did NOT count -- warning, not a success state.
-            infoMessage = 'شما قبلا ثبت‌نام کرده‌اید، امتیاز این کد معرف به شما تعلق نمی‌گیرد.';
+            infoMessage = isEmail
+              ? "You're already registered, so this referral code's reward won't be credited to you."
+              : 'شما قبلا ثبت‌نام کرده‌اید، امتیاز این کد معرف به شما تعلق نمی‌گیرد.';
             infoMessageType = 'warning';
           } else if (data.outcome === 'pending') {
-            infoMessage = 'کد معرف شما ثبت شد؛ برای نهایی‌شدن، دفعه بعد که وارد می‌شوید بررسی می‌شود.';
+            infoMessage = isEmail
+              ? "Your referral code has been recorded; it will be finalized the next time you log in."
+              : 'کد معرف شما ثبت شد؛ برای نهایی‌شدن، دفعه بعد که وارد می‌شوید بررسی می‌شود.';
             infoMessageType = 'info';
           }
         } catch {
@@ -394,7 +400,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
       }
       router.push(quickMode ? fromPath : "/");
     },
-    [quickMode, fromPath, router, referralCode]
+    [quickMode, fromPath, router, referralCode, isEmail]
   );
 
   const submitOtp = useCallback(
@@ -752,7 +758,8 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                 <div className="mt-2 text-center">
                   {referralCode ? (
                     <span className="text-xs font-bold" style={{ color: "var(--accent)" }}>
-                      ✓ کد معرف: <span dir="ltr">{referralCode}</span>
+                      {isEmail ? "✓ Referral code: " : "✓ کد معرف: "}
+                      <span dir="ltr">{referralCode}</span>
                     </span>
                   ) : (
                     <button
@@ -768,7 +775,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                       className="text-xs"
                       style={{ color: "var(--accent)" }}
                     >
-                      کد معرف دارم
+                      {isEmail ? "I have a referral code" : "کد معرف دارم"}
                     </button>
                   )}
                 </div>
@@ -1124,14 +1131,14 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
             style={{ background: "var(--surface)" }}
           >
             <h3 className="font-bold text-sm mb-4 text-center" style={{ color: "var(--text)" }}>
-              کد معرف
+              {isEmail ? "Referral Code" : "کد معرف"}
             </h3>
             <input
               type="text"
               dir="ltr"
               value={referralInput}
               onChange={(e) => setReferralInput(e.target.value.toUpperCase().slice(0, 16))}
-              placeholder="کد معرف را وارد کنید"
+              placeholder={isEmail ? "Enter referral code" : "کد معرف را وارد کنید"}
               className="w-full rounded-xl px-4 py-3 text-base outline-none border transition-colors text-center tracking-widest"
               style={{
                 background: "var(--surface-2)",
@@ -1154,7 +1161,9 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
               className="w-full mt-4"
               size="lg"
             >
-              {referralChecking ? "در حال بررسی..." : "تأیید"}
+              {referralChecking
+                ? (isEmail ? "Checking..." : "در حال بررسی...")
+                : (isEmail ? "Confirm" : "تأیید")}
             </Button>
             <button
               type="button"
@@ -1162,7 +1171,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
               className="w-full mt-3 text-xs"
               style={{ color: "var(--text-dim)" }}
             >
-              انصراف
+              {isEmail ? "Cancel" : "انصراف"}
             </button>
           </div>
         </div>
