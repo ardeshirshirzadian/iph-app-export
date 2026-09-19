@@ -415,7 +415,9 @@ export default function QRScanPage() {
                   className="font-black text-3xl mb-1"
                   style={{ color: "#ffd700", textShadow: "0 0 24px rgba(255,215,0,0.7)" }}
                 >
-                  +{lang === "fa" ? toPersianDigits(scanResult.points) : scanResult.points} XP!
+                  {lang === "fa"
+                    ? <>+{toPersianDigits(scanResult.points)} امتیاز!</>
+                    : <>+{scanResult.points} XP!</>}
                 </p>
                 <p className="font-bold text-base mb-1" style={{ color: "#ffd700" }}>
                   {lang === "fa"
@@ -429,7 +431,9 @@ export default function QRScanPage() {
                 className="font-black text-3xl mb-2"
                 style={{ color: "var(--accent)", textShadow: "0 0 20px color-mix(in srgb, var(--accent) 50%, transparent)" }}
               >
-                +{lang === "fa" ? toPersianDigits(scanResult?.points ?? 10) : (scanResult?.points ?? 10)} XP!
+                {lang === "fa"
+                  ? <>+{toPersianDigits(scanResult?.points ?? 10)} امتیاز!</>
+                  : <>+{scanResult?.points ?? 10} XP!</>}
               </p>
             )}
 

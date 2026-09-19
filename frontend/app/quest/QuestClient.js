@@ -3446,7 +3446,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     xpLabel:            c.xp_label             || "امتیاز فعلی",
     xpUnit:             c.xp_unit              || "XP",
     nextLevelPrefix:    c.next_level_prefix    || "تا سطح بعدی:",
-    xpRemainingSuffix:  c.xp_remaining_suffix  || "XP مانده",
+    xpRemainingSuffix:  c.xp_remaining_suffix  || "امتیاز مانده",
     statXpLabel:        c.stat_xp_label        || "امتیاز امروز",
     statScannedLabel:   c.stat_scanned_label   || "غرفه اسکن‌شده",
     statRankLabel:      c.stat_rank_label      || "رتبه شما",
