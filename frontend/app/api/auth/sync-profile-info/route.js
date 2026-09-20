@@ -40,9 +40,14 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Not logged in' }, { status: 401 });
   }
 
-  let firstnameFa, lastnameFa, firstnameEn, lastnameEn;
+  let firstnameFa, lastnameFa, firstnameEn, lastnameEn, occupationId, hasOccupationId;
   try {
-    ({ firstnameFa, lastnameFa, firstnameEn, lastnameEn } = await request.json());
+    const body = await request.json();
+    ({ firstnameFa, lastnameFa, firstnameEn, lastnameEn, occupationId } = body);
+    // Older/name-only callers intentionally omit this property. Preserve the
+    // stored occupation for them; AttendeeProvider always sends it, including
+    // an explicit null when the attendee has cleared the field in Rasayesh.
+    hasOccupationId = Object.prototype.hasOwnProperty.call(body, 'occupationId');
   } catch {
     return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
   }
@@ -52,9 +57,10 @@ export async function POST(request) {
 
     await query(
       `UPDATE app_users
-         SET firstname_fa = $1, lastname_fa = $2, firstname_en = $3, lastname_en = $4
-       WHERE event_id = $5 AND uuid = $6`,
-      [firstnameFa || null, lastnameFa || null, firstnameEn || null, lastnameEn || null, currentEventId, user.uuid]
+         SET firstname_fa = $1, lastname_fa = $2, firstname_en = $3, lastname_en = $4,
+             occupation_id = CASE WHEN $5 THEN $6 ELSE occupation_id END
+       WHERE event_id = $7 AND uuid = $8`,
+      [firstnameFa || null, lastnameFa || null, firstnameEn || null, lastnameEn || null, hasOccupationId, occupationId ?? null, currentEventId, user.uuid]
     );
 
     const displayNameFa = [firstnameFa, lastnameFa].filter(Boolean).join(' ') || null;

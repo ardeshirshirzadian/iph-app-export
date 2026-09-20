@@ -766,6 +766,9 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
 
 function LeaderboardRow({ user, isMe, badgeColor, badgeLabel, xpUnit, lang, rankIcons }) {
   const rankIcon = rankIcons?.[user.rank];
+  const occupation = lang === 'en'
+    ? (user.occupation_label_en || user.occupation_label_fa)
+    : (user.occupation_label_fa || user.occupation_label_en);
   return (
     <div
       className="flex items-center gap-3 rounded-2xl px-4 py-3 border transition-colors"
@@ -816,11 +819,9 @@ function LeaderboardRow({ user, isMe, badgeColor, badgeLabel, xpUnit, lang, rank
             {user.company}
           </p>
         ) : null}
-        {/* Confirmed-invite count -- hidden entirely at 0, never shown as
-            "0 دعوت", since most users will never have referred anyone. */}
-        {user.referral_count > 0 && (
-          <p className="text-[11px] leading-5 truncate" style={{ color: "var(--text-dim)" }}>
-            {lang === 'en' ? `${dNum(user.referral_count, lang)} referrals` : `${dNum(user.referral_count, lang)} دعوت`}
+        {occupation && (
+          <p className="text-[11px] leading-5" dir={lang === 'en' ? 'ltr' : 'rtl'} style={{ color: "var(--text-dim)", display: 'flex', minWidth: 0, whiteSpace: 'nowrap' }}>
+            <span className="truncate min-w-0" style={{ flex: '0 1 auto' }}>{occupation}</span>
           </p>
         )}
       </div>
@@ -1012,6 +1013,9 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
       company:           '',
       xp:                item.referral_count,
       profile_photo_url: item.profile_photo_url || null,
+      referral_count:    item.referral_count,
+      occupation_label_fa: item.occupation_label_fa,
+      occupation_label_en: item.occupation_label_en,
     }));
 
     const currentInList = referralRows.find(r => r.user_uuid === currentUserUuid);
@@ -1050,6 +1054,9 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
                 company:           '',
                 xp:                cu.referral_count,
                 profile_photo_url: cu.profile_photo_url || null,
+                referral_count:    cu.referral_count,
+                occupation_label_fa: cu.occupation_label_fa,
+                occupation_label_en: cu.occupation_label_en,
               }}
               isMe={true}
               badgeColor={referralColor}
@@ -1147,6 +1154,8 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
     xp:                item.total_xp,
     profile_photo_url: item.profile_photo_url || null,
     referral_count:    item.referral_count,
+    occupation_label_fa: item.occupation_label_fa,
+    occupation_label_en: item.occupation_label_en,
   }));
 
   const currentInList = levelRows.find(r => r.user_uuid === currentUserUuid);
@@ -1187,6 +1196,8 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
               xp:                cu.total_xp,
               profile_photo_url: cu.profile_photo_url || null,
               referral_count:    cu.referral_count,
+              occupation_label_fa: cu.occupation_label_fa,
+              occupation_label_en: cu.occupation_label_en,
             }}
             isMe={true}
             badgeColor={levelColor}
@@ -3405,6 +3416,8 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
           level:             current.name,
           profile_photo_url: item.profile_photo_url || null,
           referral_count:    item.referral_count,
+          occupation_label_fa: item.occupation_label_fa,
+          occupation_label_en: item.occupation_label_en,
         };
       });
     }

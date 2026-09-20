@@ -15,7 +15,11 @@ const FADE_MS = 300;
 
 function sameLeaderboard(a, b) {
   if (a.length !== b.length) return false;
-  return a.every((row, i) => row.user_uuid === b[i]?.user_uuid && row.total_xp === b[i]?.total_xp);
+  return a.every((row, i) => row.user_uuid === b[i]?.user_uuid
+    && row.total_xp === b[i]?.total_xp
+    && row.referral_count === b[i]?.referral_count
+    && row.occupation_label_fa === b[i]?.occupation_label_fa
+    && row.occupation_label_en === b[i]?.occupation_label_en);
 }
 
 // Same admin-configurable rank-medal icon (SVG path, uploaded image path,
@@ -72,6 +76,7 @@ function LeaderboardRow({ entry, rankIcon, colors, nameFontSize, scoreFontSize }
   // they scale together with an admin's font-size changes.
   const badgeFontSize = Math.max(14, Math.round(nameFontSize * 0.42));
   const inviteFontSize = Math.max(14, Math.round(nameFontSize * 0.4));
+  const occupation = entry.occupation_label_fa || entry.occupation_label_en;
   return (
     <div
       style={{
@@ -118,13 +123,9 @@ function LeaderboardRow({ entry, rankIcon, colors, nameFontSize, scoreFontSize }
         >
           {entry.display_name_fa}
         </div>
-        {/* Confirmed-invite count -- same "hidden entirely at 0" rule as
-            app/quest/QuestClient.js's own LeaderboardRow (referral_count is
-            only ever non-null while the unlimited-mode referral mission is
-            active, see route.js's isUnlimitedReferralActive gate). */}
-        {entry.referral_count > 0 && (
-          <div style={{ fontSize: inviteFontSize, color: colors.textMuted, marginTop: 4 }}>
-            {toPersianDigits(entry.referral_count)} دعوت
+        {occupation && (
+          <div style={{ display: 'flex', minWidth: 0, marginTop: 4, fontSize: inviteFontSize, color: colors.textMuted, whiteSpace: 'nowrap' }}>
+            <span style={{ flex: '0 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{occupation}</span>
           </div>
         )}
       </div>

@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { getCurrentEventId } from '@/lib/currentEvent';
 import { isUnlimitedReferralActive } from '@/lib/referralUnlimited';
+import { resolveOccupationLabels } from '@/lib/occupationResolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -71,6 +72,33 @@ function referralCountSelectFragment(alias, active) {
             (SELECT COUNT(*)::int FROM quest_referral_redemptions rr
              WHERE rr.referrer_user_uuid = ${alias}.user_uuid AND rr.event_id = $1 AND rr.status = 'confirmed'
             ) AS referral_count`;
+}
+
+// occupation_id is used only inside this route to resolve canonical
+// Rasayesh form-option labels. Never return the ID itself to leaderboard
+// clients, and let a failed options lookup degrade to no job metadata.
+async function addOccupationLabels(leaderboard, currentUser, isIranPharma) {
+  // This enhancement belongs to IranPharma only. Other event domains retain
+  // their existing participant response shape, while still stripping the
+  // query-internal ID below.
+  if (!isIranPharma) {
+    const withoutOccupationId = ({ occupation_id, ...participant }) => participant;
+    return {
+      leaderboard: leaderboard.map(withoutOccupationId),
+      currentUser: currentUser ? withoutOccupationId(currentUser) : null,
+    };
+  }
+  const participants = [...leaderboard, ...(currentUser ? [currentUser] : [])];
+  const labels = await resolveOccupationLabels(participants.map((participant) => participant.occupation_id));
+  const decorate = ({ occupation_id, ...participant }) => {
+    const label = labels.get(String(occupation_id));
+    return {
+      ...participant,
+      occupation_label_fa: label?.fa || null,
+      occupation_label_en: label?.en || null,
+    };
+  };
+  return { leaderboard: leaderboard.map(decorate), currentUser: currentUser ? decorate(currentUser) : null };
 }
 
 // Shared CTE that computes total XP per user, scoped to one event.
@@ -184,7 +212,7 @@ export async function GET(request) {
               qn.display_name_en,
               NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), '')
             ) AS display_name_en,
-            qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo,
+            qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo, au.occupation_id,
             -- Same DENSE_RANK() convention as every other location in this file.
             DENSE_RANK() OVER (ORDER BY ra.referral_count DESC)::int AS rank
           FROM referral_agg ra
@@ -202,6 +230,7 @@ export async function GET(request) {
           display_name_en:   row.display_name_en || null,
           referral_count:    row.referral_count,
           profile_photo_url: resolvePhotoUrl(row.profile_photo_url, row.profile_image, row.hide_leaderboard_photo),
+          occupation_id:     row.occupation_id,
         }));
       }
 
@@ -217,7 +246,7 @@ export async function GET(request) {
           SELECT
             ra.referral_count,
             qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo,
-            au.excluded_from_leaderboard,
+            au.excluded_from_leaderboard, au.occupation_id,
             (
               SELECT COUNT(DISTINCT ra2.referral_count)::int + 1
               FROM referral_agg ra2
@@ -240,11 +269,12 @@ export async function GET(request) {
             rank:              rankRows[0].excluded_from_leaderboard ? null : rankRows[0].rank,
             referral_count:    rankRows[0].referral_count,
             profile_photo_url: resolvePhotoUrl(rankRows[0].profile_photo_url, rankRows[0].profile_image, rankRows[0].hide_leaderboard_photo),
+            occupation_id:     rankRows[0].occupation_id,
           };
         }
       }
 
-      return NextResponse.json({ leaderboard, currentUser });
+      return NextResponse.json(await addOccupationLabels(leaderboard, currentUser, currentEventId === 1));
     }
 
     // ── BOOTH LEADERBOARD SEGMENT (companies ranked by real scan count) ────
@@ -356,7 +386,8 @@ export async function GET(request) {
             ) AS display_name_en,
             qn.profile_photo_url,
             au.profile_image,
-            au.hide_leaderboard_photo${referralCountSelectFragment('r', referralLeaderboardActive)}
+            au.hide_leaderboard_photo,
+            au.occupation_id${referralCountSelectFragment('r', referralLeaderboardActive)}
           FROM ranked r
           LEFT JOIN quest_user_names qn ON r.user_uuid = qn.user_uuid
           LEFT JOIN app_users        au ON r.user_uuid = au.uuid AND au.event_id = $1
@@ -373,6 +404,7 @@ export async function GET(request) {
           scan_count:        row.scan_count,
           profile_photo_url: resolvePhotoUrl(row.profile_photo_url, row.profile_image, row.hide_leaderboard_photo),
           referral_count:    row.referral_count,
+          occupation_id:     row.occupation_id,
         }));
       }
 
@@ -406,7 +438,7 @@ export async function GET(request) {
               NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), '')
             ) AS display_name_en,
             qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo,
-            au.excluded_from_leaderboard,
+            au.excluded_from_leaderboard, au.occupation_id,
             (
               -- DENSE_RANK() equivalent: 1 + count of DISTINCT higher scores
               -- among non-excluded users (not COUNT(*), which would replicate
@@ -437,11 +469,12 @@ export async function GET(request) {
             display_name_en:   rankRows[0].display_name_en || null,
             profile_photo_url: resolvePhotoUrl(rankRows[0].profile_photo_url, rankRows[0].profile_image, rankRows[0].hide_leaderboard_photo),
             referral_count:    rankRows[0].referral_count,
+            occupation_id:     rankRows[0].occupation_id,
           };
         }
       }
 
-      return NextResponse.json({ leaderboard, currentUser });
+      return NextResponse.json(await addOccupationLabels(leaderboard, currentUser, currentEventId === 1));
     }
 
     // ── OVERALL LEADERBOARD (original behavior) ────────────────────────────
@@ -478,6 +511,7 @@ export async function GET(request) {
           qn.profile_photo_url,
           au.profile_image,
           au.hide_leaderboard_photo,
+          au.occupation_id,
           c.total_xp,
           c.scan_count,
           -- DENSE_RANK(), not RANK() -- see the level branch's matching
@@ -501,6 +535,7 @@ export async function GET(request) {
         scan_count:        row.scan_count,
         profile_photo_url: resolvePhotoUrl(row.profile_photo_url, row.profile_image, row.hide_leaderboard_photo),
         referral_count:    row.referral_count,
+        occupation_id:     row.occupation_id,
       }));
     }
 
@@ -526,7 +561,7 @@ export async function GET(request) {
         )
         SELECT
           t.total_xp, qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo,
-          au.excluded_from_leaderboard,
+          au.excluded_from_leaderboard, au.occupation_id,
           (
             -- DENSE_RANK() equivalent -- see the level branch's matching
             -- comment above.
@@ -551,11 +586,12 @@ export async function GET(request) {
           total_xp:          rankRows[0].total_xp,
           profile_photo_url: resolvePhotoUrl(rankRows[0].profile_photo_url, rankRows[0].profile_image, rankRows[0].hide_leaderboard_photo),
           referral_count:    rankRows[0].referral_count,
+          occupation_id:     rankRows[0].occupation_id,
         };
       }
     }
 
-    return NextResponse.json({ leaderboard, currentUser });
+    return NextResponse.json(await addOccupationLabels(leaderboard, currentUser, currentEventId === 1));
   } catch (err) {
     console.error('[quest/leaderboard]', err.message);
     return NextResponse.json({ leaderboard: [], currentUser: null });

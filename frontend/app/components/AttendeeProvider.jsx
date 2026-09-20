@@ -98,6 +98,7 @@ function syncProfileInfo(attendee) {
       lastnameFa: attendee.lastname_fa,
       firstnameEn: attendee.firstname_en,
       lastnameEn: attendee.lastname_en,
+      occupationId: attendee.occupation_id ?? null,
     }),
   }).catch(() => {});
 }

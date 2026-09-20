@@ -4,6 +4,7 @@ import { query } from '@/lib/db';
 import { getCurrentEventId } from '@/lib/currentEvent';
 import { getExpoScreenDisplay, DEFAULT_EXPO_SCREEN_CONFIG } from '@/lib/expoScreenConfig';
 import { isUnlimitedReferralActive } from '@/lib/referralUnlimited';
+import { resolveOccupationLabels } from '@/lib/occupationResolver';
 
 // Public, unauthenticated, cached data for the exhibition kiosk screen
 // (/expo) -- one combined endpoint (not several) so ExpoClient.jsx keeps a
@@ -78,6 +79,7 @@ const getCachedTop3 = unstable_cache(
     // count is only meaningful -- and only queried -- while an unlimited-
     // mode referral mission is actually active for this event.
     const referralActive = await isUnlimitedReferralActive(currentEventId);
+    const isIranPharma = currentEventId === 1;
 
     const { rows } = await query(
       `WITH scan_agg AS (
@@ -106,7 +108,7 @@ const getCachedTop3 = unstable_cache(
            qn.display_name_en,
            NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), '')
          ) AS display_name_en,
-         qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo,
+         qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo${isIranPharma ? ', au.occupation_id' : ''},
          c.total_xp, c.scan_count,
          DENSE_RANK() OVER (ORDER BY c.total_xp DESC)::int AS rank${referralActive ? `,
          (SELECT COUNT(*)::int FROM quest_referral_redemptions rr
@@ -121,15 +123,25 @@ const getCachedTop3 = unstable_cache(
       [currentEventId]
     );
 
-    return rows.map((row) => ({
-      rank: row.rank,
-      user_uuid: row.user_uuid,
-      display_name_fa: row.display_name_fa,
-      display_name_en: row.display_name_en || null,
-      total_xp: row.total_xp,
-      profile_photo_url: resolvePhotoUrl(row.profile_photo_url, row.profile_image, row.hide_leaderboard_photo),
-      referral_count: row.referral_count ?? null,
-    }));
+    const occupationLabels = isIranPharma
+      ? await resolveOccupationLabels(rows.map((row) => row.occupation_id))
+      : new Map();
+    return rows.map((row) => {
+      const occupation = occupationLabels.get(String(row.occupation_id));
+      return {
+        rank: row.rank,
+        user_uuid: row.user_uuid,
+        display_name_fa: row.display_name_fa,
+        display_name_en: row.display_name_en || null,
+        total_xp: row.total_xp,
+        profile_photo_url: resolvePhotoUrl(row.profile_photo_url, row.profile_image, row.hide_leaderboard_photo),
+        referral_count: row.referral_count ?? null,
+        ...(isIranPharma ? {
+          occupation_label_fa: occupation?.fa || null,
+          occupation_label_en: occupation?.en || null,
+        } : {}),
+      };
+    });
   },
   ['expo-leaderboard-top3'],
   { tags: ['expo-leaderboard-top3'], revalidate: 5 }
