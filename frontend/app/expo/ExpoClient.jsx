@@ -32,8 +32,14 @@ function isSvgIconPath(path) {
   return typeof path === 'string' && path.startsWith('/') && path.toLowerCase().endsWith('.svg');
 }
 
-function RankIcon({ rankIcon, size }) {
-  if (!rankIcon?.icon) return null;
+function RankIcon({ rankIcon, rank, size, fallbackColor }) {
+  if (!rankIcon?.icon) {
+    return (
+      <span style={{ fontSize: 32, fontWeight: 800, lineHeight: 1, color: fallbackColor }}>
+        {toPersianDigits(rank)}
+      </span>
+    );
+  }
   const { icon, color } = rankIcon;
 
   if (icon.startsWith('/')) {
@@ -155,7 +161,7 @@ function LeaderboardRow({ entry, rankIcon, colors, nameFontSize, scoreFontSize }
         ) : null}
       </div>
       <div style={{ width: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        <RankIcon rankIcon={rankIcon} size={48} />
+        <RankIcon rankIcon={rankIcon} rank={entry.rank} size={48} fallbackColor={colors.text} />
       </div>
     </div>
   );
@@ -194,10 +200,24 @@ function LeaderboardBlock({ leaderboard, rankIcons, colors, fading, nameFontSize
   );
 }
 
-function QrBlock({ appUrl }) {
+function QrBlock({ appUrl, config, colors }) {
+  // Empty or malformed legacy values use the same plain matrix defaults.
+  // Every valid admin-selected hex color passes through unchanged.
+  const validHex = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+  const fg = validHex.test(config.qr_fg_color_hex || '') ? config.qr_fg_color_hex : '#0b1220';
+  const bg = validHex.test(config.qr_bg_color_hex || '') ? config.qr_bg_color_hex : '#ffffff';
+  const webAddressColor = validHex.test(config.web_address_color || '')
+    ? config.web_address_color
+    : undefined;
+  const domain = displayDomain(config.web_link_url || appUrl);
   return (
-    <div style={{ background: '#fff', padding: 18, borderRadius: 20, lineHeight: 0, flexShrink: 0 }}>
-      <QRCodeSVG value={appUrl} size={180} bgColor="#ffffff" fgColor="#0b1220" level="M" />
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+      <QRCodeSVG value={appUrl} size={config.qr_size} marginSize={4} bgColor={bg} fgColor={fg} level="M" />
+      {domain && (
+        <div dir="ltr" style={{ fontSize: config.web_address_font_size, fontWeight: 500, color: webAddressColor || colors.textMuted, whiteSpace: 'nowrap' }}>
+          {domain}
+        </div>
+      )}
     </div>
   );
 }
@@ -244,7 +264,7 @@ function StoreBox({ label, subLabel, logoPath, colors, fontSize, subFontSize }) 
         border: `1px solid ${colors.border}`,
         borderRadius: 16,
         padding: '12px 20px',
-        width: 240,
+        width: 300,
         boxSizing: 'border-box',
       }}
     >
@@ -294,6 +314,7 @@ function StoreBox({ label, subLabel, logoPath, colors, fontSize, subFontSize }) 
 // "bottom-left" geometry regardless of Persian text direction; each
 // text-bearing child sets its own dir="rtl" independently.
 function FixedLayout({ logo, appUrl, config, colors, rankIcons, leaderboard, fading }) {
+  const slogan = typeof config.slogan_text === 'string' ? config.slogan_text.trim() : '';
   return (
     <div
       style={{
@@ -319,9 +340,9 @@ function FixedLayout({ logo, appUrl, config, colors, rankIcons, leaderboard, fad
         <LogoImage logo={logo} height={76} />
       </div>
 
-      {/* Middle: admin-editable title centered above the live top-3 leaderboard */}
+      {/* Middle: admin-editable title centered above the live leaderboard. */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 28 }}>
-        <div dir="rtl" style={{ fontSize: config.title_font_size, fontWeight: 800, color: colors.text, textAlign: 'center' }}>
+        <div dir="rtl" style={{ width: '100%', maxWidth: 860, fontSize: config.title_font_size, fontWeight: 800, color: colors.text, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {config.title_text}
         </div>
         <LeaderboardBlock
@@ -334,20 +355,19 @@ function FixedLayout({ logo, appUrl, config, colors, rankIcons, leaderboard, fad
         />
       </div>
 
-      {/* Bottom bar: QR bottom-left, three download boxes to its right */}
-      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 40 }}>
-        <QrBlock appUrl={appUrl} />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <StoreBox label="دانلود از کافه بازار" logoPath={config.bazaar_logo_path} colors={colors} fontSize={config.box_label_font_size} />
-          <StoreBox label="دانلود از مایکت" logoPath={config.myket_logo_path} colors={colors} fontSize={config.box_label_font_size} />
-          <StoreBox
-            label="نسخه وب اپلیکیشن"
-            subLabel={displayDomain(config.web_link_url)}
-            logoPath={config.web_logo_path}
-            colors={colors}
-            fontSize={config.box_label_font_size}
-            subFontSize={config.web_address_font_size}
-          />
+      {/* Bottom: optional slogan above the two store boxes and QR/web address. */}
+      <div style={{ position: 'relative' }}>
+        {slogan && (
+          <div dir="rtl" style={{ position: 'absolute', right: 0, bottom: 'calc(100% + 24px)', width: '100%', fontSize: config.slogan_font_size ?? 34, fontWeight: 800, lineHeight: 1.4, color: colors.text, textAlign: 'right' }}>
+            {slogan}
+          </div>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 40 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <StoreBox label={config.download_label_1 ?? 'دانلود از کافه بازار'} logoPath={config.bazaar_logo_path} colors={colors} fontSize={config.box_label_font_size} />
+            <StoreBox label={config.download_label_2 ?? 'دانلود از مایکت'} logoPath={config.myket_logo_path} colors={colors} fontSize={config.box_label_font_size} />
+          </div>
+          <QrBlock appUrl={appUrl} config={config} colors={colors} />
         </div>
       </div>
     </div>

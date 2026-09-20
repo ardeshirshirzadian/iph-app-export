@@ -70,8 +70,10 @@ function levelForXp(xp, levels) {
 // once per 5s here no matter what any admin configures client-side -- two
 // independent layers of protection, per the exhibition-screen investigation's
 // "compute once, serve many" load section.
-const getCachedTop3 = unstable_cache(
-  async (currentEventId) => {
+const getCachedLeaderboard = unstable_cache(
+  // unstable_cache keys function arguments too, so the validated people
+  // count is part of this cache entry alongside the event ID.
+  async (currentEventId, leaderboardPeopleCount) => {
     console.log('[expo/screen] leaderboard cache miss — querying DB for event', currentEventId);
 
     // Same gate the in-app leaderboard's referral_count column uses (see
@@ -119,8 +121,8 @@ const getCachedTop3 = unstable_cache(
        LEFT JOIN app_users        au ON c.user_uuid = au.uuid AND au.event_id = $1
        WHERE (au.excluded_from_leaderboard IS NOT TRUE)
        ORDER BY c.total_xp DESC, c.user_uuid ASC
-       LIMIT 3`,
-      [currentEventId]
+       LIMIT $2`,
+      [currentEventId, leaderboardPeopleCount]
     );
 
     const occupationLabels = isIranPharma
@@ -143,9 +145,18 @@ const getCachedTop3 = unstable_cache(
       };
     });
   },
-  ['expo-leaderboard-top3'],
-  { tags: ['expo-leaderboard-top3'], revalidate: 5 }
+  ['expo-leaderboard'],
+  // The people-count lives in expo_screen_config, so an APN save must
+  // invalidate this result as well as the separately cached display data.
+  { tags: ['expo-leaderboard', 'expo-screen-config'], revalidate: 5 }
 );
+
+function getLeaderboardPeopleCount(value) {
+  const count = Number(value);
+  return Number.isInteger(count) && count >= 1 && count <= 5
+    ? count
+    : DEFAULT_EXPO_SCREEN_CONFIG.leaderboard_people_count;
+}
 
 // Level name/color per user are admin content (quest_levels), same as the
 // in-app leaderboard's badge -- resolved from quest_levels, not computed in
@@ -187,11 +198,14 @@ const getCachedDisplay = unstable_cache(
 export async function GET() {
   try {
     const currentEventId = await getCurrentEventId();
-    const [leaderboardRaw, display, levels] = await Promise.all([
-      getCachedTop3(currentEventId),
+    const [display, levels] = await Promise.all([
       getCachedDisplay(currentEventId),
       getCachedLevels(currentEventId),
     ]);
+    const leaderboardRaw = await getCachedLeaderboard(
+      currentEventId,
+      getLeaderboardPeopleCount(display.config.leaderboard_people_count)
+    );
     const levelSource = levels.length > 0 ? levels : FALLBACK_LEVELS;
     const leaderboard = leaderboardRaw.map((row) => {
       const level = levelForXp(row.total_xp, levelSource);
