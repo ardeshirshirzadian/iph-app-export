@@ -2,13 +2,9 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { validateSocialShareUrl } from '@/lib/socialShareUrl';
 
 const VALID_PLATFORMS = ['Instagram', 'Telegram', 'WhatsApp', 'LinkedIn', 'Other'];
-
-function isValidUrl(s) {
-  if (!s || typeof s !== 'string') return false;
-  return /^https?:\/\/.{2,}\..{2,}/.test(s.trim());
-}
 
 export async function POST(request) {
   const cookieStore = await cookies();
@@ -32,8 +28,9 @@ export async function POST(request) {
   if (!missionId && !badgeId) {
     return NextResponse.json({ error: 'missionId or badgeId required' }, { status: 400 });
   }
-  if (!isValidUrl(link_url)) {
-    return NextResponse.json({ error: 'لینک وارد شده معتبر نیست. باید با http:// یا https:// شروع شود.' }, { status: 422 });
+  const validatedUrl = validateSocialShareUrl(link_url);
+  if (validatedUrl === null) {
+    return NextResponse.json({ error: 'یک لینک HTTPS معتبر وارد کنید.' }, { status: 422 });
   }
   const resolvedPlatform = VALID_PLATFORMS.includes(platform) ? platform : null;
 
@@ -96,7 +93,7 @@ export async function POST(request) {
       `INSERT INTO quest_social_share_submissions
          (mission_id, badge_id, user_uuid, link_url, platform, status, event_id)
        VALUES ($1, $2, $3, $4, $5, 'pending', $6)`,
-      [missionId || null, badgeId || null, userUuid, link_url.trim(), resolvedPlatform, currentEventId]
+      [missionId || null, badgeId || null, userUuid, validatedUrl, resolvedPlatform, currentEventId]
     );
 
     return NextResponse.json({ ok: true, status: 'pending' });

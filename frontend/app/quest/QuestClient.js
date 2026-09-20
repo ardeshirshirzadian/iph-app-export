@@ -13,6 +13,7 @@ import { toPersianDigits, toEnglishDigits, toRelativeTime } from "@/lib/utils";
 import AvatarPlaceholder from "@/components/AvatarPlaceholder";
 import ReferralShareCanvas from "@/components/ReferralShareCanvas";
 import { renderRasayeshPoster } from "@/lib/rasayeshPosterRenderer";
+import { validateSocialShareUrl } from "@/lib/socialShareUrl";
 
 const RASAYESH_BASE = "https://api.rasayesh.com/";
 
@@ -2508,10 +2509,6 @@ function SurveyModal({ survey, onClose, onComplete, lang }) {
 const PLATFORMS = ['Instagram', 'Telegram', 'WhatsApp', 'LinkedIn', 'Other'];
 const PLATFORM_FA = { Instagram: 'اینستاگرام', Telegram: 'تلگرام', WhatsApp: 'واتساپ', LinkedIn: 'لینکدین', Other: 'سایر' };
 
-function isValidUrl(s) {
-  return typeof s === 'string' && /^https?:\/\/.{2,}\..{2,}/.test(s.trim());
-}
-
 function SocialShareModal({ share, onClose, onComplete, lang }) {
   const [url, setUrl] = useState('');
   const [platform, setPlatform] = useState('');
@@ -2520,16 +2517,17 @@ function SocialShareModal({ share, onClose, onComplete, lang }) {
   const isRTL = lang === 'fa';
 
   async function handleSubmit() {
-    if (!isValidUrl(url)) {
-      setErrorMsg(isRTL ? 'لینک معتبر نیست. باید با https:// شروع شود.' : 'Invalid URL. Must start with https://');
+    const validatedUrl = validateSocialShareUrl(url);
+    if (validatedUrl === null) {
+      setErrorMsg(isRTL ? 'یک لینک HTTPS معتبر وارد کنید.' : 'Enter a valid HTTPS URL.');
       return;
     }
     setErrorMsg('');
     setState('submitting');
     try {
       const body = share.isBadge
-        ? { badgeId: share.id, link_url: url.trim(), platform: platform || null }
-        : { missionId: share.id, link_url: url.trim(), platform: platform || null };
+        ? { badgeId: share.id, link_url: validatedUrl, platform: platform || null }
+        : { missionId: share.id, link_url: validatedUrl, platform: platform || null };
       const res = await fetch('/api/quest/social-share', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
