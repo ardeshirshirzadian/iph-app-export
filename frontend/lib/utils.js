@@ -2,13 +2,31 @@ const FA = '۰۱۲۳۴۵۶۷۸۹';
 
 const RASAYESH_BASE = 'https://api.rasayesh.com/';
 
-// Same script-range logic as ChatClient.jsx's filterInputByLang, with a
-// name-appropriate punctuation allowlist (hyphen/apostrophe, no digits).
-const DISALLOWED_FA_NAME_CHARS = /[^\u0600-\u06FF\u200C\s\-]/g;
-const DISALLOWED_EN_NAME_CHARS = /[^a-zA-Z\s\-']/g;
+// Profile names are validated, rather than filtered on keydown/onChange, so
+// paste, autofill and IME composition retain exactly what the user entered
+// and receive a clear error when the script is wrong. The Persian range
+// covers Arabic-script letters used in Persian names plus Arabic combining
+// marks, ZWNJ, spaces and hyphens. The English rule intentionally remains
+// Latin-only and allows the common English-name separators.
+const PERSIAN_NAME_RE = /^[\u0621-\u063A\u0640-\u064A\u064B-\u065F\u0670\u0671-\u06D3\u06FA-\u06FF\u200C\s-]+$/u;
+const ENGLISH_NAME_RE = /^[A-Za-z\s'-]+$/;
 
-export function filterNameByLang(value, script) {
-  return value.replace(script === 'en' ? DISALLOWED_EN_NAME_CHARS : DISALLOWED_FA_NAME_CHARS, '');
+export function isNameValidForLang(value, script) {
+  // Name-requiredness is owned by the existing forms. This helper only
+  // enforces the script rule, so legacy/incomplete profiles can still sync
+  // blank fields without silently altering any stored data.
+  if (value == null || value === '') return true;
+  if (typeof value !== 'string') return false;
+  return (script === 'en' ? ENGLISH_NAME_RE : PERSIAN_NAME_RE).test(value);
+}
+
+export function getInvalidProfileNameFields({ firstnameFa, lastnameFa, firstnameEn, lastnameEn }) {
+  return [
+    ['firstnameFa', firstnameFa, 'fa'],
+    ['lastnameFa', lastnameFa, 'fa'],
+    ['firstnameEn', firstnameEn, 'en'],
+    ['lastnameEn', lastnameEn, 'en'],
+  ].filter(([, value, script]) => !isNameValidForLang(value, script)).map(([field]) => field);
 }
 
 // Mirrors the profile?.jpg?.['128'] pattern used in ProfileClient.jsx.

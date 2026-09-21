@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { gql } from "@apollo/client";
 import { getApolloClient } from "@/lib/apolloClient";
 import { getFormOptions } from "@/lib/formOptionsCache";
-import { toPersianDigits, toEnglishDigits, toLocalMobile, filterNameByLang } from "@/lib/utils";
+import { getInvalidProfileNameFields, toPersianDigits, toEnglishDigits, toLocalMobile } from "@/lib/utils";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 import LangToggle from "@/components/LangToggle";
@@ -44,6 +44,15 @@ const REGISTER_MUTATION = gql`
     )
   }
 `;
+
+function nameScriptError(field, isEmail) {
+  if (field.endsWith("Fa")) {
+    return "نام فارسی فقط می‌تواند شامل حروف فارسی/عربی، فاصله، نیم‌فاصله و خط تیره باشد.";
+  }
+  return isEmail
+    ? "English names can only contain Latin letters, spaces, hyphens, and apostrophes."
+    : "نام انگلیسی فقط می‌تواند شامل حروف لاتین، فاصله، خط تیره و آپاستروف باشد.";
+}
 
 const FIELD_STYLE = {
   background: "var(--surface-2)",
@@ -93,6 +102,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
     firstnameFa: "", lastnameFa: "", firstnameEn: "", lastnameEn: "",
     otherContact: "", occupationId: "", fieldOfActivities: [],
   });
+  const invalidProfileNameFields = new Set(getInvalidProfileNameFields(profileForm));
   const [formOptions, setFormOptions] = useState({ occupations: [], fieldOfActivities: [] });
   const [optionsLoading, setOptionsLoading] = useState(true);
   // کد معرف (referral code) -- verified locally in the step-1 modal (no
@@ -495,23 +505,29 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
       : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profileForm.otherContact);
     const activitiesOk =
       formOptions.fieldOfActivities.length === 0 || profileForm.fieldOfActivities.length > 0;
-    return Boolean(nameOk && otherOk && profileForm.occupationId && activitiesOk);
+    return Boolean(nameOk && otherOk && profileForm.occupationId && activitiesOk && !invalidProfileNameFields.size);
   }
 
   async function handleRegisterSubmit(e) {
     e.preventDefault();
+    if (invalidProfileNameFields.size) {
+      setError(nameScriptError([...invalidProfileNameFields][0], isEmail));
+      return;
+    }
     if (!isProfileValid()) return;
     setError("");
     setLoading(true);
     try {
       const client = getApolloClient();
       const variables = {
-        // Rasayesh expects both FA and EN names; fall back to the other
-        // language's value when one side was left blank.
-        firstnameFa: profileForm.firstnameFa || profileForm.firstnameEn,
-        lastnameFa: profileForm.lastnameFa || profileForm.lastnameEn,
-        firstnameEn: profileForm.firstnameEn || profileForm.firstnameFa,
-        lastnameEn: profileForm.lastnameEn || profileForm.lastnameFa,
+        // Keep each language in its own field. The GraphQL schema requires
+        // Persian strings, but an empty string is valid for email-only
+        // registrations; copying an English name into those fields would
+        // violate the profile name-script rule.
+        firstnameFa: profileForm.firstnameFa,
+        lastnameFa: profileForm.lastnameFa,
+        firstnameEn: profileForm.firstnameEn,
+        lastnameEn: profileForm.lastnameEn,
         // No otherContact collected for isEmail (Mobile field removed above)
         // -- $mobile is nullable on this mutation, and Apollo strips
         // undefined variables from the request rather than sending "".
@@ -899,10 +915,12 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                         First Name<span style={{ color: "var(--accent)" }}> *</span>
                       </label>
                       <input
+                        lang="en"
                         dir="ltr"
                         type="text"
                         value={profileForm.firstnameEn}
-                        onChange={(e) => setProfileField("firstnameEn", filterNameByLang(e.target.value, "en"))}
+                        onChange={(e) => setProfileField("firstnameEn", e.target.value)}
+                        aria-invalid={invalidProfileNameFields.has("firstnameEn")}
                         className="w-full rounded-xl px-4 py-3 text-base outline-none border"
                         style={FIELD_STYLE}
                         onFocus={focusAccentBorder}
@@ -910,16 +928,19 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                         placeholder="First name"
                         autoComplete="given-name"
                       />
+                      {invalidProfileNameFields.has("firstnameEn") && <p className="mt-1 text-xs" role="alert" style={{ color: "#ff6b6b" }}>{nameScriptError("firstnameEn", isEmail)}</p>}
                     </div>
                     <div>
                       <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
                         Last Name<span style={{ color: "var(--accent)" }}> *</span>
                       </label>
                       <input
+                        lang="en"
                         dir="ltr"
                         type="text"
                         value={profileForm.lastnameEn}
-                        onChange={(e) => setProfileField("lastnameEn", filterNameByLang(e.target.value, "en"))}
+                        onChange={(e) => setProfileField("lastnameEn", e.target.value)}
+                        aria-invalid={invalidProfileNameFields.has("lastnameEn")}
                         className="w-full rounded-xl px-4 py-3 text-base outline-none border"
                         style={FIELD_STYLE}
                         onFocus={focusAccentBorder}
@@ -927,6 +948,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                         placeholder="Last name"
                         autoComplete="family-name"
                       />
+                      {invalidProfileNameFields.has("lastnameEn") && <p className="mt-1 text-xs" role="alert" style={{ color: "#ff6b6b" }}>{nameScriptError("lastnameEn", isEmail)}</p>}
                     </div>
                   </>
                 ) : (
@@ -936,10 +958,12 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                         نام<span style={{ color: "var(--accent)" }}> *</span>
                       </label>
                       <input
+                        lang="fa"
                         dir="rtl"
                         type="text"
                         value={profileForm.firstnameFa}
-                        onChange={(e) => setProfileField("firstnameFa", filterNameByLang(e.target.value, "fa"))}
+                        onChange={(e) => setProfileField("firstnameFa", e.target.value)}
+                        aria-invalid={invalidProfileNameFields.has("firstnameFa")}
                         className="w-full rounded-xl px-4 py-3 text-base outline-none border"
                         style={FIELD_STYLE}
                         onFocus={focusAccentBorder}
@@ -947,16 +971,19 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                         placeholder="نام"
                         autoComplete="given-name"
                       />
+                      {invalidProfileNameFields.has("firstnameFa") && <p className="mt-1 text-xs" role="alert" style={{ color: "#ff6b6b" }}>{nameScriptError("firstnameFa", isEmail)}</p>}
                     </div>
                     <div>
                       <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
                         نام خانوادگی<span style={{ color: "var(--accent)" }}> *</span>
                       </label>
                       <input
+                        lang="fa"
                         dir="rtl"
                         type="text"
                         value={profileForm.lastnameFa}
-                        onChange={(e) => setProfileField("lastnameFa", filterNameByLang(e.target.value, "fa"))}
+                        onChange={(e) => setProfileField("lastnameFa", e.target.value)}
+                        aria-invalid={invalidProfileNameFields.has("lastnameFa")}
                         className="w-full rounded-xl px-4 py-3 text-base outline-none border"
                         style={FIELD_STYLE}
                         onFocus={focusAccentBorder}
@@ -964,16 +991,19 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                         placeholder="نام خانوادگی"
                         autoComplete="family-name"
                       />
+                      {invalidProfileNameFields.has("lastnameFa") && <p className="mt-1 text-xs" role="alert" style={{ color: "#ff6b6b" }}>{nameScriptError("lastnameFa", isEmail)}</p>}
                     </div>
                     <div>
                       <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
                         نام انگلیسی<span style={{ color: "var(--accent)" }}> *</span>
                       </label>
                       <input
+                        lang="en"
                         dir="ltr"
                         type="text"
                         value={profileForm.firstnameEn}
-                        onChange={(e) => setProfileField("firstnameEn", filterNameByLang(e.target.value, "en"))}
+                        onChange={(e) => setProfileField("firstnameEn", e.target.value)}
+                        aria-invalid={invalidProfileNameFields.has("firstnameEn")}
                         className="w-full rounded-xl px-4 py-3 text-base outline-none border"
                         style={FIELD_STYLE}
                         onFocus={focusAccentBorder}
@@ -981,16 +1011,19 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                         placeholder="First name (Latin)"
                         autoComplete="given-name"
                       />
+                      {invalidProfileNameFields.has("firstnameEn") && <p className="mt-1 text-xs" role="alert" style={{ color: "#ff6b6b" }}>{nameScriptError("firstnameEn", isEmail)}</p>}
                     </div>
                     <div>
                       <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>
                         نام خانوادگی انگلیسی<span style={{ color: "var(--accent)" }}> *</span>
                       </label>
                       <input
+                        lang="en"
                         dir="ltr"
                         type="text"
                         value={profileForm.lastnameEn}
-                        onChange={(e) => setProfileField("lastnameEn", filterNameByLang(e.target.value, "en"))}
+                        onChange={(e) => setProfileField("lastnameEn", e.target.value)}
+                        aria-invalid={invalidProfileNameFields.has("lastnameEn")}
                         className="w-full rounded-xl px-4 py-3 text-base outline-none border"
                         style={FIELD_STYLE}
                         onFocus={focusAccentBorder}
@@ -998,6 +1031,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
                         placeholder="Last name (Latin)"
                         autoComplete="family-name"
                       />
+                      {invalidProfileNameFields.has("lastnameEn") && <p className="mt-1 text-xs" role="alert" style={{ color: "#ff6b6b" }}>{nameScriptError("lastnameEn", isEmail)}</p>}
                     </div>
                     <div>
                       <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-dim)" }}>

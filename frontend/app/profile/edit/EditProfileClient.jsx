@@ -12,7 +12,7 @@ import { useAttendee } from "@/app/components/AttendeeProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
-import { toPersianDigits, toEnglishDigits } from "@/lib/utils";
+import { getInvalidProfileNameFields, toPersianDigits, toEnglishDigits } from "@/lib/utils";
 import { hapticSuccess, hapticError } from "@/lib/haptics";
 import { getMissingFields } from "@/lib/profileCompletion";
 
@@ -195,6 +195,18 @@ function Card({ title, children }) {
   );
 }
 
+function nameScriptError(field, isEN) {
+  const isPersianField = field.endsWith("Fa");
+  if (isEN) {
+    return isPersianField
+      ? "Persian names can only contain Persian/Arabic-script letters, spaces, ZWNJ, and hyphens."
+      : "English names can only contain Latin letters, spaces, hyphens, and apostrophes.";
+  }
+  return isPersianField
+    ? "نام فارسی فقط می‌تواند شامل حروف فارسی/عربی، فاصله، نیم‌فاصله و خط تیره باشد."
+    : "نام انگلیسی فقط می‌تواند شامل حروف لاتین، فاصله، خط تیره و آپاستروف باشد.";
+}
+
 function SaveButton({ onClick, saving, saved }) {
   return (
     <button
@@ -271,6 +283,7 @@ export default function EditProfileClient() {
   // first paint) and any later update -- this only closes the gap for the
   // common case where the data was already there from frame one.
   const [form, setForm] = useState(() => attendeeData ? mapAttendeeToForm(attendeeData) : EMPTY_FORM);
+  const invalidNameFields = new Set(getInvalidProfileNameFields(form));
 
   const [formOptions, setFormOptions] = useState({ occupations: [], fieldOfActivities: [], educationLevels: [] });
   const [optionsLoading, setOptionsLoading] = useState(true);
@@ -399,6 +412,10 @@ export default function EditProfileClient() {
 
   async function confirmCrop() {
     if (!cropSrc || !croppedAreaPixels) return;
+    if (invalidNameFields.size) {
+      setPhotoError(nameScriptError([...invalidNameFields][0], isEN));
+      return;
+    }
     setUploadingPhoto(true);
     setPhotoError("");
     try {
@@ -444,6 +461,11 @@ export default function EditProfileClient() {
   // ── Text-field save handlers ──────────────────────────────────────────────
 
   async function saveInfo() {
+    if (invalidNameFields.size) {
+      hapticError();
+      setInfoState({ saving: false, saved: false, error: nameScriptError([...invalidNameFields][0], isEN) });
+      return;
+    }
     setInfoState({ saving: true, saved: false, error: "" });
     try {
       const client = getApolloClient();
@@ -843,13 +865,15 @@ export default function EditProfileClient() {
             {editLang === "fa" ? (
               <>
                 <Field label={t(lang, "edit_firstname")}>
-                  <input dir="rtl" type="text" value={form.firstnameFa}
+                  <input lang="fa" dir="rtl" type="text" value={form.firstnameFa}
                     onChange={(e) => set("firstnameFa", e.target.value)}
                     style={{ ...INPUT_STYLE, ...highlightStyle("firstname_fa") }} />
+                  {invalidNameFields.has("firstnameFa") && <p className="mt-1 text-xs" role="alert" style={{ color: "#ef4444" }}>{nameScriptError("firstnameFa", isEN)}</p>}
                 </Field>
                 <Field label={t(lang, "edit_lastname")}>
-                  <input dir="rtl" type="text" value={form.lastnameFa}
+                  <input lang="fa" dir="rtl" type="text" value={form.lastnameFa}
                     onChange={(e) => set("lastnameFa", e.target.value)} style={INPUT_STYLE} />
+                  {invalidNameFields.has("lastnameFa") && <p className="mt-1 text-xs" role="alert" style={{ color: "#ef4444" }}>{nameScriptError("lastnameFa", isEN)}</p>}
                 </Field>
                 <Field label={t(lang, "edit_job_title")}>
                   <input dir="rtl" type="text" value={form.jobTitleFa}
@@ -868,12 +892,14 @@ export default function EditProfileClient() {
             ) : (
               <>
                 <Field label={t(lang, "edit_firstname")}>
-                  <input dir="ltr" type="text" value={form.firstnameEn}
+                  <input lang="en" dir="ltr" type="text" value={form.firstnameEn}
                     onChange={(e) => set("firstnameEn", e.target.value)} style={INPUT_STYLE} />
+                  {invalidNameFields.has("firstnameEn") && <p className="mt-1 text-xs" role="alert" style={{ color: "#ef4444" }}>{nameScriptError("firstnameEn", isEN)}</p>}
                 </Field>
                 <Field label={t(lang, "edit_lastname")}>
-                  <input dir="ltr" type="text" value={form.lastnameEn}
+                  <input lang="en" dir="ltr" type="text" value={form.lastnameEn}
                     onChange={(e) => set("lastnameEn", e.target.value)} style={INPUT_STYLE} />
+                  {invalidNameFields.has("lastnameEn") && <p className="mt-1 text-xs" role="alert" style={{ color: "#ef4444" }}>{nameScriptError("lastnameEn", isEN)}</p>}
                 </Field>
                 <Field label={t(lang, "edit_job_title")}>
                   <input dir="ltr" type="text" value={form.jobTitleEn}

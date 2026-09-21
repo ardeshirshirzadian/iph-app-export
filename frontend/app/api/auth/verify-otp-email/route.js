@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
-import { extractProfilePhotoUrl } from '@/lib/utils';
+import { extractProfilePhotoUrl, isNameValidForLang } from '@/lib/utils';
 import { getCurrentEventId } from '@/lib/currentEvent';
 
 const otpAttempts = new Map();
@@ -126,6 +126,11 @@ export async function POST(request) {
 }
 
 async function upsertAppUser(u, eventId) {
+  const firstnameFaValid = isNameValidForLang(u.firstname_fa, 'fa');
+  const lastnameFaValid = isNameValidForLang(u.lastname_fa, 'fa');
+  const firstnameEnValid = isNameValidForLang(u.firstname_en, 'en');
+  const lastnameEnValid = isNameValidForLang(u.lastname_en, 'en');
+
   await query(
     `INSERT INTO app_users (
       event_id, rasayesh_id, uuid, firstname_fa, lastname_fa, firstname_en, lastname_en,
@@ -140,10 +145,10 @@ async function upsertAppUser(u, eventId) {
     )
     ON CONFLICT (event_id, uuid) DO UPDATE SET
       rasayesh_id     = EXCLUDED.rasayesh_id,
-      firstname_fa    = EXCLUDED.firstname_fa,
-      lastname_fa     = EXCLUDED.lastname_fa,
-      firstname_en    = EXCLUDED.firstname_en,
-      lastname_en     = EXCLUDED.lastname_en,
+      firstname_fa    = CASE WHEN $26 THEN EXCLUDED.firstname_fa ELSE app_users.firstname_fa END,
+      lastname_fa     = CASE WHEN $27 THEN EXCLUDED.lastname_fa ELSE app_users.lastname_fa END,
+      firstname_en    = CASE WHEN $28 THEN EXCLUDED.firstname_en ELSE app_users.firstname_en END,
+      lastname_en     = CASE WHEN $29 THEN EXCLUDED.lastname_en ELSE app_users.lastname_en END,
       mobile          = EXCLUDED.mobile,
       email           = EXCLUDED.email,
       national_code   = EXCLUDED.national_code,
@@ -166,14 +171,19 @@ async function upsertAppUser(u, eventId) {
       login_count     = app_users.login_count + 1`,
     [
       eventId,
-      u.id ?? null, u.uuid, u.firstname_fa ?? null, u.lastname_fa ?? null,
-      u.firstname_en ?? null, u.lastname_en ?? null, u.mobile ?? null, u.email ?? null,
+      u.id ?? null, u.uuid,
+      firstnameFaValid ? (u.firstname_fa ?? null) : null,
+      lastnameFaValid ? (u.lastname_fa ?? null) : null,
+      firstnameEnValid ? (u.firstname_en ?? null) : null,
+      lastnameEnValid ? (u.lastname_en ?? null) : null,
+      u.mobile ?? null, u.email ?? null,
       u.national_code ?? null, u.job_title_fa ?? null, u.job_title_en ?? null,
       u.phone ?? null, u.industry_id ?? null, u.occupation_id ?? null,
       u.country_id ?? null, u.state_id ?? null, u.address_fa ?? null,
       u.address_en ?? null, u.postal_code ?? null, u.is_foreign ?? null,
       u.mobile_verified ?? null, u.email_verified ?? null,
       extractProfilePhotoUrl(u.profile), JSON.stringify(u),
+      firstnameFaValid, lastnameFaValid, firstnameEnValid, lastnameEnValid,
     ]
   );
 }

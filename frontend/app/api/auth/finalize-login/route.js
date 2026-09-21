@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
-import { extractProfilePhotoUrl } from '@/lib/utils';
+import { extractProfilePhotoUrl, isNameValidForLang } from '@/lib/utils';
 import { getCurrentEventId } from '@/lib/currentEvent';
 import { getOrCreateReferralCode } from '@/lib/referralCode';
 
@@ -65,6 +65,11 @@ export async function POST(request) {
 }
 
 async function upsertAppUser(u, eventId) {
+  const firstnameFaValid = isNameValidForLang(u.firstname_fa, 'fa');
+  const lastnameFaValid = isNameValidForLang(u.lastname_fa, 'fa');
+  const firstnameEnValid = isNameValidForLang(u.firstname_en, 'en');
+  const lastnameEnValid = isNameValidForLang(u.lastname_en, 'en');
+
   // RETURNING (xmax = 0) AS was_inserted -- the standard Postgres idiom for
   // telling a fresh INSERT apart from an ON CONFLICT DO UPDATE in one
   // statement (xmax is only left at 0 by a real insert). Used below to
@@ -84,10 +89,10 @@ async function upsertAppUser(u, eventId) {
     )
     ON CONFLICT (event_id, uuid) DO UPDATE SET
       rasayesh_id     = EXCLUDED.rasayesh_id,
-      firstname_fa    = EXCLUDED.firstname_fa,
-      lastname_fa     = EXCLUDED.lastname_fa,
-      firstname_en    = EXCLUDED.firstname_en,
-      lastname_en     = EXCLUDED.lastname_en,
+      firstname_fa    = CASE WHEN $26 THEN EXCLUDED.firstname_fa ELSE app_users.firstname_fa END,
+      lastname_fa     = CASE WHEN $27 THEN EXCLUDED.lastname_fa ELSE app_users.lastname_fa END,
+      firstname_en    = CASE WHEN $28 THEN EXCLUDED.firstname_en ELSE app_users.firstname_en END,
+      lastname_en     = CASE WHEN $29 THEN EXCLUDED.lastname_en ELSE app_users.lastname_en END,
       mobile          = EXCLUDED.mobile,
       email           = EXCLUDED.email,
       national_code   = EXCLUDED.national_code,
@@ -113,10 +118,10 @@ async function upsertAppUser(u, eventId) {
       eventId,
       u.id ?? null,
       u.uuid,
-      u.firstname_fa ?? null,
-      u.lastname_fa ?? null,
-      u.firstname_en ?? null,
-      u.lastname_en ?? null,
+      firstnameFaValid ? (u.firstname_fa ?? null) : null,
+      lastnameFaValid ? (u.lastname_fa ?? null) : null,
+      firstnameEnValid ? (u.firstname_en ?? null) : null,
+      lastnameEnValid ? (u.lastname_en ?? null) : null,
       u.mobile ?? null,
       u.email ?? null,
       u.national_code ?? null,
@@ -135,6 +140,10 @@ async function upsertAppUser(u, eventId) {
       u.email_verified ?? null,
       extractProfilePhotoUrl(u.profile),
       JSON.stringify(u),
+      firstnameFaValid,
+      lastnameFaValid,
+      firstnameEnValid,
+      lastnameEnValid,
     ]
   );
 

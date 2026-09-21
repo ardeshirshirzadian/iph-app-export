@@ -9,7 +9,7 @@ import BottomNav from "@/app/components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { useAuth } from "@/hooks/useAuth";
 import { useLang } from "@/lib/useLang";
-import { toPersianDigits, toEnglishDigits } from "@/lib/utils";
+import { getInvalidProfileNameFields, toPersianDigits, toEnglishDigits } from "@/lib/utils";
 
 const ATTENDEE_QUERY = gql`
   query GetAttendee {
@@ -97,6 +97,18 @@ function SectionCard({ title, children }) {
   );
 }
 
+function nameScriptError(field, isEN) {
+  const isPersianField = field.endsWith("Fa");
+  if (isEN) {
+    return isPersianField
+      ? "Persian names can only contain Persian/Arabic-script letters, spaces, ZWNJ, and hyphens."
+      : "English names can only contain Latin letters, spaces, hyphens, and apostrophes.";
+  }
+  return isPersianField
+    ? "نام فارسی فقط می‌تواند شامل حروف فارسی/عربی، فاصله، نیم‌فاصله و خط تیره باشد."
+    : "نام انگلیسی فقط می‌تواند شامل حروف لاتین، فاصله، خط تیره و آپاستروف باشد.";
+}
+
 export default function ProfileUpdateClient() {
   const { user } = useAuth();
   const router = useRouter();
@@ -113,6 +125,7 @@ export default function ProfileUpdateClient() {
   const [optionsLoading, setOptionsLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const invalidNameFields = new Set(getInvalidProfileNameFields(form));
 
   // Pre-fill from user cookie
   useEffect(() => {
@@ -178,6 +191,12 @@ export default function ProfileUpdateClient() {
 
     if (!form.firstnameFa || !form.lastnameFa || !form.firstnameEn || !form.lastnameEn) {
       setError(isEN ? "Please fill in all required fields" : "لطفا تمامی فیلدهای الزامی را تکمیل کنید");
+      setSubmitting(false);
+      return;
+    }
+
+    if (invalidNameFields.size) {
+      setError(nameScriptError([...invalidNameFields][0], isEN));
       setSubmitting(false);
       return;
     }
@@ -316,12 +335,14 @@ export default function ProfileUpdateClient() {
             {isEN ? (
               <>
                 <Field label="First Name" required>
-                  <input dir="ltr" type="text" value={form.firstnameEn}
+                  <input lang="en" dir="ltr" type="text" value={form.firstnameEn}
                     onChange={(e) => set("firstnameEn", e.target.value)} style={INPUT_STYLE} />
+                  {invalidNameFields.has("firstnameEn") && <p className="mt-1 text-xs" role="alert" style={{ color: "#ef4444" }}>{nameScriptError("firstnameEn", isEN)}</p>}
                 </Field>
                 <Field label="Last Name" required>
-                  <input dir="ltr" type="text" value={form.lastnameEn}
+                  <input lang="en" dir="ltr" type="text" value={form.lastnameEn}
                     onChange={(e) => set("lastnameEn", e.target.value)} style={INPUT_STYLE} />
+                  {invalidNameFields.has("lastnameEn") && <p className="mt-1 text-xs" role="alert" style={{ color: "#ef4444" }}>{nameScriptError("lastnameEn", isEN)}</p>}
                 </Field>
                 <Field label="Job Title" required>
                   <input dir="ltr" type="text" value={form.jobTitleEn}
@@ -331,20 +352,24 @@ export default function ProfileUpdateClient() {
             ) : (
               <>
                 <Field label="نام" required>
-                  <input dir="rtl" type="text" value={form.firstnameFa}
+                  <input lang="fa" dir="rtl" type="text" value={form.firstnameFa}
                     onChange={(e) => set("firstnameFa", e.target.value)} style={INPUT_STYLE} />
+                  {invalidNameFields.has("firstnameFa") && <p className="mt-1 text-xs" role="alert" style={{ color: "#ef4444" }}>{nameScriptError("firstnameFa", isEN)}</p>}
                 </Field>
                 <Field label="نام خانوادگی" required>
-                  <input dir="rtl" type="text" value={form.lastnameFa}
+                  <input lang="fa" dir="rtl" type="text" value={form.lastnameFa}
                     onChange={(e) => set("lastnameFa", e.target.value)} style={INPUT_STYLE} />
+                  {invalidNameFields.has("lastnameFa") && <p className="mt-1 text-xs" role="alert" style={{ color: "#ef4444" }}>{nameScriptError("lastnameFa", isEN)}</p>}
                 </Field>
                 <Field label="نام انگلیسی" required>
-                  <input dir="ltr" type="text" value={form.firstnameEn}
+                  <input lang="en" dir="ltr" type="text" value={form.firstnameEn}
                     onChange={(e) => set("firstnameEn", e.target.value)} style={INPUT_STYLE} />
+                  {invalidNameFields.has("firstnameEn") && <p className="mt-1 text-xs" role="alert" style={{ color: "#ef4444" }}>{nameScriptError("firstnameEn", isEN)}</p>}
                 </Field>
                 <Field label="نام خانوادگی انگلیسی" required>
-                  <input dir="ltr" type="text" value={form.lastnameEn}
+                  <input lang="en" dir="ltr" type="text" value={form.lastnameEn}
                     onChange={(e) => set("lastnameEn", e.target.value)} style={INPUT_STYLE} />
+                  {invalidNameFields.has("lastnameEn") && <p className="mt-1 text-xs" role="alert" style={{ color: "#ef4444" }}>{nameScriptError("lastnameEn", isEN)}</p>}
                 </Field>
                 <Field label="سمت شغلی" required>
                   <input dir="rtl" type="text" value={form.jobTitleFa}

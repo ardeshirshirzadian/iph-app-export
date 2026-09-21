@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { getInvalidProfileNameFields } from '@/lib/utils';
 
 // Companion to finalize-login/verify-otp's upsertAppUser and to
 // sync-profile-photo -- keeps two places that are otherwise only ever
@@ -50,6 +51,22 @@ export async function POST(request) {
     hasOccupationId = Object.prototype.hasOwnProperty.call(body, 'occupationId');
   } catch {
     return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
+  }
+
+  const invalidNameFields = getInvalidProfileNameFields({
+    firstnameFa,
+    lastnameFa,
+    firstnameEn,
+    lastnameEn,
+  });
+  if (invalidNameFields.length) {
+    return NextResponse.json(
+      {
+        error: 'Name fields must use their matching Persian or English script',
+        fields: invalidNameFields,
+      },
+      { status: 400 }
+    );
   }
 
   try {
