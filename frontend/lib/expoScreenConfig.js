@@ -39,6 +39,9 @@ export const DEFAULT_EXPO_SCREEN_CONFIG = {
   qr_fg_color_hex: '', // empty = dark #0b1220 modules
   qr_bg_color_hex: '', // empty = light #ffffff QR matrix and quiet zone
   qr_size: 180,
+  // Vertical space between the three fixed download boxes. The renderer
+  // derives box height from this and qr_size so both ends stay aligned.
+  download_box_gap: 18,
   leaderboard_people_count: 3,
   // Plain placeholder, deliberately NOT event-derived -- admin fills in the
   // real per-event text (e.g. "لیدربورد ایران فارما").
