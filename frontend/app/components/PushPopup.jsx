@@ -24,7 +24,10 @@ function SvgIcon({ path, size, colorDark, colorLight }) {
     return () => observer.disconnect();
   }, []);
 
-  const color = isLight ? (colorLight || "#0f172a") : (colorDark || "#ffffff");
+  // The per-theme prompt-icon overrides remain available, but the fallback
+  // follows the active event's global text token instead of static dark/light
+  // literals.
+  const color = isLight ? (colorLight || "var(--text)") : (colorDark || "var(--text)");
 
   return (
     <span
@@ -108,7 +111,10 @@ export default function PushPopup({ pushPrompt, lang }) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center px-4"
-      style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
+      style={{
+        background: "color-mix(in srgb, var(--bg) 72%, transparent)",
+        backdropFilter: 'blur(4px)',
+      }}
     >
       <div
         className="w-full max-w-sm rounded-3xl p-6"
@@ -167,7 +173,7 @@ export default function PushPopup({ pushPrompt, lang }) {
                     className="text-sm font-bold rounded-xl px-5 py-2"
                     style={{
                       background: "var(--accent)",
-                      color: "var(--bg)",
+                      color: "var(--btn-primary-text)",
                       opacity: status === 'loading' ? 0.7 : 1,
                     }}
                   >
