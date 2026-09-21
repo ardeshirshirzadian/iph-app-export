@@ -5,11 +5,10 @@ const RASAYESH_BASE = 'https://api.rasayesh.com/';
 // Profile names are validated, rather than filtered on keydown/onChange, so
 // paste, autofill and IME composition retain exactly what the user entered
 // and receive a clear error when the script is wrong. The Persian range
-// covers Arabic-script letters used in Persian names plus Arabic combining
-// marks, ZWNJ, spaces and hyphens. The English rule intentionally remains
-// Latin-only and allows the common English-name separators.
-const PERSIAN_NAME_RE = /^[\u0621-\u063A\u0640-\u064A\u064B-\u065F\u0670\u0671-\u06D3\u06FA-\u06FF\u200C\s-]+$/u;
-const ENGLISH_NAME_RE = /^[A-Za-z\s'-]+$/;
+// Names are alphabetic only. Spaces are permitted as word separators; no
+// punctuation, digits, combining marks, or invisible separators are allowed.
+const PERSIAN_NAME_RE = /^[\u0621-\u063A\u0641-\u064A\u0671-\u06D3\u06FA-\u06FF ]+$/u;
+const ENGLISH_NAME_RE = /^[A-Za-z ]+$/;
 
 export function isNameValidForLang(value, script) {
   // Name-requiredness is owned by the existing forms. This helper only
