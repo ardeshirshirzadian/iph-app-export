@@ -1,4 +1,5 @@
 import { query } from '@/lib/db';
+import { grantUnlimitedReferralXp as grantSharedUnlimitedReferralXp } from '@/lib/referralRewards';
 
 // Runs after ANY of a referrer's redemptions transitions to 'confirmed' --
 // called from both the synchronous redeem route and the async
@@ -23,28 +24,7 @@ import { query } from '@/lib/db';
 // save-time in iph-apn's admin routes (see quest-missions POST/[id] PUT),
 // not re-checked here.
 export async function grantUnlimitedReferralXp(referrerUuid, eventId, redemptionId) {
-  const { rows } = await query(
-    `SELECT referral_per_invite_xp FROM quest_content
-     WHERE event_id = $1 AND mission_type = 'referral_code' AND is_active = true
-       AND referral_is_unlimited = true
-     LIMIT 1`,
-    [eventId]
-  );
-  if (rows.length === 0) return;
-  const perInviteXp = rows[0].referral_per_invite_xp || 0;
-  if (perInviteXp <= 0) return;
-
-  // quest_xp_grants' (user_uuid, source_type, source_id) unique index is the
-  // idempotency guard, same pattern evaluateReferralTiers()/
-  // grantProfilePhotoMissionXp() already use -- keyed by redemptionId (not
-  // missionId), since this reward repeats once per redemption rather than
-  // once per mission/tier.
-  await query(
-    `INSERT INTO quest_xp_grants (user_uuid, source_type, source_id, xp_amount, event_id)
-     VALUES ($1, 'referral_referrer_unlimited', $2, $3, $4)
-     ON CONFLICT (user_uuid, source_type, source_id) DO NOTHING`,
-    [referrerUuid, redemptionId, perInviteXp, eventId]
-  );
+  return grantSharedUnlimitedReferralXp(query, referrerUuid, eventId, redemptionId);
 }
 
 // Shared gate: is there a currently active unlimited-mode referral_code

@@ -1,8 +1,7 @@
 import { query } from '@/lib/db';
 import { getRasayeshEventInfo } from '@/lib/publicRasayeshClient';
 import { getCurrentEventId } from '@/lib/currentEvent';
-import { evaluateReferralTiers } from '@/lib/referralTiers';
-import { grantUnlimitedReferralXp } from '@/lib/referralUnlimited';
+import { awardConfirmedReferralXp, getReferralRefereeXp } from '@/lib/referralRewards';
 
 const RASAYESH_URL = 'https://api.rasayesh.com/graphql';
 const MAX_RECHECK_ATTEMPTS = 3;
@@ -122,13 +121,7 @@ export async function POST(request) {
     // referral_referee_xp isn't mode-specific, so don't exclude unlimited
     // missions from being the source -- prefer the lowest tiered mission
     // (NULLS LAST) but fall back to an active unlimited mission otherwise.
-    const lowestTier = await query(
-      `SELECT referral_referee_xp FROM quest_content
-       WHERE event_id = $1 AND mission_type = 'referral_code' AND is_active = true
-       ORDER BY referral_required_count ASC NULLS LAST LIMIT 1`,
-      [currentEventId]
-    );
-    const refereeXp = lowestTier.rows[0]?.referral_referee_xp || 0;
+    const refereeXp = await getReferralRefereeXp(query, currentEventId);
 
     await query(
       `UPDATE quest_referral_redemptions
@@ -136,17 +129,13 @@ export async function POST(request) {
        WHERE id = $3`,
       [refereeXp, nextAttempts, redemption.id]
     );
-    if (refereeXp > 0) {
-      await query(
-        `INSERT INTO quest_xp_grants (user_uuid, source_type, source_id, xp_amount, event_id)
-         VALUES ($1, 'referral_referee', $2, $3, $4)
-         ON CONFLICT (user_uuid, source_type, source_id) DO NOTHING`,
-        [uuid, redemption.id, refereeXp, currentEventId]
-      );
-    }
-    await evaluateReferralTiers(redemption.referrer_user_uuid, currentEventId);
-    // Additive, independent reward path -- see lib/referralUnlimited.js.
-    await grantUnlimitedReferralXp(redemption.referrer_user_uuid, currentEventId, redemption.id);
+    await awardConfirmedReferralXp(query, {
+      refereeUuid: uuid,
+      referrerUuid: redemption.referrer_user_uuid,
+      eventId: currentEventId,
+      redemptionId: redemption.id,
+      refereeXp,
+    });
 
     return Response.json({ outcome: 'confirmed' });
   } catch (err) {
