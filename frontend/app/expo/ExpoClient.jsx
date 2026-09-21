@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { QRCodeSVG } from 'qrcode.react';
 import { toPersianDigits } from '@/lib/utils';
+import { getExpoTitleFontWeight } from '@/lib/expoTitleFontWeight';
 
 // Kiosk display: unattended, always-on, tab always "visible" (no
 // visibilitychange pause like QuestClient's poller -- there's no user to
@@ -71,7 +72,7 @@ function RankIcon({ rankIcon, rank, size, fallbackColor }) {
 }
 
 // Row built LEFT-to-RIGHT (per the outer LTR layout convention -- see
-// FixedLayout's own comment): XP score leftmost, then the name, then the
+// ExpoLayout's own comment): XP score leftmost, then the name, then the
 // avatar photo, then the rank medal icon rightmost -- per explicit product
 // feedback on the first live screenshot (swapped from the original
 // icon+avatar-left / name+score-right arrangement).
@@ -242,18 +243,16 @@ function displayDomain(url) {
   return url.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
 }
 
-// One of the three fixed download boxes (Bazaar / Myket / web version) --
+// One of the three download boxes (Bazaar / Myket / Web App) --
 // same rectangular box (label + admin-uploadable logo) for all three, and
 // per explicit product decision NONE of them are clickable/tappable --
-// Bazaar/Myket just indicate availability there, and the web box just
-// displays its plain address text, no live link on this kiosk screen.
+// they just indicate availability on the respective platform. The web URL
+// is intentionally displayed only underneath the QR code by QrBlock.
 // Logo stays fixed on the left (first child, inherited LTR direction from
-// FixedLayout); the text block is flex:1 + textAlign right so it hugs the
+// ExpoLayout); the text block is flex:1 + textAlign right so it hugs the
 // box's right edge regardless of label length, instead of clustering at
-// flex-start and leaving a ragged gap for short labels. `subLabel` (used
-// only by the web box) renders as a second, smaller/muted line -- e.g. the
-// "نسخه وب اپلیکیشن" main label above the app.iphexpo.com address.
-function StoreBox({ label, subLabel, logoPath, colors, fontSize, subFontSize }) {
+// flex-start and leaving a ragged gap for short labels.
+function StoreBox({ label, logoPath, colors, fontSize }) {
   return (
     <div
       style={{
@@ -287,34 +286,20 @@ function StoreBox({ label, subLabel, logoPath, colors, fontSize, subFontSize }) 
         >
           {label}
         </div>
-        {subLabel ? (
-          <div
-            style={{
-              fontSize: subFontSize,
-              fontWeight: 500,
-              color: colors.textMuted,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              marginTop: 2,
-            }}
-          >
-            {subLabel}
-          </div>
-        ) : null}
       </div>
     </div>
   );
 }
 
-// The one and only layout: fixed positions, admin controls content/colors,
-// not placement. Replaces Phase 0/1's vertical/horizontal presets entirely
-// -- see the Phase 2 decision in lib/expoScreenConfig.js's own comments.
+// The one and only live flex layout: admin controls content/colors, not
+// placement. Replaces Phase 0/1's vertical/horizontal presets entirely --
+// see the Phase 2 decision in lib/expoScreenConfig.js's own comments.
 // Built LTR at the outer level purely for unambiguous "top-right"/
 // "bottom-left" geometry regardless of Persian text direction; each
 // text-bearing child sets its own dir="rtl" independently.
-function FixedLayout({ logo, appUrl, config, colors, rankIcons, leaderboard, fading }) {
+function ExpoLayout({ logo, appUrl, config, colors, rankIcons, leaderboard, fading }) {
   const slogan = typeof config.slogan_text === 'string' ? config.slogan_text.trim() : '';
+  const titleFontWeight = getExpoTitleFontWeight(config.title_font_weight);
   return (
     <div
       style={{
@@ -342,7 +327,7 @@ function FixedLayout({ logo, appUrl, config, colors, rankIcons, leaderboard, fad
 
       {/* Middle: admin-editable title centered above the live leaderboard. */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 28 }}>
-        <div dir="rtl" style={{ width: '100%', maxWidth: 860, fontSize: config.title_font_size, fontWeight: 800, color: colors.text, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div dir="rtl" style={{ width: '100%', maxWidth: 860, fontSize: config.title_font_size, fontWeight: titleFontWeight, color: colors.text, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {config.title_text}
         </div>
         <LeaderboardBlock
@@ -355,7 +340,7 @@ function FixedLayout({ logo, appUrl, config, colors, rankIcons, leaderboard, fad
         />
       </div>
 
-      {/* Bottom: optional slogan above the two store boxes and QR/web address. */}
+      {/* Bottom: optional slogan above three store boxes and the QR/web address. */}
       <div style={{ position: 'relative' }}>
         {slogan && (
           <div dir="rtl" style={{ position: 'absolute', right: 0, bottom: 'calc(100% + 24px)', width: '100%', fontSize: config.slogan_font_size ?? 34, fontWeight: 800, lineHeight: 1.4, color: colors.text, textAlign: 'right' }}>
@@ -366,6 +351,7 @@ function FixedLayout({ logo, appUrl, config, colors, rankIcons, leaderboard, fad
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <StoreBox label={config.download_label_1 ?? 'دانلود از کافه بازار'} logoPath={config.bazaar_logo_path} colors={colors} fontSize={config.box_label_font_size} />
             <StoreBox label={config.download_label_2 ?? 'دانلود از مایکت'} logoPath={config.myket_logo_path} colors={colors} fontSize={config.box_label_font_size} />
+            <StoreBox label={config.download_label_3 ?? 'نسخه وب اپلیکیشن'} logoPath={config.web_logo_path} colors={colors} fontSize={config.box_label_font_size} />
           </div>
           <QrBlock appUrl={appUrl} config={config} colors={colors} />
         </div>
@@ -436,7 +422,7 @@ export default function ExpoClient({ appUrl, initialDisplay }) {
   }, []);
 
   return (
-    <FixedLayout
+    <ExpoLayout
       logo={display.logo}
       appUrl={appUrl}
       config={display.config}

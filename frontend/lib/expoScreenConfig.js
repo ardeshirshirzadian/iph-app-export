@@ -1,6 +1,7 @@
 import { query } from '@/lib/db';
 import { getThemeColors } from '@/lib/getThemeColors';
 import { getCachedQuestContentBlocks, parseQuestBlocks } from '@/lib/questPageCache';
+import { DEFAULT_EXPO_TITLE_FONT_WEIGHT } from '@/lib/expoTitleFontWeight';
 
 // Single JSON-blob-in-app_settings pattern, same shape as
 // referral_share_template_config / plaque templates -- one row per event
@@ -45,6 +46,7 @@ export const DEFAULT_EXPO_SCREEN_CONFIG = {
   slogan_text: '',
   slogan_font_size: 34,
   title_font_size: 34,
+  title_font_weight: DEFAULT_EXPO_TITLE_FONT_WEIGHT,
   name_font_size: 30,
   score_font_size: 28,
   box_label_font_size: 15,
