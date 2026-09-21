@@ -201,7 +201,7 @@ function LeaderboardBlock({ leaderboard, rankIcons, colors, fading, nameFontSize
   );
 }
 
-function QrBlock({ appUrl, config, colors }) {
+function QrBlock({ appUrl, config, colors, qrSize }) {
   // Empty or malformed legacy values use the same plain matrix defaults.
   // Every valid admin-selected hex color passes through unchanged.
   const validHex = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
@@ -213,7 +213,7 @@ function QrBlock({ appUrl, config, colors }) {
   const domain = displayDomain(config.web_link_url || appUrl);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-      <QRCodeSVG value={appUrl} size={config.qr_size} marginSize={4} bgColor={bg} fgColor={fg} level="M" />
+      <QRCodeSVG value={appUrl} size={qrSize} marginSize={4} bgColor={bg} fgColor={fg} level="M" />
       {domain && (
         <div dir="ltr" style={{ fontSize: config.web_address_font_size, fontWeight: 500, color: webAddressColor || colors.textMuted, whiteSpace: 'nowrap' }}>
           {domain}
@@ -252,7 +252,12 @@ function displayDomain(url) {
 // ExpoLayout); the text block is flex:1 + textAlign right so it hugs the
 // box's right edge regardless of label length, instead of clustering at
 // flex-start and leaving a ragged gap for short labels.
-function StoreBox({ label, logoPath, colors, fontSize }) {
+function StoreBox({ label, logoPath, colors, fontSize, height }) {
+  // The APN permits QR sizes as small as 120px. Keep an unusually large
+  // admin-selected label from overflowing a box that was compacted to fit
+  // that QR; normal configured label sizes remain unchanged.
+  const safeFontSize = Math.min(fontSize, height - 4);
+  const labelWasCompacted = safeFontSize !== fontSize;
   return (
     <div
       style={{
@@ -262,7 +267,8 @@ function StoreBox({ label, logoPath, colors, fontSize }) {
         background: colors.rowBg,
         border: `1px solid ${colors.border}`,
         borderRadius: 16,
-        padding: '12px 20px',
+        height,
+        padding: '0 20px',
         width: 300,
         boxSizing: 'border-box',
       }}
@@ -276,8 +282,9 @@ function StoreBox({ label, logoPath, colors, fontSize }) {
       <div dir="rtl" style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
         <div
           style={{
-            fontSize,
+            fontSize: safeFontSize,
             fontWeight: 700,
+            lineHeight: labelWasCompacted ? 1 : undefined,
             color: colors.text,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -291,6 +298,34 @@ function StoreBox({ label, logoPath, colors, fontSize }) {
   );
 }
 
+const DEFAULT_QR_SIZE = 180;
+// 36px logo + the box's two 1px borders: the smallest possible box without
+// clipping its existing logo treatment.
+const MIN_DOWNLOAD_BOX_HEIGHT = 38;
+const MAX_DOWNLOAD_BOX_HEIGHT = 62;
+const PREFERRED_DOWNLOAD_GAP = 18;
+
+function getBottomLayoutMetrics(configuredQrSize) {
+  const parsedQrSize = Number(configuredQrSize);
+  const qrSize = Number.isFinite(parsedQrSize) && parsedQrSize > 0
+    ? parsedQrSize
+    : DEFAULT_QR_SIZE;
+
+  // At the normal 180px QR this produces 48px boxes and 18px gaps (more
+  // separation than the previous 14px). At small QR sizes the boxes compact
+  // only as far as 38px; space-between then naturally reduces the gaps
+  // without allowing overlap or negative space.
+  const boxHeight = Math.min(
+    MAX_DOWNLOAD_BOX_HEIGHT,
+    Math.max(
+      MIN_DOWNLOAD_BOX_HEIGHT,
+      Math.floor((qrSize - (PREFERRED_DOWNLOAD_GAP * 2)) / 3)
+    )
+  );
+
+  return { qrSize, boxHeight };
+}
+
 // The one and only live flex layout: admin controls content/colors, not
 // placement. Replaces Phase 0/1's vertical/horizontal presets entirely --
 // see the Phase 2 decision in lib/expoScreenConfig.js's own comments.
@@ -300,6 +335,7 @@ function StoreBox({ label, logoPath, colors, fontSize }) {
 function ExpoLayout({ logo, appUrl, config, colors, rankIcons, leaderboard, fading }) {
   const slogan = typeof config.slogan_text === 'string' ? config.slogan_text.trim() : '';
   const titleFontWeight = getExpoTitleFontWeight(config.title_font_weight);
+  const { qrSize, boxHeight } = getBottomLayoutMetrics(config.qr_size);
   return (
     <div
       style={{
@@ -347,13 +383,13 @@ function ExpoLayout({ logo, appUrl, config, colors, rankIcons, leaderboard, fadi
             {slogan}
           </div>
         )}
-        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 40 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <StoreBox label={config.download_label_1 ?? 'دانلود از کافه بازار'} logoPath={config.bazaar_logo_path} colors={colors} fontSize={config.box_label_font_size} />
-            <StoreBox label={config.download_label_2 ?? 'دانلود از مایکت'} logoPath={config.myket_logo_path} colors={colors} fontSize={config.box_label_font_size} />
-            <StoreBox label={config.download_label_3 ?? 'نسخه وب اپلیکیشن'} logoPath={config.web_logo_path} colors={colors} fontSize={config.box_label_font_size} />
+        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 40, '--expo-qr-size': `${qrSize}px` }}>
+          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: 'var(--expo-qr-size)' }}>
+            <StoreBox label={config.download_label_1 ?? 'دانلود از کافه بازار'} logoPath={config.bazaar_logo_path} colors={colors} fontSize={config.box_label_font_size} height={boxHeight} />
+            <StoreBox label={config.download_label_2 ?? 'دانلود از مایکت'} logoPath={config.myket_logo_path} colors={colors} fontSize={config.box_label_font_size} height={boxHeight} />
+            <StoreBox label={config.download_label_3 ?? 'نسخه وب اپلیکیشن'} logoPath={config.web_logo_path} colors={colors} fontSize={config.box_label_font_size} height={boxHeight} />
           </div>
-          <QrBlock appUrl={appUrl} config={config} colors={colors} />
+          <QrBlock appUrl={appUrl} config={config} colors={colors} qrSize={qrSize} />
         </div>
       </div>
     </div>
