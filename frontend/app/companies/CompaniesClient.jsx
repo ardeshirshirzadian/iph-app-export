@@ -381,8 +381,15 @@ export default function CompaniesClient({ title, subtitle, title_en, subtitle_en
 
   return (
     <div
-      className="min-h-dvh pb-28"
-      style={{ background: "var(--bg)" }}
+      className="min-h-dvh"
+      style={{
+        background: "var(--bg)",
+        // Matches the shared pb-32 content clearance used by other
+        // fixed-BottomNav pages, plus the inset BottomNav itself reserves
+        // on devices with a home indicator. This lets the final pagination
+        // row scroll above the raised central scan action.
+        paddingBottom: "calc(8rem + env(safe-area-inset-bottom))",
+      }}
       dir={isRTL ? "rtl" : "ltr"}
       lang={lang}
     >
