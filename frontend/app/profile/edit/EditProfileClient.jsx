@@ -12,7 +12,7 @@ import { useAttendee } from "@/app/components/AttendeeProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
-import { getInvalidProfileNameFields, toPersianDigits, toEnglishDigits } from "@/lib/utils";
+import { getInvalidProfileNameFields, nameScriptError, toPersianDigits, toEnglishDigits } from "@/lib/utils";
 import { hapticSuccess, hapticError } from "@/lib/haptics";
 import { getMissingFields } from "@/lib/profileCompletion";
 
@@ -193,18 +193,6 @@ function Card({ title, children }) {
       {children}
     </div>
   );
-}
-
-function nameScriptError(field, isEN) {
-  const isPersianField = field.endsWith("Fa");
-  if (isEN) {
-    return isPersianField
-      ? "Persian names can only contain Persian/Arabic-script letters, spaces, ZWNJ, and hyphens."
-      : "English names can only contain Latin letters, spaces, hyphens, and apostrophes.";
-  }
-  return isPersianField
-    ? "نام فارسی فقط می‌تواند شامل حروف فارسی/عربی، فاصله، نیم‌فاصله و خط تیره باشد."
-    : "نام انگلیسی فقط می‌تواند شامل حروف لاتین، فاصله، خط تیره و آپاستروف باشد.";
 }
 
 function SaveButton({ onClick, saving, saved }) {

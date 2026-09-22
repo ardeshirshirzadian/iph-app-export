@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { gql } from "@apollo/client";
 import { getApolloClient } from "@/lib/apolloClient";
 import { getFormOptions } from "@/lib/formOptionsCache";
-import { getInvalidProfileNameFields, toPersianDigits, toEnglishDigits, toLocalMobile } from "@/lib/utils";
+import { getInvalidProfileNameFields, nameScriptError, toPersianDigits, toEnglishDigits, toLocalMobile } from "@/lib/utils";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 import LangToggle from "@/components/LangToggle";
@@ -44,15 +44,6 @@ const REGISTER_MUTATION = gql`
     )
   }
 `;
-
-function nameScriptError(field, isEmail) {
-  if (field.endsWith("Fa")) {
-    return "نام فارسی فقط می‌تواند شامل حروف فارسی/عربی، فاصله، نیم‌فاصله و خط تیره باشد.";
-  }
-  return isEmail
-    ? "English names can only contain Latin letters, spaces, hyphens, and apostrophes."
-    : "نام انگلیسی فقط می‌تواند شامل حروف لاتین، فاصله، خط تیره و آپاستروف باشد.";
-}
 
 const FIELD_STYLE = {
   background: "var(--surface-2)",

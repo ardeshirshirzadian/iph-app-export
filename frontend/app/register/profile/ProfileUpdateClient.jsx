@@ -9,7 +9,7 @@ import BottomNav from "@/app/components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { useAuth } from "@/hooks/useAuth";
 import { useLang } from "@/lib/useLang";
-import { getInvalidProfileNameFields, toPersianDigits, toEnglishDigits } from "@/lib/utils";
+import { getInvalidProfileNameFields, nameScriptError, toPersianDigits, toEnglishDigits } from "@/lib/utils";
 
 const ATTENDEE_QUERY = gql`
   query GetAttendee {
@@ -95,18 +95,6 @@ function SectionCard({ title, children }) {
       {children}
     </div>
   );
-}
-
-function nameScriptError(field, isEN) {
-  const isPersianField = field.endsWith("Fa");
-  if (isEN) {
-    return isPersianField
-      ? "Persian names can only contain Persian/Arabic-script letters, spaces, ZWNJ, and hyphens."
-      : "English names can only contain Latin letters, spaces, hyphens, and apostrophes.";
-  }
-  return isPersianField
-    ? "نام فارسی فقط می‌تواند شامل حروف فارسی/عربی، فاصله، نیم‌فاصله و خط تیره باشد."
-    : "نام انگلیسی فقط می‌تواند شامل حروف لاتین، فاصله، خط تیره و آپاستروف باشد.";
 }
 
 export default function ProfileUpdateClient() {

@@ -28,6 +28,22 @@ export function getInvalidProfileNameFields({ firstnameFa, lastnameFa, firstname
   ].filter(([, value, script]) => !isNameValidForLang(value, script)).map(([field]) => field);
 }
 
+// Single source of truth for the error text shown next to an invalid name
+// field, so the three copies of this message (login/registration,
+// register/profile, profile/edit) can't drift out of sync with
+// PERSIAN_NAME_RE/ENGLISH_NAME_RE above the way they previously did.
+export function nameScriptError(field, uiIsEnglish) {
+  const isPersianField = field.endsWith('Fa');
+  if (uiIsEnglish) {
+    return isPersianField
+      ? 'Persian names can only contain Persian/Arabic-script letters and spaces.'
+      : 'English names can only contain Latin letters and spaces.';
+  }
+  return isPersianField
+    ? 'نام فارسی فقط می‌تواند شامل حروف فارسی/عربی و فاصله باشد.'
+    : 'نام انگلیسی فقط می‌تواند شامل حروف لاتین و فاصله باشد.';
+}
+
 // Mirrors the profile?.jpg?.['128'] pattern used in ProfileClient.jsx.
 // Tries jpg → webp → png, largest size first, returns absolute URL or null.
 export function extractProfilePhotoUrl(profile) {
