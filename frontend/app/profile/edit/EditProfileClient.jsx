@@ -489,16 +489,11 @@ export default function EditProfileClient() {
         setInfoState({ saving: false, saved: false, error: msg });
         return;
       }
-      client.cache.evict({ fieldName: 'getAttendee' });
-      client.cache.evict({ fieldName: 'attendee' });
-      client.cache.gc();
-      await refetch();
-      // Fire-and-forget: keeps app_users/quest_user_names (leaderboard) and
-      // the iph_user cookie (Quest page's name box, via /api/quest/stats) in
-      // sync with this edit -- neither is otherwise touched between logins
-      // (see 2026-09-14 investigation). Never blocks the user from seeing
-      // their own successful save.
-      fetch('/api/auth/sync-profile-info', {
+      // app_users is the event-scoped display-name source for Quest and for
+      // a locally corrected Profile/Badge. Complete this companion write
+      // before refreshing shared attendee state, so all three surfaces have
+      // the same names immediately after this save.
+      const syncResponse = await fetch('/api/auth/sync-profile-info', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -506,8 +501,17 @@ export default function EditProfileClient() {
           lastnameFa: form.lastnameFa,
           firstnameEn: (form.firstnameEn || "").trim(),
           lastnameEn: (form.lastnameEn || "").trim(),
+          source: 'profile-edit',
         }),
-      }).catch((err) => console.error('[sync-profile-info]', err.message));
+      });
+      if (!syncResponse.ok) {
+        const syncBody = await syncResponse.json().catch(() => ({}));
+        throw new Error(syncBody.error || 'خطا در همگام‌سازی نام نمایشی');
+      }
+      client.cache.evict({ fieldName: 'getAttendee' });
+      client.cache.evict({ fieldName: 'attendee' });
+      client.cache.gc();
+      await refetch();
       hapticSuccess();
       setInfoState({ saving: false, saved: true, error: "" });
       setTimeout(() => router.push("/profile"), 1500);

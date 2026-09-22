@@ -99,8 +99,19 @@ function syncProfileInfo(attendee) {
       firstnameEn: attendee.firstname_en,
       lastnameEn: attendee.lastname_en,
       occupationId: attendee.occupation_id ?? null,
+      source: "attendee-provider",
     }),
   }).catch(() => {});
+}
+
+async function getCurrentDisplayNames() {
+  try {
+    const response = await fetch('/api/auth/display-names', { cache: 'no-store' });
+    if (!response.ok) return null;
+    return (await response.json())?.names ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // Floor between profile-photo re-checks, so rapid tab-switching can't
@@ -148,6 +159,11 @@ export default function AttendeeProvider({ children, rasayeshEventId }) {
     const client = getApolloClient();
     if (!client) { setLoading(false); return; }
     setLoading(true);
+    // This request is authenticated by the attendee's own cookie and reads
+    // event-scoped app_users with no cache. It is only overlaid when an APN
+    // correction is still the latest local name change; otherwise Rasayesh
+    // remains the source for the rest of the attendee profile.
+    const displayNamesPromise = getCurrentDisplayNames();
     // `errorPolicy: 'all'` (set on this client) means client.query() resolves
     // normally even on error -- it never rejects for either a confirmed
     // unauthorized response or a NetworkRetryError, both land in `error`.
@@ -162,7 +178,17 @@ export default function AttendeeProvider({ children, rasayeshEventId }) {
           fetchPolicy: "network-only",
         });
         if (data?.getAttendee) {
-          setAttendee(data.getAttendee);
+          const displayNames = await displayNamesPromise;
+          const attendeeWithDisplayNames = displayNames?.isAdminCorrection
+            ? {
+                ...data.getAttendee,
+                firstname_fa: displayNames.firstnameFa,
+                lastname_fa: displayNames.lastnameFa,
+                firstname_en: displayNames.firstnameEn,
+                lastname_en: displayNames.lastnameEn,
+              }
+            : data.getAttendee;
+          setAttendee(attendeeWithDisplayNames);
           // Also keeps app_users.profile_image fresh when the photo changed
           // mid-session -- e.g. EditProfileClient's upload flow calls
           // refetch() (this function) but only updates local state, never

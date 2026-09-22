@@ -298,7 +298,12 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
           ? getApolloClient().query({ query: BADGE_QUERY, variables: { uuid, eventSlug } })
           : Promise.resolve(null);
 
-        const [tmplValue, badgeResult] = await Promise.all([tmplPromise, badgePromise]);
+        const displayNamesPromise = fetch('/api/auth/display-names', { cache: 'no-store' })
+          .then((response) => response.ok ? response.json() : null)
+          .then((response) => response?.names ?? null)
+          .catch(() => null);
+
+        const [tmplValue, badgeResult, displayNames] = await Promise.all([tmplPromise, badgePromise, displayNamesPromise]);
 
         if (tmplValue) setCardTemplate(tmplValue);
 
@@ -306,7 +311,24 @@ export default function BadgeClient({ title, subtitle, title_en, subtitle_en, ba
 
         const card = badgeResult?.data?.attendeeEventCard;
         setBadgeStatus(card?.status ?? null);
-        if (card?.status === "success") setBadgeData(card.data ?? null);
+        if (card?.status === "success") {
+          const badgeData = card.data ?? null;
+          // Badge data comes straight from Rasayesh. Overlay only an active
+          // APN correction from the authenticated event-scoped source.
+          const displayBadgeData = badgeData?.attendee && displayNames?.isAdminCorrection
+            ? {
+                ...badgeData,
+                attendee: {
+                  ...badgeData.attendee,
+                  firstname_fa: displayNames.firstnameFa,
+                  lastname_fa: displayNames.lastnameFa,
+                  firstname_en: displayNames.firstnameEn,
+                  lastname_en: displayNames.lastnameEn,
+                },
+              }
+            : badgeData;
+          setBadgeData(displayBadgeData);
+        }
       })
       .catch(() => setBadgeStatus("fail"))
       .finally(() => setLoading(false));

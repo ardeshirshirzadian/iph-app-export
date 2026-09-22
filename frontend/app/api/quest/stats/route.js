@@ -2,8 +2,16 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { getUserDisplayNames } from '@/lib/userDisplayNames';
 
 const EMPTY = { xp: 0, total_scans: 0, today_scans: 0, today_xp: 0, name_fa: '', name_en: '', rank: null };
+export const dynamic = 'force-dynamic';
+
+function noStoreJson(body) {
+  const response = NextResponse.json(body);
+  response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+  return response;
+}
 
 // Postgres session/DB timezone is UTC (confirmed via `SHOW timezone`) while the
 // server OS runs Asia/Tehran (+03:30) -- scanned_at/granted_at are stored as
@@ -23,24 +31,20 @@ export async function GET() {
   const userRaw = cookieStore.get('iph_user')?.value;
 
   let userUuid = null;
-  let nameFa = '';
-  let nameEn = '';
-
   try {
     const user = JSON.parse(decodeURIComponent(userRaw));
     userUuid = user?.uuid || null;
-    nameFa = [user?.firstname_fa, user?.lastname_fa].filter(Boolean).join(' ');
-    nameEn = [user?.firstname_en, user?.lastname_en].filter(Boolean).join(' ');
   } catch {
-    return NextResponse.json(EMPTY);
+    return noStoreJson(EMPTY);
   }
 
-  if (!userUuid) return NextResponse.json(EMPTY);
+  if (!userUuid) return noStoreJson(EMPTY);
 
   try {
     const currentEventId = await getCurrentEventId();
 
-    const [totalResult, todayResult, xpResult, todayXpResult] = await Promise.all([
+    const [displayNames, totalResult, todayResult, xpResult, todayXpResult] = await Promise.all([
+      getUserDisplayNames(currentEventId, userUuid),
       query(
         `SELECT COUNT(*) FROM quest_scans WHERE user_uuid = $1 AND event_id = $2`,
         [userUuid, currentEventId]
@@ -79,9 +83,11 @@ export async function GET() {
     const xp = parseInt(xpResult.rows[0].xp, 10);
     const today_xp = parseInt(todayXpResult.rows[0].today_xp, 10);
 
-    return NextResponse.json({ name_fa: nameFa, name_en: nameEn, total_scans, today_scans, xp, today_xp, rank: null });
+    const name_fa = displayNames ? [displayNames.firstnameFa, displayNames.lastnameFa].filter(Boolean).join(' ') : '';
+    const name_en = displayNames ? [displayNames.firstnameEn, displayNames.lastnameEn].filter(Boolean).join(' ') : '';
+    return noStoreJson({ name_fa, name_en, total_scans, today_scans, xp, today_xp, rank: null });
   } catch (err) {
     console.error('[quest/stats]', err.message);
-    return NextResponse.json(EMPTY);
+    return noStoreJson(EMPTY);
   }
 }

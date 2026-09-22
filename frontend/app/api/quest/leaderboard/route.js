@@ -204,13 +204,13 @@ export async function GET(request) {
           SELECT
             ra.user_uuid, ra.referral_count,
             COALESCE(
-              qn.display_name_fa,
               NULLIF(TRIM(COALESCE(au.firstname_fa, '') || ' ' || COALESCE(au.lastname_fa, '')), ''),
+              qn.display_name_fa,
               'شرکت‌کننده'
             ) AS display_name_fa,
             COALESCE(
-              qn.display_name_en,
-              NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), '')
+              NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), ''),
+              qn.display_name_en
             ) AS display_name_en,
             qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo, au.occupation_id,
             -- Same DENSE_RANK() convention as every other location in this file.
@@ -376,13 +376,13 @@ export async function GET(request) {
           SELECT
             r.user_uuid, r.total_xp, r.scan_count, r.rank,
             COALESCE(
-              qn.display_name_fa,
               NULLIF(TRIM(COALESCE(au.firstname_fa, '') || ' ' || COALESCE(au.lastname_fa, '')), ''),
+              qn.display_name_fa,
               'شرکت‌کننده'
             ) AS display_name_fa,
             COALESCE(
-              qn.display_name_en,
-              NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), '')
+              NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), ''),
+              qn.display_name_en
             ) AS display_name_en,
             qn.profile_photo_url,
             au.profile_image,
@@ -429,13 +429,13 @@ export async function GET(request) {
           SELECT
             il.total_xp,
             COALESCE(
-              qn.display_name_fa,
               NULLIF(TRIM(COALESCE(au.firstname_fa, '') || ' ' || COALESCE(au.lastname_fa, '')), ''),
+              qn.display_name_fa,
               'شرکت‌کننده'
             ) AS display_name_fa,
             COALESCE(
-              qn.display_name_en,
-              NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), '')
+              NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), ''),
+              qn.display_name_en
             ) AS display_name_en,
             qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo,
             au.excluded_from_leaderboard, au.occupation_id,
@@ -500,13 +500,13 @@ export async function GET(request) {
         SELECT
           c.user_uuid,
           COALESCE(
-            qn.display_name_fa,
             NULLIF(TRIM(COALESCE(au.firstname_fa, '') || ' ' || COALESCE(au.lastname_fa, '')), ''),
+            qn.display_name_fa,
             'شرکت‌کننده'
           ) AS display_name_fa,
           COALESCE(
-            qn.display_name_en,
-            NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), '')
+            NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), ''),
+            qn.display_name_en
           ) AS display_name_en,
           qn.profile_photo_url,
           au.profile_image,

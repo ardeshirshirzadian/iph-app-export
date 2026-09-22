@@ -106,8 +106,15 @@ function GearIcon({ lang }) {
 export default function ProfileClient({ title, subtitle, title_en, subtitle_en, isHomeContext = false, showBack = true }) {
   const { logout } = useAuth();
   const router = useRouter();
-  const { attendee: attendeeData, loading: profileLoading } = useAttendee();
+  const { attendee: attendeeData, loading: profileLoading, refetch } = useAttendee();
   const { lang, isRTL } = useLang();
+
+  // AttendeeProvider persists across client-side route changes. Refresh on
+  // entering Profile so an APN correction is visible on normal navigation,
+  // not only after a full reload.
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
 
   // Log today's attendance once per mount when presence is confirmed —
   // decoupled from how many times the underlying shared query itself runs.
