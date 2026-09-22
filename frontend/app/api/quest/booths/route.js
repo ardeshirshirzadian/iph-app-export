@@ -38,7 +38,7 @@ const getCachedBoothDefinitions = unstable_cache(
     // rows (سایت ایران‌فارما etc.) are unaffected either way: they're
     // is_active=true and never touched by that deactivation pass.
     const companiesResult = await query(
-      `SELECT id, company_id, brand_name_fa, brand_name_en, hall_name, booth_no,
+      `SELECT id, company_id, brand_name_fa, brand_name_en, legal_name_fa, hall_name, booth_no,
               booth_uuid, logo, is_sponsor, sponsor_level, sponsor_title_en,
               sponsor_color, sponsor_icon, booth_xp,
               repeatable_scan, repeatable_scan_hours,

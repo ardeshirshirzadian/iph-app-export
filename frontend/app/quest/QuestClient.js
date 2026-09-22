@@ -1525,7 +1525,9 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
   }, [open]);
 
   // Instant client-side filter over the already-local booth list (~300 max),
-  // so no debounce. Matches brand name (fa + en), hall and booth number;
+  // so no debounce. Matches brand name (fa + en), legal name (fa -- a
+  // company's registered name is often different from the booth's trade
+  // name, e.g. "تکاژه" is legally "تدبیر کالای جم"), hall and booth number;
   // digits in both the query and the data are normalised to ASCII so a
   // Persian-digit query ("۱۴۸") still matches an ASCII booth_no ("148").
   const filteredBooths = useMemo(() => {
@@ -1533,7 +1535,7 @@ function BoothsBottomSheet({ open, onClose, title, isRTL, lang, booths, scannedI
     if (!needle) return booths;
     return booths.filter((b) => {
       const haystack = toEnglishDigits(
-        `${b.brand_name_fa || ''} ${b.brand_name_en || ''} ${b.hall_name || ''} ${b.booth_no || ''}`.toLowerCase()
+        `${b.brand_name_fa || ''} ${b.brand_name_en || ''} ${b.legal_name_fa || ''} ${b.hall_name || ''} ${b.booth_no || ''}`.toLowerCase()
       );
       return haystack.includes(needle);
     });
