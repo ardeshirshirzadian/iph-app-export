@@ -57,6 +57,13 @@ export const DEFAULT_EXPO_SCREEN_CONFIG = {
   // Empty keeps the theme's existing muted text color; a saved override is
   // always a validated hex color from APN.
   web_address_color: '',
+  // Independent by-eye fine-tune offsets for the bottom row's two
+  // containers (the 3-stacked download boxes and the QR box) -- placement
+  // itself stays fixed per Phase 2, but a venue's real monitor sometimes
+  // needs a few px of vertical nudge to visually align the two. 0 = today's
+  // live spacing, negative pulls a container up (slight overlap allowed).
+  download_stack_margin_top: 0,
+  qr_box_margin_top: 0,
 };
 
 // Shared with the client poller as a defensive floor -- the admin-side PUT

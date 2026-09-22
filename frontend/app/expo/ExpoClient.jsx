@@ -201,7 +201,7 @@ function LeaderboardBlock({ leaderboard, rankIcons, colors, fading, nameFontSize
   );
 }
 
-function QrBlock({ appUrl, config, colors, qrSize }) {
+function QrBlock({ appUrl, config, colors, qrSize, marginTop }) {
   // Empty or malformed legacy values use the same plain matrix defaults.
   // Every valid admin-selected hex color passes through unchanged.
   const validHex = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
@@ -212,10 +212,10 @@ function QrBlock({ appUrl, config, colors, qrSize }) {
     : undefined;
   const domain = displayDomain(config.web_link_url || appUrl);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-      <QRCodeSVG value={appUrl} size={qrSize} marginSize={4} bgColor={bg} fgColor={fg} level="M" />
+    <div data-testid="expo-qr-block" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flexShrink: 0, marginTop }}>
+      <QRCodeSVG data-testid="expo-qr" value={appUrl} size={qrSize} marginSize={4} bgColor={bg} fgColor={fg} level="M" />
       {domain && (
-        <div dir="ltr" style={{ fontSize: config.web_address_font_size, fontWeight: 500, color: webAddressColor || colors.textMuted, whiteSpace: 'nowrap' }}>
+        <div data-testid="expo-web-domain" dir="ltr" style={{ fontSize: config.web_address_font_size, fontWeight: 500, color: webAddressColor || colors.textMuted, whiteSpace: 'nowrap' }}>
           {domain}
         </div>
       )}
@@ -252,16 +252,21 @@ function displayDomain(url) {
 // ExpoLayout); the text block is flex:1 + textAlign right so it hugs the
 // box's right edge regardless of label length, instead of clustering at
 // flex-start and leaving a ragged gap for short labels.
-function StoreBox({ label, logoPath, colors, fontSize, height }) {
-  // Gap is independently admin-controlled, so the fixed QR-height stack can
-  // make a box smaller than its normal 36px logo. Scale and clip its contents
-  // instead of allowing either content or adjacent boxes to overlap.
-  const safeHeight = Math.max(0, height);
-  const logoSize = Math.min(36, Math.max(0, safeHeight - 2));
-  const safeFontSize = Math.max(1, Math.min(fontSize, Math.max(1, safeHeight - 4)));
-  const labelWasCompacted = safeFontSize !== fontSize;
+function StoreBox({ boxId, label, logoPath, colors, fontSize, height }) {
+  // The APN validation below guarantees at least MIN_DOWNLOAD_BOX_HEIGHT,
+  // leaving room for the existing 36px logo plus its 2px top/bottom inset.
+  // Keep this local guard for a stale manually-edited configuration.
+  const safeHeight = Math.max(MIN_DOWNLOAD_BOX_HEIGHT, height);
+  const logoSize = Math.min(36, safeHeight - 4);
+  // Abar's rendered Persian glyphs need roughly 1.8em (including the font's
+  // internal ascender/descender bounds). Fit that real line
+  // box, rather than clipping glyph ascenders/descenders by sizing to the
+  // numeric font size alone.
+  const safeFontSize = Math.min(fontSize, (safeHeight - 4) / 1.8);
+  const safeLineHeight = Math.min(1.8, Math.max(1, (safeHeight - 4) / safeFontSize));
   return (
     <div
+      data-testid={`expo-download-box-${boxId}`}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -269,7 +274,13 @@ function StoreBox({ label, logoPath, colors, fontSize, height }) {
         background: colors.rowBg,
         border: `1px solid ${colors.border}`,
         borderRadius: 16,
+        // `height` alone is not enough for a flex item: its default
+        // flex-shrink: 1 permits the three rendered boxes to drift away from
+        // the calculated QR-sized stack. Pin all three flex dimensions.
+        flex: `0 0 ${safeHeight}px`,
         height: safeHeight,
+        minHeight: safeHeight,
+        maxHeight: safeHeight,
         padding: '0 20px',
         width: 300,
         boxSizing: 'border-box',
@@ -287,7 +298,14 @@ function StoreBox({ label, logoPath, colors, fontSize, height }) {
           style={{
             fontSize: safeFontSize,
             fontWeight: 700,
-            lineHeight: labelWasCompacted ? 1 : undefined,
+            lineHeight: safeLineHeight,
+            // Give the font's real glyph bounds the full content well. The
+            // fixed box still owns clipping/ellipsis horizontally, while a
+            // compact vertical layout never clips ascenders or descenders.
+            height: safeHeight - 4,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-start',
             color: colors.text,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -302,13 +320,31 @@ function StoreBox({ label, logoPath, colors, fontSize, height }) {
 }
 
 const DEFAULT_QR_SIZE = 180;
+const MIN_QR_SIZE = 120;
 const DEFAULT_DOWNLOAD_BOX_GAP = 18;
 const MIN_DOWNLOAD_BOX_GAP = 0;
 const MAX_DOWNLOAD_BOX_GAP = 100;
+// Measured from the existing store-box content: the 36px logo needs a 2px
+// inset above and below (the labels fit within the same 36px content area).
+const MIN_DOWNLOAD_BOX_HEIGHT = 40;
+// Mirrors APN's route.js bounds for download_stack_margin_top /
+// qr_box_margin_top. Deliberately allows negative (pulling a container up,
+// even slightly overlapping) -- this is a by-eye fine-tune knob for a real
+// venue monitor, not a spacing value with a natural floor at 0.
+const MIN_BOTTOM_BOX_MARGIN_TOP = -300;
+const MAX_BOTTOM_BOX_MARGIN_TOP = 300;
+
+// Defensive clamp for legacy/hand-edited DB rows, same posture as
+// getBottomLayoutMetrics below -- APN already enforces the range on save.
+function safeMarginTop(configuredMarginTop) {
+  const parsed = Number(configuredMarginTop);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.min(MAX_BOTTOM_BOX_MARGIN_TOP, Math.max(MIN_BOTTOM_BOX_MARGIN_TOP, parsed));
+}
 
 function getBottomLayoutMetrics(configuredQrSize, configuredDownloadBoxGap) {
   const parsedQrSize = Number(configuredQrSize);
-  const qrSize = Number.isFinite(parsedQrSize) && parsedQrSize > 0
+  const qrSize = Number.isInteger(parsedQrSize) && parsedQrSize >= MIN_QR_SIZE
     ? parsedQrSize
     : DEFAULT_QR_SIZE;
 
@@ -319,13 +355,15 @@ function getBottomLayoutMetrics(configuredQrSize, configuredDownloadBoxGap) {
     ? parsedGap
     : DEFAULT_DOWNLOAD_BOX_GAP;
 
-  // The three boxes and two gaps always fill exactly the QR's height: their
-  // top/bottom therefore stay aligned when the gap changes. A very large
-  // persisted gap is capped only when it would leave a negative box height;
-  // APN rejects out-of-range values, this is defensive for legacy/manual DB
-  // values. At the default 180px QR + 18px gap this remains 48px per box.
-  const downloadBoxGap = Math.min(requestedGap, qrSize / 2);
-  const boxHeight = Math.max(0, (qrSize - (downloadBoxGap * 2)) / 3);
+  // The three non-shrinking boxes and two gaps always fill exactly the QR's
+  // matrix height. APN rejects impossible pairs; cap legacy/manual DB data
+  // to the same geometry rather than rendering clipped or overflowing boxes.
+  const maxGapForQrSize = Math.max(
+    MIN_DOWNLOAD_BOX_GAP,
+    Math.floor((qrSize - (3 * MIN_DOWNLOAD_BOX_HEIGHT)) / 2)
+  );
+  const downloadBoxGap = Math.min(requestedGap, maxGapForQrSize);
+  const boxHeight = (qrSize - (downloadBoxGap * 2)) / 3;
 
   return { qrSize, boxHeight, downloadBoxGap };
 }
@@ -340,6 +378,8 @@ function ExpoLayout({ logo, appUrl, config, colors, rankIcons, leaderboard, fadi
   const slogan = typeof config.slogan_text === 'string' ? config.slogan_text.trim() : '';
   const titleFontWeight = getExpoTitleFontWeight(config.title_font_weight);
   const { qrSize, boxHeight, downloadBoxGap } = getBottomLayoutMetrics(config.qr_size, config.download_box_gap);
+  const downloadStackMarginTop = safeMarginTop(config.download_stack_margin_top);
+  const qrBoxMarginTop = safeMarginTop(config.qr_box_margin_top);
   return (
     <div
       style={{
@@ -387,13 +427,13 @@ function ExpoLayout({ logo, appUrl, config, colors, rankIcons, leaderboard, fadi
             {slogan}
           </div>
         )}
-        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 40, '--expo-qr-size': `${qrSize}px` }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: downloadBoxGap, height: 'var(--expo-qr-size)' }}>
-            <StoreBox label={config.download_label_1 ?? 'دانلود از کافه بازار'} logoPath={config.bazaar_logo_path} colors={colors} fontSize={config.box_label_font_size} height={boxHeight} />
-            <StoreBox label={config.download_label_2 ?? 'دانلود از مایکت'} logoPath={config.myket_logo_path} colors={colors} fontSize={config.box_label_font_size} height={boxHeight} />
-            <StoreBox label={config.download_label_3 ?? 'نسخه وب اپلیکیشن'} logoPath={config.web_logo_path} colors={colors} fontSize={config.box_label_font_size} height={boxHeight} />
+        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 40 }}>
+          <div data-testid="expo-download-stack" style={{ display: 'flex', flexDirection: 'column', gap: downloadBoxGap, height: qrSize, minHeight: qrSize, maxHeight: qrSize, boxSizing: 'border-box', flex: `0 0 ${qrSize}px`, marginTop: downloadStackMarginTop }}>
+            <StoreBox boxId="bazaar" label={config.download_label_1 ?? 'دانلود از کافه بازار'} logoPath={config.bazaar_logo_path} colors={colors} fontSize={config.box_label_font_size} height={boxHeight} />
+            <StoreBox boxId="myket" label={config.download_label_2 ?? 'دانلود از مایکت'} logoPath={config.myket_logo_path} colors={colors} fontSize={config.box_label_font_size} height={boxHeight} />
+            <StoreBox boxId="web-app" label={config.download_label_3 ?? 'نسخه وب اپلیکیشن'} logoPath={config.web_logo_path} colors={colors} fontSize={config.box_label_font_size} height={boxHeight} />
           </div>
-          <QrBlock appUrl={appUrl} config={config} colors={colors} qrSize={qrSize} />
+          <QrBlock appUrl={appUrl} config={config} colors={colors} qrSize={qrSize} marginTop={qrBoxMarginTop} />
         </div>
       </div>
     </div>
