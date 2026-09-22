@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { getCurrentEventId } from '@/lib/currentEvent';
 import { validateSocialShareUrl } from '@/lib/socialShareUrl';
+import { recordMissionHistory } from '@/lib/questMissionHistory';
 
 const VALID_PLATFORMS = ['Instagram', 'Telegram', 'WhatsApp', 'LinkedIn', 'Other'];
 
@@ -77,10 +78,11 @@ export async function POST(request) {
     // event's content and still succeed, scoped to (and polluting) this event.
     if (missionId) {
       const r = await query(
-        `SELECT id FROM quest_content WHERE id = $1 AND mission_type = 'social_share' AND event_id = $2`,
+        `SELECT id, is_active FROM quest_content WHERE id = $1 AND mission_type = 'social_share' AND event_id = $2`,
         [missionId, currentEventId]
       );
       if (r.rows.length === 0) return NextResponse.json({ error: 'mission_not_found' }, { status: 404 });
+      if (!r.rows[0].is_active) return NextResponse.json({ error: 'mission_inactive' }, { status: 410 });
     } else {
       const r = await query(
         `SELECT id FROM quest_badges WHERE id = $1 AND badge_type = 'social_share' AND event_id = $2`,
@@ -89,12 +91,19 @@ export async function POST(request) {
       if (r.rows.length === 0) return NextResponse.json({ error: 'badge_not_found' }, { status: 404 });
     }
 
-    await query(
+    const submission = await query(
       `INSERT INTO quest_social_share_submissions
          (mission_id, badge_id, user_uuid, link_url, platform, status, event_id)
-       VALUES ($1, $2, $3, $4, $5, 'pending', $6)`,
+       VALUES ($1, $2, $3, $4, $5, 'pending', $6)
+       RETURNING id`,
       [missionId || null, badgeId || null, userUuid, validatedUrl, resolvedPlatform, currentEventId]
     );
+    if (missionId) {
+      await recordMissionHistory(query, {
+        eventId: currentEventId, missionId, userUuid, status: 'pending', evidenceType: 'social_share_submission',
+        evidenceId: submission.rows?.[0]?.id,
+      });
+    }
 
     return NextResponse.json({ ok: true, status: 'pending' });
   } catch (err) {

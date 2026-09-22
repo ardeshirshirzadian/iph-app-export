@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { ensureBadgeProgressTable } from '@/lib/initQuestBadges';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { recordMissionHistory } from '@/lib/questMissionHistory';
 
 async function getUserUuid() {
   const cookieStore = await cookies();
@@ -77,6 +78,9 @@ export async function grantChatMissionXp() {
        ON CONFLICT (mission_id, user_uuid) DO UPDATE SET completed = true, completed_at = NOW()`,
       [missionId, userUuid]
     );
+    await recordMissionHistory(query, {
+      eventId: currentEventId, missionId, userUuid, status: 'completed', evidenceType: 'chat',
+    });
   } catch (err) {
     console.error('[grantChatMissionXp] failed to award chat mission XP:', err.message);
   }

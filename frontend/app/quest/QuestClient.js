@@ -417,6 +417,10 @@ function featuredBoothClaimedMessage(mission, lang, minutes) {
 // - social_share stays active while 'rejected' (the card still offers a resubmit CTA);
 //   only 'pending' (awaiting review, nothing left to do) counts as completed here.
 function isMissionCompleted(mission) {
+  // Inactive cards are historical snapshots. Any durable participation row
+  // belongs in Done/history; its separate status is retained for the card.
+  // Never infer this from later scans or referrals.
+  if (mission.is_active === false) return !!mission.historical_status;
   // Unlimited-mode referral_code missions never complete from user activity
   // -- they repeat per-invite XP with no threshold (see
   // lib/referralUnlimited.js) and stay open until an admin deactivates them,
@@ -3620,13 +3624,13 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         sponsorNameColor={sponsorStyle.nameColor}
         sponsorNameSize={sponsorStyle.nameSize}
         missionIconColors={missionIconColors}
-        onQuizClick={m.mission_type === 'quiz' ? () => setOpenQuiz({ ...m, isBadge: false }) : undefined}
-        onSurveyClick={m.mission_type === 'survey' ? () => setOpenSurvey({ ...m, isBadge: false }) : undefined}
-        onSocialShareClick={m.mission_type === 'social_share' ? () => setOpenSocialShare({ ...m, isBadge: false }) : undefined}
+        onQuizClick={m.is_active !== false && m.mission_type === 'quiz' ? () => setOpenQuiz({ ...m, isBadge: false }) : undefined}
+        onSurveyClick={m.is_active !== false && m.mission_type === 'survey' ? () => setOpenSurvey({ ...m, isBadge: false }) : undefined}
+        onSocialShareClick={m.is_active !== false && m.mission_type === 'social_share' ? () => setOpenSocialShare({ ...m, isBadge: false }) : undefined}
         onFeaturedClick={m.mission_type === 'featured_booth' ? () => setOpenFeaturedPool(m) : undefined}
         onProfilePhotoClick={m.mission_type === 'profile_photo' ? onProfilePhotoClick : undefined}
-        onManualScanClick={m.mission_type === 'manual' ? onManualScanClick : undefined}
-        onReferralClick={m.mission_type === 'referral_code' ? () => setOpenReferral(m) : undefined}
+        onManualScanClick={m.is_active !== false && m.mission_type === 'manual' ? onManualScanClick : undefined}
+        onReferralClick={m.is_active !== false && m.mission_type === 'referral_code' ? () => setOpenReferral(m) : undefined}
       />
     ),
     [labels.xpUnit, lang, logoBaseUrl, sponsorStyle, missionIconColors, onProfilePhotoClick, onManualScanClick]

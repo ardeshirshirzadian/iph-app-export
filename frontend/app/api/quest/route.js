@@ -4,6 +4,7 @@ import { unstable_cache } from 'next/cache';
 import { query } from '@/lib/db';
 import { ensureFeaturedBoothState, isWithinDailyWindow } from '@/lib/featuredBoothHelper';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { getInactiveMissionState } from '@/lib/questMissionHistory';
 
 // Mission DEFINITIONS only (admin-curated: title/description/xp/icon/quiz
 // question/survey fields/etc, quest_content table) — cached. Every per-user
@@ -187,12 +188,32 @@ export async function GET() {
     const eventId = settingsResult.rows[0]?.value?.event_id;
 
     const rows = await getCachedMissionDefinitions(currentEventId);
+    // Inactive mission visibility is durable, event-scoped history only. A
+    // missing table during the separately scheduled migration is treated as
+    // no history, never as a reason to fall back to live dynamic counts.
+    const historyByMission = new Map();
+    if (userUuid) {
+      const historyResult = await query(
+        `SELECT mission_id, status, evidence_type, evidence_id, participated_at, completed_at
+         FROM quest_mission_history
+         WHERE event_id = $1 AND user_uuid = $2`,
+        [currentEventId, userUuid]
+      ).catch(() => ({ rows: [] }));
+      for (const history of historyResult.rows) historyByMission.set(history.mission_id, history);
+    }
 
     const missions = (await Promise.all(
       rows.map(async (m) => {
-        const progress = await calcProgress(m, userUuid, eventId, currentEventId);
+        const history = historyByMission.get(m.id) || null;
+        const inactiveState = getInactiveMissionState(m, history);
+        if (!m.is_active && !inactiveState.visible) return null;
+        // Freeze disabled state at the last valid active transition. In
+        // particular, do not re-count scans or referrals after disable.
+        const progress = !m.is_active
+          ? inactiveState.progress
+          : await calcProgress(m, userUuid, eventId, currentEventId);
         let quiz_attempted = false;
-        if (m.mission_type === 'quiz' && userUuid) {
+        if (m.mission_type === 'quiz' && userUuid && m.is_active) {
           const aR = await query(
             `SELECT id FROM quest_quiz_attempts WHERE mission_id = $1 AND user_uuid = $2 AND event_id = $3`,
             [m.id, userUuid, currentEventId]
@@ -200,7 +221,7 @@ export async function GET() {
           quiz_attempted = aR.rows.length > 0;
         }
         let survey_submitted = false;
-        if (m.mission_type === 'survey' && userUuid) {
+        if (m.mission_type === 'survey' && userUuid && m.is_active) {
           const sR = await query(
             `SELECT id FROM quest_survey_responses WHERE mission_id = $1 AND user_uuid = $2 AND event_id = $3`,
             [m.id, userUuid, currentEventId]
@@ -210,7 +231,7 @@ export async function GET() {
 
         let social_share_status = undefined;
         let social_share_note = undefined;
-        if (m.mission_type === 'social_share' && userUuid) {
+        if (m.mission_type === 'social_share' && userUuid && m.is_active) {
           const ssR = await query(
             `SELECT status, admin_note FROM quest_social_share_submissions
              WHERE mission_id = $1 AND user_uuid = $2 AND event_id = $3
@@ -223,11 +244,10 @@ export async function GET() {
           }
         }
 
-        // Deactivated missions stay hidden for users who never completed
-        // them, but a user who already earned this mission's XP/completion
-        // keeps seeing it (and its completed state) in their own list.
-        if (!m.is_active && !isMissionCompletedForUser(m, progress, quiz_attempted, social_share_status)) {
-          return null;
+        if (!m.is_active && history) {
+          if (m.mission_type === 'quiz') quiz_attempted = history.status !== 'participated' || history.evidence_type === 'quiz_attempt';
+          if (m.mission_type === 'survey') survey_submitted = history.status === 'completed';
+          if (m.mission_type === 'social_share') social_share_status = history.status;
         }
 
         // Countdown for featured_booth: return next rotation timestamp (no golden
@@ -336,6 +356,8 @@ export async function GET() {
           xpReward: m.xp_reward,
           featuredBoothBonusXp: m.mission_type === 'featured_booth' ? (m.featured_booth_bonus_xp ?? 500) : undefined,
           mission_type: m.mission_type,
+          is_active: m.is_active,
+          historical_status: !m.is_active ? history?.status ?? null : null,
           // Unlimited-mode referral_code missions repeat per-invite XP with
           // no tier/threshold (see lib/referralUnlimited.js) -- the client
           // needs this to know xp_reward/progress/total are symbolic for

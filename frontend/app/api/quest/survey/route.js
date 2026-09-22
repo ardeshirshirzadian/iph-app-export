@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { recordMissionHistory } from '@/lib/questMissionHistory';
 
 export async function POST(request) {
   const cookieStore = await cookies();
@@ -53,10 +54,11 @@ export async function POST(request) {
     let surveyFields, xpReward;
     if (missionId) {
       const r = await query(
-        `SELECT survey_fields, xp_reward FROM quest_content WHERE id = $1 AND mission_type = 'survey' AND event_id = $2`,
+        `SELECT survey_fields, xp_reward, is_active FROM quest_content WHERE id = $1 AND mission_type = 'survey' AND event_id = $2`,
         [missionId, currentEventId]
       );
       if (r.rows.length === 0) return NextResponse.json({ error: 'mission_not_found' }, { status: 404 });
+      if (!r.rows[0].is_active) return NextResponse.json({ error: 'mission_inactive' }, { status: 410 });
       surveyFields = r.rows[0].survey_fields;
       xpReward     = r.rows[0].xp_reward ?? 0;
     } else {
@@ -92,6 +94,11 @@ export async function POST(request) {
        VALUES ($1, $2, $3, $4, $5)`,
       [missionId || null, badgeId || null, userUuid, JSON.stringify(answers), currentEventId]
     );
+    if (missionId) {
+      await recordMissionHistory(query, {
+        eventId: currentEventId, missionId, userUuid, status: 'completed', evidenceType: 'survey_response',
+      });
+    }
 
     // Completion is tracked in quest_survey_responses (already inserted above).
     // quest_user_progress / quest_badge_progress are NOT read for survey types in

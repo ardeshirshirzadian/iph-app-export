@@ -1,7 +1,7 @@
 import { query } from '@/lib/db';
 import { getRasayeshEventInfo } from '@/lib/publicRasayeshClient';
 import { getCurrentEventId } from '@/lib/currentEvent';
-import { awardConfirmedReferralXp, getReferralRefereeXp } from '@/lib/referralRewards';
+import { awardConfirmedReferralXp, getReferralRefereeXp, recordPendingReferralHistory } from '@/lib/referralRewards';
 
 const RASAYESH_URL = 'https://api.rasayesh.com/graphql';
 
@@ -54,6 +54,19 @@ export async function POST(request) {
   try {
     currentEventId = await getCurrentEventId();
 
+    // Referral codes can exist independently of a mission, but a code must
+    // not start a new Quest referral once every referral mission is disabled.
+    // Check before creating confirmed, pending, or rejected redemption rows.
+    const activeMission = await query(
+      `SELECT 1 FROM quest_content
+       WHERE event_id = $1 AND mission_type = 'referral_code' AND is_active = true
+       LIMIT 1`,
+      [currentEventId]
+    );
+    if (activeMission.rows.length === 0) {
+      return Response.json({ outcome: 'mission_inactive' }, { status: 410 });
+    }
+
     // Authoritative, uuid-keyed duplicate-redemption guard (the step-1 modal
     // already checked this pre-auth against a self-reported contact string --
     // this is the real one).
@@ -80,12 +93,14 @@ export async function POST(request) {
 
   async function insertPending() {
     try {
-      await query(
+      const pending = await query(
         `INSERT INTO quest_referral_redemptions
            (event_id, code_id, referrer_user_uuid, referee_user_uuid, status)
-         VALUES ($1, $2, $3, $4, 'pending')`,
+         VALUES ($1, $2, $3, $4, 'pending')
+         RETURNING id`,
         [currentEventId, codeRow.id, codeRow.owner_user_uuid, uuid]
       );
+      await recordPendingReferralHistory(query, codeRow.owner_user_uuid, currentEventId, pending.rows[0]?.id);
     } catch (err) {
       console.error('[referral/redeem] insertPending failed:', err.message);
     }

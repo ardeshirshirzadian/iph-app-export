@@ -3,6 +3,35 @@
 // method, so APN can keep a manual assignment atomic without duplicating XP
 // rules.
 
+async function recordReferralHistory(dbQuery, eventId, missionId, userUuid, status, redemptionId) {
+  if (!missionId || !userUuid) return;
+  await dbQuery(
+    `INSERT INTO quest_mission_history
+       (event_id, mission_id, user_uuid, status, evidence_type, evidence_id, participated_at, completed_at)
+     VALUES ($1, $2, $3, $4, 'referral_redemption', $5, NOW(), CASE WHEN $4 = 'completed' THEN NOW() ELSE NULL END)
+     ON CONFLICT (event_id, mission_id, user_uuid) DO UPDATE
+       SET status = CASE WHEN EXCLUDED.status = 'completed' THEN 'completed' ELSE quest_mission_history.status END,
+           evidence_id = COALESCE(EXCLUDED.evidence_id, quest_mission_history.evidence_id),
+           completed_at = CASE WHEN EXCLUDED.status = 'completed' THEN COALESCE(quest_mission_history.completed_at, NOW()) ELSE quest_mission_history.completed_at END,
+           updated_at = NOW()`,
+    [eventId, missionId, userUuid, status, redemptionId == null ? null : String(redemptionId)]
+  ).catch((error) => console.error('[referral history]', error.message));
+}
+
+// Used when an active referral starts but its enrollment check is deferred.
+// All active referral cards get the same durable pending snapshot; no XP is
+// created here, and later disable cannot create a new pending history row.
+export async function recordPendingReferralHistory(dbQuery, referrerUuid, eventId, redemptionId) {
+  const { rows } = await dbQuery(
+    `SELECT id FROM quest_content
+     WHERE event_id = $1 AND mission_type = 'referral_code' AND is_active = true`,
+    [eventId]
+  );
+  for (const mission of rows) {
+    await recordReferralHistory(dbQuery, eventId, mission.id, referrerUuid, 'pending', redemptionId);
+  }
+}
+
 export async function getReferralRefereeXp(dbQuery, eventId) {
   const { rows } = await dbQuery(
     `SELECT referral_referee_xp FROM quest_content
@@ -55,26 +84,28 @@ export async function evaluateReferralTiers(dbQuery, referrerUuid, eventId) {
         [tier.id, referrerUuid]
       );
     }
+    await recordReferralHistory(dbQuery, eventId, tier.id, referrerUuid, 'completed', null);
   }
 }
 
 export async function grantUnlimitedReferralXp(dbQuery, referrerUuid, eventId, redemptionId) {
   const { rows } = await dbQuery(
-    `SELECT referral_per_invite_xp FROM quest_content
+    `SELECT id, referral_per_invite_xp FROM quest_content
      WHERE event_id = $1 AND mission_type = 'referral_code' AND is_active = true
        AND referral_is_unlimited = true
      LIMIT 1`,
     [eventId]
   );
   if (rows.length === 0) return;
+  const missionId = rows[0].id;
   const perInviteXp = rows[0].referral_per_invite_xp || 0;
-  if (perInviteXp <= 0) return;
-  await dbQuery(
+  if (perInviteXp > 0) await dbQuery(
     `INSERT INTO quest_xp_grants (user_uuid, source_type, source_id, xp_amount, event_id)
      VALUES ($1, 'referral_referrer_unlimited', $2, $3, $4)
      ON CONFLICT (user_uuid, source_type, source_id) DO NOTHING`,
     [referrerUuid, redemptionId, perInviteXp, eventId]
   );
+  await recordReferralHistory(dbQuery, eventId, missionId, referrerUuid, 'participated', redemptionId);
 }
 
 // Call this after a redemption becomes confirmed. Its redemption-id grant

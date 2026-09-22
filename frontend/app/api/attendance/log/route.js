@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { ensureAttendanceLogTable } from '@/lib/initQuestBadges';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { recordMissionHistory } from '@/lib/questMissionHistory';
 
 export async function POST() {
   const cookieStore = await cookies();
@@ -48,6 +49,9 @@ export async function POST() {
            ON CONFLICT (user_uuid, source_type, source_id) DO NOTHING`,
           [userUuid, missionId, xpReward, currentEventId]
         );
+        await recordMissionHistory(query, {
+          eventId: currentEventId, missionId, userUuid, status: 'completed', evidenceType: 'attendance',
+        });
         await query(
           `INSERT INTO quest_user_progress (mission_id, user_uuid, completed, completed_at)
            VALUES ($1, $2, true, NOW())

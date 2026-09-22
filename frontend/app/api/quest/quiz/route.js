@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { recordMissionHistory } from '@/lib/questMissionHistory';
 
 export async function POST(request) {
   const cookieStore = await cookies();
@@ -58,12 +59,13 @@ export async function POST(request) {
     let correctIndex, xpReward;
     if (missionId) {
       const r = await query(
-        `SELECT quiz_correct_index, xp_reward FROM quest_content WHERE id = $1 AND mission_type = 'quiz' AND event_id = $2`,
+        `SELECT quiz_correct_index, xp_reward, is_active FROM quest_content WHERE id = $1 AND mission_type = 'quiz' AND event_id = $2`,
         [missionId, currentEventId]
       );
       if (r.rows.length === 0) {
         return NextResponse.json({ error: 'mission_not_found' }, { status: 404 });
       }
+      if (!r.rows[0].is_active) return NextResponse.json({ error: 'mission_inactive' }, { status: 410 });
       correctIndex = r.rows[0].quiz_correct_index;
       xpReward     = r.rows[0].xp_reward ?? 0;
     } else {
@@ -85,6 +87,13 @@ export async function POST(request) {
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [missionId || null, badgeId || null, userUuid, selectedIndex, isCorrect, currentEventId]
     );
+    if (missionId) {
+      await recordMissionHistory(query, {
+        eventId: currentEventId, missionId, userUuid,
+        status: isCorrect ? 'completed' : 'participated',
+        evidenceType: 'quiz_attempt',
+      });
+    }
 
     if (isCorrect) {
       // Completion is tracked in quest_quiz_attempts (already inserted above).

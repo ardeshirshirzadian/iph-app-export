@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { recordMissionHistory } from '@/lib/questMissionHistory';
 
 export async function POST(request) {
   const cookieStore = await cookies();
@@ -39,20 +40,14 @@ export async function POST(request) {
     // completion after deactivation -- same intent as the 2026-09-15
     // manual-mission inactive-scan fix.
     const { rows } = await query(
-      `SELECT qc.id, qc.mission_type
+      `SELECT qc.id, qc.mission_type, qc.is_active
        FROM quest_content qc
        WHERE qc.id = $1 AND qc.event_id = $2
-         AND (
-           qc.is_active = true
-           OR EXISTS (
-             SELECT 1 FROM quest_user_progress qup
-             WHERE qup.mission_id = qc.id AND qup.user_uuid = $3 AND qup.completed = true
-           )
-         )`,
+         AND qc.is_active = true`,
       [mission_id, currentEventId, userUuid]
     );
     if (rows.length === 0) {
-      return NextResponse.json({ error: 'Mission not found' }, { status: 404 });
+      return NextResponse.json({ error: 'mission_inactive_or_not_found' }, { status: 410 });
     }
     if (!['attendance', 'manual'].includes(rows[0].mission_type)) {
       return NextResponse.json({ error: 'Progress for this mission type is automatic' }, { status: 400 });
@@ -66,6 +61,10 @@ export async function POST(request) {
              completed_at = CASE WHEN EXCLUDED.completed THEN NOW() ELSE NULL END`,
       [mission_id, userUuid, completed, completed ? new Date() : null]
     );
+    await recordMissionHistory(query, {
+      eventId: currentEventId, missionId: mission_id, userUuid,
+      status: completed ? 'completed' : 'participated', evidenceType: 'progress',
+    });
 
     return NextResponse.json({ success: true });
   } catch (err) {

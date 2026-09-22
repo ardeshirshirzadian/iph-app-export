@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { ensureBadgeProgressTable } from '@/lib/initQuestBadges';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { recordMissionHistory } from '@/lib/questMissionHistory';
 
 async function getUserUuid() {
   const cookieStore = await cookies();
@@ -81,6 +82,9 @@ export async function grantProfilePhotoMissionXp() {
        ON CONFLICT (mission_id, user_uuid) DO UPDATE SET completed = true, completed_at = NOW()`,
       [missionId, userUuid]
     );
+    await recordMissionHistory(query, {
+      eventId: currentEventId, missionId, userUuid, status: 'completed', evidenceType: 'profile_photo',
+    });
   } catch (err) {
     console.error('[grantProfilePhotoMissionXp] failed to award profile-photo mission XP:', err.message);
   }

@@ -4,6 +4,7 @@ import { query } from '@/lib/db';
 import { ensureBadgeProgressTable } from '@/lib/initQuestBadges';
 import { ensureFeaturedBoothState, markFeaturedBoothClaimed, isWithinDailyWindow } from '@/lib/featuredBoothHelper';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { recordMissionHistory } from '@/lib/questMissionHistory';
 
 const RASAYESH_BASE = 'https://api.rasayesh.com/';
 
@@ -325,9 +326,10 @@ export async function POST(request) {
     // quest_content.target_company_id post-remap. Deployed together with
     // that remap and the paired reader-JOIN flips (quest-dashboard, this
     // file's own hall_scan JOIN below).
-    await query(
+    const scanResult = await query(
       `INSERT INTO quest_scans (user_uuid, company_id, booth_uuid, xp_earned, is_featured_booth_bonus, event_id)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
       [userUuid, company.placement_id, uuid, xpEarned, bonusXp > 0, currentEventId]
     );
 
@@ -344,7 +346,7 @@ export async function POST(request) {
       const { rows: scanMissions } = await query(
         `SELECT id, mission_type, xp_reward, total, target_hall_name, hall_match_mode, target_company_id
          FROM quest_content
-         WHERE is_active = true AND xp_reward > 0 AND event_id = $1
+         WHERE is_active = true AND event_id = $1
            AND mission_type IN ('booth_scan', 'hall_scan', 'special_booth')`,
         [currentEventId]
       );
@@ -352,7 +354,9 @@ export async function POST(request) {
       for (const m of scanMissions) {
         let completed = false;
 
+        let participated = false;
         if (m.mission_type === 'booth_scan') {
+          participated = true;
           const { rows } = await query(
             `SELECT COUNT(*) AS cnt FROM quest_scans WHERE user_uuid = $1 AND event_id = $2`,
             [userUuid, currentEventId]
@@ -372,13 +376,22 @@ export async function POST(request) {
             [userUuid, m.target_hall_name, Number(eventId), currentEventId]
           );
           const scanned = parseInt(rows[0].cnt, 10);
+          participated = company.hall_name === m.target_hall_name;
           completed = m.hall_match_mode === 'any' ? scanned >= 1 : scanned >= m.total;
 
         } else if (m.mission_type === 'special_booth') {
           // sub-phase 4: target_company_id is companies_placement.id;
           // compare against company.placement_id, not the global company.id.
           if (!m.target_company_id || company.placement_id !== m.target_company_id) continue;
+          participated = true;
           completed = true;
+        }
+
+        if (participated) {
+          await recordMissionHistory(query, {
+            eventId: currentEventId, missionId: m.id, userUuid,
+            status: completed ? 'completed' : 'participated', evidenceType: 'scan', evidenceId: scanResult.rows[0]?.id,
+          });
         }
 
         if (completed) {
@@ -403,6 +416,10 @@ export async function POST(request) {
            ON CONFLICT (mission_id, user_uuid) DO UPDATE SET completed = true, completed_at = NOW()`,
           [company.linked_mission_id, userUuid]
         ).catch(() => {});
+        await recordMissionHistory(query, {
+          eventId: currentEventId, missionId: company.linked_mission_id, userUuid,
+          status: 'completed', evidenceType: 'manual_scan', evidenceId: scanResult.rows[0]?.id,
+        });
       }
       if (company.linked_badge_id) {
         await ensureBadgeProgressTable();
@@ -423,6 +440,10 @@ export async function POST(request) {
          ON CONFLICT (mission_id, user_uuid) DO UPDATE SET completed = true, completed_at = NOW()`,
         [bonusMission.id, userUuid]
       ).catch(() => {});
+      await recordMissionHistory(query, {
+        eventId: currentEventId, missionId: bonusMission.id, userUuid,
+        status: 'completed', evidenceType: 'featured_booth_scan', evidenceId: scanResult.rows[0]?.id,
+      });
     }
     if (bonusBadge) {
       await ensureBadgeProgressTable();

@@ -99,7 +99,7 @@ export async function POST(request) {
       [eventId]
     );
     if (!anyActiveResult.rows[0]?.any_active) {
-      return Response.json({ ok: false, error: 'invalid_code' });
+      return Response.json({ ok: false, error: 'mission_inactive' }, { status: 410 });
     }
 
     // #2: a code stops being redeemable once its owner's confirmed-referral
