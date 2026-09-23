@@ -28,6 +28,40 @@ function normalizePhone(mobile, lang) {
   return lang === "fa" ? toPersianDigits(normalized) : normalized;
 }
 
+function isSvgIconPath(path) {
+  return typeof path === "string" && path.startsWith("/") && path.toLowerCase().endsWith(".svg");
+}
+
+// Colorable SVG for the "contact support" button, admin-configured via
+// profile_support_link_config -- same CSS mask-image + backgroundColor
+// technique as BadgeClient.jsx's HeaderButtonIcon / QuestClient.js's
+// QuestIcon (no fetch/inline SVG markup, so nothing here needs sanitizing).
+function SupportLinkIcon({ path, size, colorDark, colorLight }) {
+  const [isLight, setIsLight] = useState(false);
+
+  useEffect(() => {
+    setIsLight(document.documentElement.classList.contains("light"));
+    const observer = new MutationObserver(() => {
+      setIsLight(document.documentElement.classList.contains("light"));
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  const color = isLight ? (colorLight || "#0f172a") : (colorDark || "#ffffff");
+
+  return (
+    <span style={{
+      display: "block", width: size, height: size, flexShrink: 0,
+      backgroundColor: color,
+      WebkitMaskImage: `url('${path}')`, WebkitMaskSize: "contain",
+      WebkitMaskRepeat: "no-repeat", WebkitMaskPosition: "center",
+      maskImage: `url('${path}')`, maskSize: "contain",
+      maskRepeat: "no-repeat", maskPosition: "center",
+    }} />
+  );
+}
+
 function SkeletonBlock({ className }) {
   return (
     <div
@@ -103,11 +137,26 @@ function GearIcon({ lang }) {
   );
 }
 
-export default function ProfileClient({ title, subtitle, title_en, subtitle_en, isHomeContext = false, showBack = true }) {
+export default function ProfileClient({ title, subtitle, title_en, subtitle_en, isHomeContext = false, showBack = true, supportLink = null }) {
   const { logout } = useAuth();
   const router = useRouter();
   const { attendee: attendeeData, loading: profileLoading, refetch } = useAttendee();
   const { lang, isRTL } = useLang();
+
+  // Inert by default -- an empty/unconfigured target_url means "admin hasn't
+  // set this up yet", so the whole section stays out of the tree rather than
+  // rendering a dead button. Unlike BadgeClient's header button, the icon
+  // alone never gates this (it always has a real default, see
+  // lib/profileSupportLinkCache.js's PROFILE_SUPPORT_LINK_DEFAULTS).
+  const supportLinkVisible = Boolean(supportLink?.target_url);
+  const isExternalSupportTarget = /^https?:\/\//i.test(supportLink?.target_url || '');
+  const supportLinkIconEl = supportLink?.icon && supportLink.icon.startsWith('/') ? (
+    isSvgIconPath(supportLink.icon)
+      ? <SupportLinkIcon path={supportLink.icon} size={supportLink.icon_size} colorDark={supportLink.color_dark} colorLight={supportLink.color_light} />
+      : <img src={supportLink.icon} alt="" style={{ width: supportLink?.icon_size, height: supportLink?.icon_size, objectFit: "contain" }} />
+  ) : (
+    <span style={{ fontSize: supportLink?.icon_size, lineHeight: 1 }}>{supportLink?.icon}</span>
+  );
 
   // AttendeeProvider persists across client-side route changes. Refresh on
   // entering Profile so an APN correction is visible on normal navigation,
@@ -335,6 +384,33 @@ export default function ProfileClient({ title, subtitle, title_en, subtitle_en, 
             </p>
           </div>
         ) : null}
+
+        {/* Contact support -- admin-configured (iph-apn ⚙️ عمومی), inert
+            when no link is set (see supportLinkVisible above). Positioned
+            directly above the logout button per the product ask. */}
+        {supportLinkVisible && (
+          <a
+            href={supportLink.target_url}
+            target={isExternalSupportTarget ? "_blank" : undefined}
+            rel={isExternalSupportTarget ? "noopener noreferrer" : undefined}
+            className="w-full mb-3 active:scale-95 transition-transform"
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              background: "var(--btn-secondary-bg)",
+              color: "var(--btn-secondary-text)",
+              border: "1px solid var(--btn-secondary-border)",
+              borderRadius: 12,
+              padding: "10px 20px",
+              textDecoration: "none",
+              fontWeight: 700,
+            }}
+          >
+            {supportLinkIconEl}
+            <span style={{ fontSize: supportLink.label_size }}>
+              {lang === "en" ? (supportLink.label_en || supportLink.label_fa) : supportLink.label_fa}
+            </span>
+          </a>
+        )}
 
         {/* Logout button */}
         <Button
