@@ -847,7 +847,7 @@ function LeaderboardRow({ user, isMe, badgeColor, badgeLabel, xpUnit, lang, rank
   );
 }
 
-function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUnit, lang, levels, rankIcons, referralSegment, boothSegment, overallSegment, logoBaseUrl }) {
+function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUnit, lang, levels, rankIcons, referralSegment, scanSegment, boothSegment, overallSegment, logoBaseUrl }) {
   const [subTab, setSubTab] = useState('overall');
   const [levelCache, setLevelCache] = useState({});
 
@@ -868,6 +868,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
     if (levelCache[key] !== undefined) return;
     setLevelCache(c => ({ ...c, [key]: null }));
     const url = key === 'referral' ? '/api/quest/leaderboard?segment=referral'
+      : key === 'scans' ? '/api/quest/leaderboard?segment=scans'
       : key === 'booths' ? '/api/quest/leaderboard?segment=booths'
       : `/api/quest/leaderboard?level=${key}`;
     fetch(url)
@@ -880,7 +881,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
   // bar -- level PROGRESS elsewhere (UserCard/LevelTimeline on the profile
   // card) is untouched, this only affects which leaderboard segments are
   // switchable here. A "companies" segment is planned for a later round.
-  const subTabBar = (referralSegment?.active || boothSegment?.active) ? (
+  const subTabBar = (referralSegment?.active || scanSegment?.active || boothSegment?.active) ? (
     <div className="flex gap-1.5 mb-4 overflow-x-auto pb-1 scrollbar-hide">
       {(() => {
         // Falls back to these same defaults server-side returns
@@ -930,6 +931,30 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
             {iconIsImg
               ? <img src={referralSegment.icon_value} alt="" style={{ width: referralSegment.icon_size ?? 14, height: referralSegment.icon_size ?? 14, objectFit: 'contain', flexShrink: 0 }} />
               : <span style={{ fontSize: referralSegment.icon_size ?? 14, lineHeight: 1 }}>{referralSegment.icon_value || '🔗'}</span>
+            }
+            {name}
+          </button>
+        );
+      })()}
+      {scanSegment?.active && (() => {
+        const isActive = subTab === 'scans';
+        const color = scanSegment.color || '#8b5cf6';
+        const name = lang === 'en' ? (scanSegment.name_en || scanSegment.name_fa) : scanSegment.name_fa;
+        const iconIsImg = scanSegment.icon_type === 'image' && scanSegment.icon_value?.startsWith('/');
+        return (
+          <button
+            key="scans"
+            onClick={() => setSubTab('scans')}
+            className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold transition-all"
+            style={{
+              background: isActive ? color + '22' : "var(--surface-2)",
+              color: isActive ? color : "var(--text-dim)",
+              border: `1px solid ${isActive ? color + '66' : 'var(--border)'}`,
+            }}
+          >
+            {iconIsImg
+              ? <img src={scanSegment.icon_value} alt="" style={{ width: scanSegment.icon_size ?? 14, height: scanSegment.icon_size ?? 14, objectFit: 'contain', flexShrink: 0 }} />
+              : <span style={{ fontSize: scanSegment.icon_size ?? 14, lineHeight: 1 }}>{scanSegment.icon_value || '🚶'}</span>
             }
             {name}
           </button>
@@ -1065,6 +1090,95 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
               isMe={true}
               badgeColor={referralColor}
               xpUnit={referralUnit}
+              lang={lang}
+              rankIcons={rankIcons}
+            />
+          </>
+        )}
+      </div>
+    );
+  }
+
+  if (subTab === 'scans') {
+    const cache = levelCache.scans;
+    if (cache === null || cache === undefined) {
+      return (
+        <div className="space-y-2">
+          {subTabBar}
+          <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
+            {lang === 'en' ? 'Loading...' : 'در حال بارگذاری...'}
+          </div>
+        </div>
+      );
+    }
+
+    // Deliberately NOT scanSegment.name_fa/name_en (unlike referralUnit
+    // above) -- that field is the TAB's own admin-configurable label (e.g.
+    // 'بازدید غرفه‌ها'), which would read oddly next to a count that's
+    // actually a scan count. 'اسکن'/'Scans' describes what the number IS,
+    // same fixed-string convention the booths segment below already uses
+    // for its own scan-count rows.
+    const scanUnit = lang === 'en' ? 'Scans' : 'اسکن';
+    const scanColor = scanSegment?.color || '#8b5cf6';
+
+    // xp holds the real-scan count here (this segment's own ranking metric)
+    // -- same "count reused into the shared xp/xpUnit slot" convention the
+    // referral segment above already uses for its own invite-count.
+    const scanRows = cache.leaderboard.map(item => ({
+      rank:              item.rank,
+      user_uuid:         item.user_uuid,
+      name:              lang === 'en' ? (item.display_name_en || item.display_name_fa || 'شرکت‌کننده') : (item.display_name_fa || 'شرکت‌کننده'),
+      company:           '',
+      xp:                item.scan_count,
+      profile_photo_url: item.profile_photo_url || null,
+      scan_count:        item.scan_count,
+      occupation_label_fa: item.occupation_label_fa,
+      occupation_label_en: item.occupation_label_en,
+    }));
+
+    const currentInList = scanRows.find(r => r.user_uuid === currentUserUuid);
+    const cu = cache.currentUser;
+    const showExtraMe = cu && !currentInList;
+
+    return (
+      <div className="space-y-2">
+        {subTabBar}
+        {scanRows.length === 0 ? (
+          <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
+            {lang === 'en' ? 'No booth visits yet' : 'هنوز کسی غرفه‌ای را اسکن نکرده'}
+          </div>
+        ) : (
+          scanRows.map(user => (
+            <LeaderboardRow
+              key={`${subTab}-${user.user_uuid}`}
+              user={user}
+              isMe={!!currentUserUuid && user.user_uuid === currentUserUuid}
+              badgeColor={scanColor}
+              xpUnit={scanUnit}
+              lang={lang}
+              rankIcons={rankIcons}
+            />
+          ))
+        )}
+        {showExtraMe && (
+          <>
+            <div className="text-center text-xs py-1" style={{ color: "var(--text-dim)" }}>• • •</div>
+            <LeaderboardRow
+              key="current-user-extra"
+              user={{
+                rank:              cu.rank,
+                user_uuid:         cu.user_uuid || currentUserUuid,
+                name:              lang === 'en' ? (cu.display_name_en || cu.display_name_fa || 'شما') : (cu.display_name_fa || 'شما'),
+                company:           '',
+                xp:                cu.scan_count,
+                profile_photo_url: cu.profile_photo_url || null,
+                scan_count:        cu.scan_count,
+                occupation_label_fa: cu.occupation_label_fa,
+                occupation_label_en: cu.occupation_label_en,
+              }}
+              isMe={true}
+              badgeColor={scanColor}
+              xpUnit={scanUnit}
               lang={lang}
               rankIcons={rankIcons}
             />
@@ -3232,6 +3346,12 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
   // decision), so LeaderboardTab's existing `?.active` checks stay uniform
   // across both segments without a special case.
   const [boothSegment, setBoothSegment] = useState(null);
+  // The "بازدید غرفه‌ها" (scans) leaderboard segment's own icon/label/color
+  // config -- people ranked by their own real-booth scan count, mirroring
+  // boothSegment's always-{active:true} treatment (no on/off gate) exactly,
+  // just a different ranking metric (per-user COUNT(*) instead of
+  // per-company). See app/api/quest/leaderboard/route.js's ?segment=scans.
+  const [scanSegment, setScanSegment] = useState(null);
   // The "کلی" (overall) segment's own icon/label/color config -- same
   // always-{active:true} treatment as boothSegment (no on/off gate; Overall
   // is always the default tab). LeaderboardTab falls back to fixed defaults
@@ -3341,6 +3461,13 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
     fetch('/api/quest/booth-leaderboard-config')
       .then(r => r.json())
       .then(d => { if (d.active && d.config) setBoothSegment({ active: true, ...d.config }); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/quest/scan-leaderboard-config')
+      .then(r => r.json())
+      .then(d => { if (d.active && d.config) setScanSegment({ active: true, ...d.config }); })
       .catch(() => {});
   }, []);
 
@@ -3842,6 +3969,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
               lang={lang}
               levels={liveLevels || []}
               referralSegment={referralSegment}
+              scanSegment={scanSegment}
               boothSegment={boothSegment}
               overallSegment={overallSegment}
               logoBaseUrl={logoBaseUrl}

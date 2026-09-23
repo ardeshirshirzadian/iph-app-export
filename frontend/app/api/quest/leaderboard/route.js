@@ -277,6 +277,114 @@ export async function GET(request) {
       return NextResponse.json(await addOccupationLabels(leaderboard, currentUser, currentEventId === 1));
     }
 
+    // ── SCAN LEADERBOARD SEGMENT (people ranked by their own real scan count) ──
+    // Same shape as the referral segment above (top-N + current-viewer rank),
+    // just a different ranking metric -- COUNT(*) of a user's own
+    // quest_scans rows, restricted to real physical booths (cp.is_manual =
+    // false), same restriction and join the booths segment below already
+    // uses to rank companies -- per Ardeshir's explicit call, a "scan" here
+    // means a real booth visit, not a QR-gimmick manual mission. Always
+    // available, no active/inactive gate (like the booths segment, unlike
+    // referral): a personal scan count needs no "is this feature even on"
+    // concept the way an unlimited-referral mission does.
+    if (segment === 'scans') {
+      let leaderboard = [];
+      if (!rankOnly) {
+        const limitResult = await query(
+          "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'scan_leaderboard_config'",
+          [currentEventId]
+        );
+        const rawLimit = parseInt(limitResult.rows[0]?.value?.leaderboard_limit, 10);
+        const limit = Number.isFinite(rawLimit) && rawLimit >= 1 ? rawLimit : 20;
+
+        // scan_agg has no row at all for a user with zero real-booth scans --
+        // same "not in the ranking pool" treatment a zero-XP or zero-referral
+        // user already gets elsewhere in this file, not a new inconsistency.
+        const { rows: topRows } = await query(`
+          WITH scan_agg AS (
+            SELECT qs.user_uuid, COUNT(*)::int AS scan_count
+            FROM quest_scans qs
+            JOIN companies_placement cp ON cp.id = qs.company_id AND cp.event_id = qs.event_id
+            WHERE qs.event_id = $1 AND cp.is_manual = false
+            GROUP BY qs.user_uuid
+          )
+          SELECT
+            sa.user_uuid, sa.scan_count,
+            COALESCE(
+              NULLIF(TRIM(COALESCE(au.firstname_fa, '') || ' ' || COALESCE(au.lastname_fa, '')), ''),
+              qn.display_name_fa,
+              'شرکت‌کننده'
+            ) AS display_name_fa,
+            COALESCE(
+              NULLIF(TRIM(COALESCE(au.firstname_en, '') || ' ' || COALESCE(au.lastname_en, '')), ''),
+              qn.display_name_en
+            ) AS display_name_en,
+            qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo, au.occupation_id,
+            -- Same DENSE_RANK() convention as every other location in this file.
+            DENSE_RANK() OVER (ORDER BY sa.scan_count DESC)::int AS rank
+          FROM scan_agg sa
+          LEFT JOIN quest_user_names qn ON sa.user_uuid = qn.user_uuid
+          LEFT JOIN app_users        au ON sa.user_uuid = au.uuid AND au.event_id = $1
+          WHERE (au.excluded_from_leaderboard IS NOT TRUE)
+          ORDER BY sa.scan_count DESC, sa.user_uuid ASC
+          LIMIT $2
+        `, [currentEventId, limit]);
+
+        leaderboard = topRows.map(row => ({
+          rank:              row.rank,
+          user_uuid:         row.user_uuid,
+          display_name_fa:   row.display_name_fa,
+          display_name_en:   row.display_name_en || null,
+          scan_count:        row.scan_count,
+          profile_photo_url: resolvePhotoUrl(row.profile_photo_url, row.profile_image, row.hide_leaderboard_photo),
+          occupation_id:     row.occupation_id,
+        }));
+      }
+
+      let currentUser = null;
+      if (currentUuid) {
+        const { rows: rankRows } = await query(`
+          WITH scan_agg AS (
+            SELECT qs.user_uuid, COUNT(*)::int AS scan_count
+            FROM quest_scans qs
+            JOIN companies_placement cp ON cp.id = qs.company_id AND cp.event_id = qs.event_id
+            WHERE qs.event_id = $1 AND cp.is_manual = false
+            GROUP BY qs.user_uuid
+          )
+          SELECT
+            sa.scan_count,
+            qn.profile_photo_url, au.profile_image, au.hide_leaderboard_photo,
+            au.excluded_from_leaderboard, au.occupation_id,
+            (
+              SELECT COUNT(DISTINCT sa2.scan_count)::int + 1
+              FROM scan_agg sa2
+              LEFT JOIN app_users au2 ON sa2.user_uuid = au2.uuid AND au2.event_id = $1
+              WHERE (au2.excluded_from_leaderboard IS NOT TRUE)
+                AND sa2.scan_count > sa.scan_count
+            ) AS rank
+          FROM scan_agg sa
+          LEFT JOIN quest_user_names qn ON sa.user_uuid = qn.user_uuid
+          LEFT JOIN app_users        au ON sa.user_uuid = au.uuid AND au.event_id = $1
+          WHERE sa.user_uuid = $2
+        `, [currentEventId, currentUuid]);
+
+        // No row = this user has zero real-booth scans -- same as a zero-
+        // referral user on that segment, currentUser simply stays null; not
+        // an error case, not special-cased beyond that.
+        if (rankRows.length > 0) {
+          currentUser = {
+            user_uuid:         currentUuid,
+            rank:              rankRows[0].excluded_from_leaderboard ? null : rankRows[0].rank,
+            scan_count:        rankRows[0].scan_count,
+            profile_photo_url: resolvePhotoUrl(rankRows[0].profile_photo_url, rankRows[0].profile_image, rankRows[0].hide_leaderboard_photo),
+            occupation_id:     rankRows[0].occupation_id,
+          };
+        }
+      }
+
+      return NextResponse.json(await addOccupationLabels(leaderboard, currentUser, currentEventId === 1));
+    }
+
     // ── BOOTH LEADERBOARD SEGMENT (companies ranked by real scan count) ────
     // Always available (no active/inactive gate, unlike the referral
     // segment above -- see booth-leaderboard-config/route.js's own comment).
