@@ -1,5 +1,23 @@
+import { cookies } from 'next/headers';
 import { grantChatBadge, grantChatMissionXp } from '@/lib/grantChatMissionXp';
 import { getCurrentEventId } from '@/lib/currentEvent';
+
+// Same iph_user-cookie read as grantChatMissionXp.js's private getUserUuid()
+// -- duplicated rather than exported/shared because that one is scoped to
+// XP/badge grants, this one to attaching identity to the chatbot log. Absent
+// for guest/unauthenticated visitors, which is expected (chat works without
+// login) -- the chatbot backends and iph-apn's log display both already
+// treat a missing user_uuid as "guest", not an error.
+async function getUserUuid() {
+  const cookieStore = await cookies();
+  const userRaw = cookieStore.get('iph_user')?.value;
+  try {
+    const user = JSON.parse(decodeURIComponent(userRaw));
+    return user?.uuid || null;
+  } catch {
+    return null;
+  }
+}
 
 export async function POST(request) {
   const requestBody = await request.json();
@@ -8,7 +26,8 @@ export async function POST(request) {
   // codebase has no precedent for handing a raw event_id to a client
   // component, every other server touchpoint re-resolves it itself instead.
   const eventId = await getCurrentEventId();
-  const body = { ...requestBody, event_id: eventId };
+  const userUuid = await getUserUuid();
+  const body = { ...requestBody, event_id: eventId, user_uuid: userUuid };
 
   // Badge fires unconditionally the moment the message is accepted for
   // sending -- independent of whether either backend ever answers.
