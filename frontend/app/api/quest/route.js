@@ -127,13 +127,34 @@ async function calcProgress(mission, userUuid, eventId, currentEventId) {
         return r.rows.length > 0 ? 1 : 0;
       }
       case 'featured_booth': {
+        // Rotation-scoped, not a permanent one-shot flag: "completed" means
+        // "won the CURRENT cycle", so this self-clears the moment a new
+        // rotation is picked -- same scanned_at >= selected_at pattern
+        // already used below for pool-company scan status and in
+        // scan/route.js's rescan dedup (2026-09-24: fixes a previous winner
+        // never being able to win again on later rotations). quest_user_
+        // progress.completed is still written on every win (history/audit,
+        // untouched) -- it's just no longer read here for the live card.
+        const { rows: fbStateRows } = await query(
+          `SELECT selected_at FROM quest_featured_booth_state WHERE mission_id = $1`,
+          [mission.id]
+        ).catch(() => ({ rows: [] }));
+        const selectedAt = fbStateRows[0]?.selected_at ?? null;
+        if (!selectedAt) return 0; // no rotation picked yet -- nothing to have won
+        const pool = Array.isArray(mission.featured_booth_pool) ? mission.featured_booth_pool : [];
+        if (pool.length === 0) return 0;
+        // company_id here must go through companies_placement -- quest_scans.
+        // company_id is the placement surrogate id, featured_booth_pool holds
+        // global company ids (sub-phase 4 remap, see featuredBoothHelper.js).
         const r = await query(
-          `SELECT qup.completed FROM quest_user_progress qup
-           JOIN quest_content qc ON qc.id = qup.mission_id
-           WHERE qup.mission_id = $1 AND qup.user_uuid = $2 AND qc.event_id = $3`,
-          [mission.id, userUuid, currentEventId]
-        );
-        return r.rows.length > 0 && r.rows[0].completed ? 1 : 0;
+          `SELECT 1 FROM quest_scans qs
+           JOIN companies_placement cp ON cp.id = qs.company_id
+           WHERE qs.user_uuid = $1 AND qs.event_id = $2 AND qs.is_featured_booth_bonus = true
+             AND cp.company_id = ANY($3::int[]) AND qs.scanned_at >= $4::timestamp
+           LIMIT 1`,
+          [userUuid, currentEventId, pool, selectedAt]
+        ).catch(() => ({ rows: [] }));
+        return r.rows.length > 0 ? 1 : 0;
       }
       case 'referral_code': {
         // Cumulative confirmed-referral count for this user as REFERRER,
