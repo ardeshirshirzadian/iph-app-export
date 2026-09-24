@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { gql } from "@apollo/client";
 import { getApolloClient } from "@/lib/apolloClient";
 import { getFormOptions } from "@/lib/formOptionsCache";
-import { getInvalidProfileNameFields, nameScriptError, toPersianDigits, toEnglishDigits, toLocalMobile } from "@/lib/utils";
+import { getInvalidProfileNameFields, nameScriptError, normalizeName, toPersianDigits, toEnglishDigits, toLocalMobile } from "@/lib/utils";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
 import LangToggle from "@/components/LangToggle";
@@ -515,10 +515,10 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
         // Persian strings, but an empty string is valid for email-only
         // registrations; copying an English name into those fields would
         // violate the profile name-script rule.
-        firstnameFa: profileForm.firstnameFa,
-        lastnameFa: profileForm.lastnameFa,
-        firstnameEn: profileForm.firstnameEn,
-        lastnameEn: profileForm.lastnameEn,
+        firstnameFa: normalizeName(profileForm.firstnameFa),
+        lastnameFa: normalizeName(profileForm.lastnameFa),
+        firstnameEn: normalizeName(profileForm.firstnameEn),
+        lastnameEn: normalizeName(profileForm.lastnameEn),
         // No otherContact collected for isEmail (Mobile field removed above)
         // -- $mobile is nullable on this mutation, and Apollo strips
         // undefined variables from the request rather than sending "".

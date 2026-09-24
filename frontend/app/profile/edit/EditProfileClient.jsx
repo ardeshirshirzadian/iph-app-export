@@ -12,7 +12,7 @@ import { useAttendee } from "@/app/components/AttendeeProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { useLang } from "@/lib/useLang";
 import { t } from "@/lib/i18n";
-import { getInvalidProfileNameFields, nameScriptError, toPersianDigits, toEnglishDigits } from "@/lib/utils";
+import { getInvalidProfileNameFields, nameScriptError, normalizeName, toPersianDigits, toEnglishDigits } from "@/lib/utils";
 import { hapticSuccess, hapticError } from "@/lib/haptics";
 import { getMissingFields } from "@/lib/profileCompletion";
 
@@ -460,10 +460,10 @@ export default function EditProfileClient() {
       const result = await client.mutate({
         mutation: UPDATE_INFO,
         variables: {
-          firstnameFa: form.firstnameFa,
-          lastnameFa: form.lastnameFa,
-          firstnameEn: (form.firstnameEn || "").trim(),
-          lastnameEn: (form.lastnameEn || "").trim(),
+          firstnameFa: normalizeName(form.firstnameFa),
+          lastnameFa: normalizeName(form.lastnameFa),
+          firstnameEn: normalizeName((form.firstnameEn || "").trim()),
+          lastnameEn: normalizeName((form.lastnameEn || "").trim()),
           jobTitleFa: form.jobTitleFa,
           jobTitleEn: form.jobTitleEn,
           nationalCode: form.nationalCode,
@@ -485,10 +485,10 @@ export default function EditProfileClient() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          firstnameFa: form.firstnameFa,
-          lastnameFa: form.lastnameFa,
-          firstnameEn: (form.firstnameEn || "").trim(),
-          lastnameEn: (form.lastnameEn || "").trim(),
+          firstnameFa: normalizeName(form.firstnameFa),
+          lastnameFa: normalizeName(form.lastnameFa),
+          firstnameEn: normalizeName((form.firstnameEn || "").trim()),
+          lastnameEn: normalizeName((form.lastnameEn || "").trim()),
           source: 'profile-edit',
         }),
       });

@@ -4,11 +4,24 @@ const RASAYESH_BASE = 'https://api.rasayesh.com/';
 
 // Profile names are validated, rather than filtered on keydown/onChange, so
 // paste, autofill and IME composition retain exactly what the user entered
-// and receive a clear error when the script is wrong. The Persian range
-// Names are alphabetic only. Spaces are permitted as word separators; no
-// punctuation, digits, combining marks, or invisible separators are allowed.
-const PERSIAN_NAME_RE = /^[\u0621-\u063A\u0641-\u064A\u0671-\u06D3\u06FA-\u06FF ]+$/u;
+// and receive a clear error when the script is wrong. Names are alphabetic
+// only plus ZWNJ (the Persian "half-space", U+200C) -- mobile Persian
+// keyboards routinely auto-insert it in compound names/surnames, and since
+// it's invisible, rejecting it silently blocked account creation for real
+// users (2026-09-24 incident) even though the form looked fully filled in.
+// No other punctuation, digits, or combining marks are allowed.
+const PERSIAN_NAME_RE = /^[\u0621-\u063A\u0641-\u064A\u0671-\u06D3\u06FA-\u06FF\u200C ]+$/u;
 const ENGLISH_NAME_RE = /^[A-Za-z ]+$/;
+
+// Some mobile keyboards insert U+00A0 (non-breaking space) instead of a
+// regular space after an autocomplete suggestion -- also invisible, also
+// silently failed PERSIAN_NAME_RE/ENGLISH_NAME_RE (neither allows it) and
+// shouldn't be persisted as-is. Collapse it to a normal space, along with
+// any resulting/typed-in double spaces, before validating or submitting.
+export function normalizeName(value) {
+  if (typeof value !== 'string') return value;
+  return value.replace(/\u00A0/g, ' ').replace(/ {2,}/g, ' ').trim();
+}
 
 export function isNameValidForLang(value, script) {
   // Name-requiredness is owned by the existing forms. This helper only
@@ -16,7 +29,7 @@ export function isNameValidForLang(value, script) {
   // blank fields without silently altering any stored data.
   if (value == null || value === '') return true;
   if (typeof value !== 'string') return false;
-  return (script === 'en' ? ENGLISH_NAME_RE : PERSIAN_NAME_RE).test(value);
+  return (script === 'en' ? ENGLISH_NAME_RE : PERSIAN_NAME_RE).test(normalizeName(value));
 }
 
 export function getInvalidProfileNameFields({ firstnameFa, lastnameFa, firstnameEn, lastnameEn }) {

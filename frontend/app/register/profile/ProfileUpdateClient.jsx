@@ -9,7 +9,7 @@ import BottomNav from "@/app/components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import { useAuth } from "@/hooks/useAuth";
 import { useLang } from "@/lib/useLang";
-import { getInvalidProfileNameFields, nameScriptError, toPersianDigits, toEnglishDigits } from "@/lib/utils";
+import { getInvalidProfileNameFields, nameScriptError, normalizeName, toPersianDigits, toEnglishDigits } from "@/lib/utils";
 
 const ATTENDEE_QUERY = gql`
   query GetAttendee {
@@ -233,10 +233,10 @@ export default function ProfileUpdateClient() {
       const { errors: infoErrors } = await client.mutate({
         mutation: UPDATE_INFO,
         variables: {
-          firstnameFa: form.firstnameFa,
-          lastnameFa: form.lastnameFa,
-          firstnameEn: form.firstnameEn || user?.firstname_en || "",
-          lastnameEn: form.lastnameEn || user?.lastname_en || "",
+          firstnameFa: normalizeName(form.firstnameFa),
+          lastnameFa: normalizeName(form.lastnameFa),
+          firstnameEn: normalizeName(form.firstnameEn || user?.firstname_en || ""),
+          lastnameEn: normalizeName(form.lastnameEn || user?.lastname_en || ""),
           jobTitleFa: form.jobTitleFa || undefined,
           jobTitleEn: form.jobTitleEn || undefined,
           nationalCode: form.nationalCode || undefined,
