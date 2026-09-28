@@ -66,7 +66,10 @@ function boothRangeLabel(nos) {
 }
 
 function getHallColor(hall, hallColors, resolvedAccentColor) {
-  return hallColors[hall.name] || hall.color || resolvedAccentColor || "#00ffb3";
+  // Neutral gray, not a hardcoded brand color -- only reached in the brief
+  // window before resolvedAccentColor has loaded, same convention as
+  // parseColor's own no-input fallback just below.
+  return hallColors[hall.name] || hall.color || resolvedAccentColor || "#888888";
 }
 
 // Zone fill when its hall_name has no entry in hallColors -- see the same
@@ -76,7 +79,10 @@ function getHallColor(hall, hallColors, resolvedAccentColor) {
 const UNCONFIGURED_ZONE_COLOR = "#ff00ff";
 
 function parseColor(c) {
-  if (!c) return new THREE.Color(0x00ffb3);
+  // Neutral gray for both "no color given" and "invalid color" -- previously
+  // inconsistent (green vs gray) between these two branches; unified since
+  // neither should ever assert a specific event's brand color.
+  if (!c) return new THREE.Color(0x888888);
   try { return new THREE.Color(c); } catch { return new THREE.Color(0x888888); }
 }
 
@@ -1141,7 +1147,7 @@ export default function Map3DView({
 
     function addRouteTube(path2D, floorY, stripeColor, haloColor) {
       if (!path2D || path2D.length < 2) return;
-      const stripe = stripeColor || '#00ffb3';
+      const stripe = stripeColor || '#888888'; // neutral gray, not a brand color; callers always pass a resolved color today
       const halo   = haloColor   || stripe;
       const pts = path2D.map((p) => new THREE.Vector3(p.x, floorY + ROUTE_Y, p.y));
       try {
@@ -1208,8 +1214,8 @@ export default function Map3DView({
     }
 
     // Primary (same-floor) colors
-    const rStripe = routeColors?.walkthroughStripe ?? resolvedAccentColor ?? '#00ffb3';
-    const rHalo   = routeColors?.walkthroughHalo   ?? resolvedAccentColor ?? '#00ffb3';
+    const rStripe = routeColors?.walkthroughStripe ?? resolvedAccentColor ?? '#888888';
+    const rHalo   = routeColors?.walkthroughHalo   ?? resolvedAccentColor ?? '#888888';
     // Secondary (cross-floor destination segment) colors
     const sStripe = routeColorsSecondary?.walkthroughStripe ?? '#f59e0b';
     const sHalo   = routeColorsSecondary?.walkthroughHalo   ?? '#f59e0b';

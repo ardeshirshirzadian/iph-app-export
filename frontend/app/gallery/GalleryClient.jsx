@@ -222,8 +222,8 @@ export default function GalleryClient({ title, subtitle, title_en, subtitle_en, 
       style={{ background: "var(--bg)", color: "var(--text)" }}
     >
       <div className="dark-only fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[#00ffb3]/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 left-0 w-[350px] h-[350px] bg-[#054041]/60 rounded-full blur-3xl" />
+        <div className="absolute top-0 right-0 w-[400px] h-[400px] rounded-full blur-3xl" style={{ background: "color-mix(in srgb, var(--accent) 5%, transparent)" }} />
+        <div className="absolute bottom-0 left-0 w-[350px] h-[350px] rounded-full blur-3xl" style={{ background: "color-mix(in srgb, var(--surface) 60%, transparent)" }} />
       </div>
 
       <div className="relative max-w-md mx-auto px-4">

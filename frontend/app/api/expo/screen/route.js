@@ -44,7 +44,7 @@ function resolvePhotoUrl(profilePhotoUrl, profileImage, hideLeaderboardPhoto) {
 // an event with no active quest_levels rows configured yet.
 const FALLBACK_LEVELS = [
   { name_fa: 'تازه‌وارد', min_xp: 0, max_xp: 200, color: '#64748b' },
-  { name_fa: 'کاوشگر', min_xp: 200, max_xp: 500, color: '#22c55e' },
+  { name_fa: 'کاوشگر', min_xp: 200, max_xp: 500, color: 'var(--accent)' },
   { name_fa: 'کاربلد', min_xp: 500, max_xp: null, color: '#f59e0b' },
 ];
 

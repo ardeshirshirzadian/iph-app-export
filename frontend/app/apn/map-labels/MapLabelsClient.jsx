@@ -177,7 +177,7 @@ export default function MapLabelsClient({ initialConfig }) {
           {saving ? 'در حال ذخیره...' : 'ذخیره برچسب‌ها'}
         </button>
         {saveStatus === 'ok' && (
-          <span style={{ color: '#22c55e', fontSize: 13 }}>✓ ذخیره شد — بعد از رفرش صفحه اعمال می‌شود</span>
+          <span style={{ color: 'var(--accent)', fontSize: 13 }}>✓ ذخیره شد — بعد از رفرش صفحه اعمال می‌شود</span>
         )}
         {saveStatus === 'err' && (
           <span style={{ color: '#ef4444', fontSize: 13 }}>خطا در ذخیره. دوباره تلاش کنید.</span>

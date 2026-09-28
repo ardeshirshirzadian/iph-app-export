@@ -35,7 +35,7 @@ export async function GET() {
         icon_type:         raw.icon_type || 'emoji',
         icon_value:        raw.icon_value || '🏭',
         icon_size:         raw.icon_size ?? 14,
-        color:             raw.color || '#10b981',
+        color:             raw.color || 'var(--accent)',
       },
     });
   } catch (e) {

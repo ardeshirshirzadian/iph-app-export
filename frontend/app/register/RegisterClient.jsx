@@ -41,7 +41,6 @@ function PlanIcon({ icon }) {
 function PlanCard({ plan, selected, onToggle, lang, isAutoIncluded }) {
   const isSelectable = (plan.selective || plan.force_selection) && !plan.disabled;
   const isDisabled = !!plan.disabled;
-  const isFree = !plan.price || plan.price === 0;
   const title = lang === "en"
     ? (plan.title_en || plan.title_fa || "")
     : (plan.title_fa || plan.title_en || "");
@@ -77,7 +76,7 @@ function PlanCard({ plan, selected, onToggle, lang, isAutoIncluded }) {
             <h3 className="text-sm font-bold leading-snug" style={{ color: "var(--text)" }}>
               {title}
             </h3>
-            <p className="text-sm font-black mt-0.5" style={{ color: isFree ? "#22c55e" : "var(--accent)" }}>
+            <p className="text-sm font-black mt-0.5" style={{ color: "var(--accent)" }}>
               {formatPrice(plan.price, lang)}
             </p>
           </div>

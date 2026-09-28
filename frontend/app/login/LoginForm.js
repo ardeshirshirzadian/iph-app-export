@@ -547,7 +547,17 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
 
       if (result?.status !== 'success') {
         hapticError();
-        setError(result?.message || (isEmail ? "Failed to create account" : "خطا در ایجاد حساب"));
+        // status:'invalid' responses carry per-field messages under `errors`
+        // (e.g. {"email":["این ایمیل قبلاً استفاده شده است"]}), not a flat
+        // `message` -- surface whichever field(s) Rasayesh actually flagged
+        // (duplicate email, duplicate mobile, anything else) instead of
+        // always falling back to the generic string. Same convention
+        // EditProfileClient.jsx's saveInfo() already uses for this same
+        // response shape.
+        const fieldErrors = result?.errors && typeof result.errors === 'object'
+          ? Object.values(result.errors).flat().filter(Boolean).join(', ')
+          : '';
+        setError(fieldErrors || result?.message || (isEmail ? "Failed to create account" : "خطا در ایجاد حساب"));
         setLoading(false);
         return;
       }
@@ -651,8 +661,8 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
     >
       {/* Background glows */}
       <div className="dark-only fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[#00ffb3]/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 left-0 w-[350px] h-[350px] bg-[#054041]/60 rounded-full blur-3xl" />
+        <div className="absolute top-0 right-0 w-[400px] h-[400px] rounded-full blur-3xl" style={{ background: "color-mix(in srgb, var(--accent) 5%, transparent)" }} />
+        <div className="absolute bottom-0 left-0 w-[350px] h-[350px] rounded-full blur-3xl" style={{ background: "color-mix(in srgb, var(--surface) 60%, transparent)" }} />
       </div>
 
       {/* Language toggle — top corner */}

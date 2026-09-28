@@ -1910,7 +1910,13 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
     const themeConfig = routeAppearanceConfig?.[mapTheme];
     const defaults = mapTheme === 'light'
       ? { routeLine: '#007755', routeArrow: '#007755', walkthroughHalo: '#007755', walkthroughStripe: '#007755' }
-      : { routeLine: '#00ffb3', routeArrow: '#00ffb3', walkthroughHalo: '#00ffb3', walkthroughStripe: '#00ffb3' };
+      // Neutral gray, not a hardcoded brand color -- this is only the sentinel
+      // value compared against below (`merged[key] === defaults[key]`) to
+      // detect "admin never overrode this", swapped for the real per-event
+      // resolvedAccent the moment it's available. Must stay byte-identical to
+      // app/api/map/route.js's own ROUTE_APPEARANCE_DEFAULTS.dark.primary so
+      // that comparison still matches when the admin hasn't configured this.
+      : { routeLine: '#888888', routeArrow: '#888888', walkthroughHalo: '#888888', walkthroughStripe: '#888888' };
     const merged = { ...defaults, ...(themeConfig?.primary ?? {}) };
     // 'primary' route colors should track the event's own accent when the admin hasn't
     // set an explicit override -- same "still equals the literal default" check used

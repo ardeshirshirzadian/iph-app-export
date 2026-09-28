@@ -203,9 +203,9 @@ function SaveButton({ onClick, saving, saved }) {
       disabled={saving}
       className="w-full py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
       style={{
-        background: saved ? "rgba(34,197,94,0.15)" : "var(--accent)",
-        color: saved ? "#22c55e" : "var(--btn-primary-text)",
-        border: saved ? "1px solid rgba(34,197,94,0.3)" : "none",
+        background: saved ? "color-mix(in srgb, var(--accent) 15%, transparent)" : "var(--accent)",
+        color: saved ? "var(--accent)" : "var(--btn-primary-text)",
+        border: saved ? "1px solid color-mix(in srgb, var(--accent) 30%, transparent)" : "none",
       }}
     >
       {saving ? "..." : saved ? t('fa', 'edit_saved') : null}
@@ -722,8 +722,8 @@ export default function EditProfileClient() {
       )}
 
       <div className="dark-only fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[#00ffb3]/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 left-0 w-[350px] h-[350px] bg-[#054041]/60 rounded-full blur-3xl" />
+        <div className="absolute top-0 right-0 w-[400px] h-[400px] rounded-full blur-3xl" style={{ background: "color-mix(in srgb, var(--accent) 5%, transparent)" }} />
+        <div className="absolute bottom-0 left-0 w-[350px] h-[350px] rounded-full blur-3xl" style={{ background: "color-mix(in srgb, var(--surface) 60%, transparent)" }} />
       </div>
 
       <div className="relative max-w-md mx-auto px-4 pb-32">
@@ -909,9 +909,9 @@ export default function EditProfileClient() {
               disabled={infoState.saving}
               className="w-full py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
               style={{
-                background: infoState.saved ? "rgba(34,197,94,0.12)" : "var(--accent)",
-                color: infoState.saved ? "#22c55e" : "var(--btn-primary-text)",
-                border: infoState.saved ? "1px solid rgba(34,197,94,0.25)" : "none",
+                background: infoState.saved ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--accent)",
+                color: infoState.saved ? "var(--accent)" : "var(--btn-primary-text)",
+                border: infoState.saved ? "1px solid color-mix(in srgb, var(--accent) 25%, transparent)" : "none",
               }}
             >
               {infoState.saving ? "..." : infoState.saved ? "ذخیره شد ✓" : t(lang, "edit_save_info")}
@@ -1023,7 +1023,7 @@ export default function EditProfileClient() {
                 </div>
               )}
               {phoneSuccess && (
-                <p className="text-xs mt-1" style={{ color: "#22c55e" }}>{phoneSuccess}</p>
+                <p className="text-xs mt-1" style={{ color: "var(--accent)" }}>{phoneSuccess}</p>
               )}
             </Field>
             <Field label={t(lang, "edit_phone")}>
@@ -1046,9 +1046,9 @@ export default function EditProfileClient() {
               disabled={contactState.saving}
               className="w-full py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
               style={{
-                background: contactState.saved ? "rgba(34,197,94,0.12)" : "var(--accent)",
-                color: contactState.saved ? "#22c55e" : "var(--btn-primary-text)",
-                border: contactState.saved ? "1px solid rgba(34,197,94,0.25)" : "none",
+                background: contactState.saved ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--accent)",
+                color: contactState.saved ? "var(--accent)" : "var(--btn-primary-text)",
+                border: contactState.saved ? "1px solid color-mix(in srgb, var(--accent) 25%, transparent)" : "none",
               }}
             >
               {contactState.saving ? "..." : contactState.saved ? "ذخیره شد ✓" : t(lang, "edit_save_contact")}
@@ -1146,9 +1146,9 @@ export default function EditProfileClient() {
               disabled={activityState.saving}
               className="w-full py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
               style={{
-                background: activityState.saved ? "rgba(34,197,94,0.12)" : "var(--accent)",
-                color: activityState.saved ? "#22c55e" : "var(--btn-primary-text)",
-                border: activityState.saved ? "1px solid rgba(34,197,94,0.25)" : "none",
+                background: activityState.saved ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--accent)",
+                color: activityState.saved ? "var(--accent)" : "var(--btn-primary-text)",
+                border: activityState.saved ? "1px solid color-mix(in srgb, var(--accent) 25%, transparent)" : "none",
               }}
             >
               {activityState.saving ? "..." : activityState.saved ? "ذخیره شد ✓" : (isEN ? "Save Activity" : "ذخیره حوزه فعالیت")}

@@ -187,7 +187,7 @@ export default function ConfirmClient() {
                         <p className="text-sm font-medium" style={{ color: "var(--text)" }}>
                           {title}
                         </p>
-                        <p className="text-sm font-bold flex-shrink-0" style={{ color: plan.price ? "var(--accent)" : "#22c55e" }}>
+                        <p className="text-sm font-bold flex-shrink-0" style={{ color: "var(--accent)" }}>
                           {formatPrice(plan.price, lang)}
                         </p>
                       </div>
@@ -201,12 +201,12 @@ export default function ConfirmClient() {
             {selectedPlans.length > 0 && (
               <div
                 className="rounded-2xl px-5 py-3 flex items-center justify-between"
-                style={{ background: isFree ? "rgba(34,197,94,0.08)" : "color-mix(in srgb, var(--accent) 6%, transparent)", border: `1px solid ${isFree ? "rgba(34,197,94,0.2)" : "color-mix(in srgb, var(--accent) 20%, transparent)"}` }}
+                style={{ background: "color-mix(in srgb, var(--accent) 6%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}
               >
                 <span className="text-sm font-bold" style={{ color: "var(--text)" }}>
                   {lang === "fa" ? "جمع کل" : "Total"}
                 </span>
-                <span className="text-base font-black" style={{ color: isFree ? "#22c55e" : "var(--accent)" }}>
+                <span className="text-base font-black" style={{ color: "var(--accent)" }}>
                   {formatPrice(totalPrice, lang)}
                 </span>
               </div>

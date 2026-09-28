@@ -378,7 +378,7 @@ export default function CartClient() {
                 <div className="mt-2 flex items-center gap-2">
                   <span
                     className="text-xs px-2.5 py-1 rounded-full font-bold"
-                    style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.3)" }}
+                    style={{ background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent)", border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)" }}
                   >
                     ✓ {t(lang, "book_discount_amount")}: {formatPrice(couponResult.discount_amount, lang)}
                   </span>
@@ -405,7 +405,7 @@ export default function CartClient() {
                     <span className="text-sm" style={{ color: "var(--text-muted)" }}>
                       {t(lang, "book_discount_amount")}
                     </span>
-                    <span className="text-sm font-bold" style={{ color: "#22c55e" }}>
+                    <span className="text-sm font-bold" style={{ color: "var(--accent)" }}>
                       − {formatPrice(discountAmount, lang)}
                     </span>
                   </div>
