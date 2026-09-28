@@ -1,23 +1,31 @@
 import {
   getCachedQuestContentBlocks,
   getCachedQuestAppearanceConfig,
+  getCachedQuestTabChrome,
   getCachedQuestSettings,
   getCachedQuestPageTitle,
   parseQuestBlocks,
 } from "@/lib/questPageCache";
 import { getCurrentEventId } from "@/lib/currentEvent";
+import { resolveIconSyncEventId } from "@/lib/iconSyncConfig";
 import QuestClient from "./QuestClient";
 
 export default async function QuestPage() {
   const currentEventId = await getCurrentEventId();
+  // Icon-sync applies to the 6 tab-chrome blocks only (tab label/icon/color).
+  // quest_appearance_config (mission icon colors/backgrounds) is explicitly
+  // OUT of icon-sync scope -- it's derived from each event's own theme_colors
+  // and must always stay independent per event, never synced from another
+  // event -- so it keeps reading currentEventId directly, unresolved.
+  const iconEventId = await resolveIconSyncEventId(currentEventId);
 
-  // These 4 reads are independent of each other (no data dependency between
+  // These 5 reads are independent of each other (no data dependency between
   // them), so fetch concurrently instead of paying their round-trips one
-  // after another. Each of the first 3 keeps its own original fallback via
+  // after another. Each of the first 4 keeps its own original fallback via
   // .catch() so a failure in one doesn't take down the others; the title
   // fetch deliberately has no fallback here (unchanged from before) -- see
   // the comment above its call for why.
-  const [content, appearanceConfig, questSettings, pageTitle] = await Promise.all([
+  const [content, appearanceConfig, tabChrome, questSettings, pageTitle] = await Promise.all([
     getCachedQuestContentBlocks(currentEventId)
       .then(parseQuestBlocks)
       .catch((err) => {
@@ -26,6 +34,7 @@ export default async function QuestPage() {
         return { main: {}, missions: [], leaderboard: [], badges: [] };
       }),
     getCachedQuestAppearanceConfig(currentEventId).catch(() => ({})),
+    getCachedQuestTabChrome(iconEventId).catch(() => ({ overrides: {}, overridesEn: {} })),
     getCachedQuestSettings(currentEventId).catch(() => ({})),
     // getPageTitle()'s own DEFAULTS merge (lib/getPageTitles.js) already
     // resolves 'never customized' to the default title/subtitle and
@@ -34,6 +43,14 @@ export default async function QuestPage() {
     getCachedQuestPageTitle(currentEventId),
   ]);
   const { title, subtitle, title_en, subtitle_en } = pageTitle;
+  // Merge tab-chrome overrides over the per-event content blocks -- only the
+  // 6 tab keys are ever present in tabChrome.overrides, so nothing else in
+  // content.main/main_en is touched.
+  const mergedContent = {
+    ...content,
+    main: { ...content.main, ...tabChrome.overrides },
+    main_en: { ...content.main_en, ...tabChrome.overridesEn },
+  };
 
-  return <QuestClient content={content} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} appearanceConfig={appearanceConfig} questSettings={questSettings} />;
+  return <QuestClient content={mergedContent} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} appearanceConfig={appearanceConfig} questSettings={questSettings} />;
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { unstable_cache } from 'next/cache';
 import { query } from '@/lib/db';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { resolveIconSyncEventId } from '@/lib/iconSyncConfig';
 
 const GQL = 'https://api.rasayesh.com/graphql';
 
@@ -254,9 +255,14 @@ const getCachedHeaderIconsConfig = unstable_cache(
   { tags: ['map-header-icons'], revalidate: 300 }
 );
 
+// dark.primary is a neutral-gray sentinel, not a hardcoded brand color -- the
+// client (MapClient.jsx's routeColors memo) swaps it for the real per-event
+// resolvedAccent the moment that's available, by comparing merged[key] ===
+// defaults[key]. Must stay byte-identical to MapClient.jsx's own client-side
+// `defaults.dark` object or that comparison silently stops matching.
 const ROUTE_APPEARANCE_DEFAULTS = {
   dark: {
-    primary: { routeLine: '#00ffb3', routeArrow: '#00ffb3', walkthroughHalo: '#00ffb3', walkthroughStripe: '#00ffb3' },
+    primary: { routeLine: '#888888', routeArrow: '#888888', walkthroughHalo: '#888888', walkthroughStripe: '#888888' },
     secondary: { routeLine: '#f59e0b', routeArrow: '#f59e0b', walkthroughHalo: '#f59e0b', walkthroughStripe: '#f59e0b' },
   },
   light: {
@@ -404,7 +410,9 @@ export async function GET() {
       getCachedGestureHintImagesConfig(currentEventId),
       getCachedRouteAppearanceConfig(currentEventId),
       getCachedMapLabelsConfig(currentEventId),
-      getCachedHeaderIconsConfig(currentEventId),
+      // Icon-sync applies to this one config only (the map's header icon) --
+      // every other map config above stays per-event.
+      getCachedHeaderIconsConfig(await resolveIconSyncEventId(currentEventId)),
     ]);
 
     return NextResponse.json({

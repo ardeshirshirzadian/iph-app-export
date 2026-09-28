@@ -2,12 +2,14 @@ import { unstable_cache } from 'next/cache';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { resolveIconSyncEventId } from '@/lib/iconSyncConfig';
 import { getPageTitle } from '@/lib/getPageTitles';
 import { getWelcomeToast } from '@/lib/getWelcomeToast';
 import { getPushPrompt } from '@/lib/getPushPrompt';
 import {
   getCachedQuestContentBlocks,
   getCachedQuestAppearanceConfig,
+  getCachedQuestTabChrome,
   getCachedQuestSettings,
   getCachedQuestPageTitle,
   parseQuestBlocks,
@@ -148,7 +150,13 @@ export default async function Home() {
       // These 4 reads are independent of each other, so fetch concurrently
       // instead of paying their round-trips one after another (same pattern
       // as the `default` branch's Promise.all below, and app/quest/page.js).
-      const [content, appearanceConfig, questSettings, pageTitle] = await Promise.all([
+      // Icon-sync applies to the 6 tab-chrome blocks only (tab label/icon/
+      // color). quest_appearance_config (mission icon colors/backgrounds) is
+      // explicitly OUT of icon-sync scope -- derived from each event's own
+      // theme_colors, must always stay independent per event -- so it keeps
+      // reading currentEventId directly, unresolved.
+      const iconEventId = await resolveIconSyncEventId(currentEventId);
+      const [content, appearanceConfig, tabChrome, questSettings, pageTitle] = await Promise.all([
         getCachedQuestContentBlocks(currentEventId)
           .then(parseQuestBlocks)
           .catch((err) => {
@@ -156,13 +164,22 @@ export default async function Home() {
             return { main: {}, main_en: {}, missions: [], leaderboard: [], badges: [] };
           }),
         getCachedQuestAppearanceConfig(currentEventId).catch(() => ({})),
+        getCachedQuestTabChrome(iconEventId).catch(() => ({ overrides: {}, overridesEn: {} })),
         getCachedQuestSettings(currentEventId).catch(() => ({})),
         // getPageTitle()'s own DEFAULTS merge already resolves 'never
         // customized' vs 'explicitly cleared' -- see app/quest/page.js.
         getCachedQuestPageTitle(currentEventId),
       ]);
       const { title, subtitle, title_en, subtitle_en } = pageTitle;
-      return <HomeVariantRenderer route="/quest" pushPrompt={pushPrompt} content={content} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} appearanceConfig={appearanceConfig} questSettings={questSettings} isHomeContext={false} showBack={false} />;
+      // Merge tab-chrome overrides over the per-event content blocks -- only
+      // the 6 tab keys are ever present in tabChrome.overrides (see
+      // app/quest/page.js's identical merge for the dedicated /quest route).
+      const mergedContent = {
+        ...content,
+        main: { ...content.main, ...tabChrome.overrides },
+        main_en: { ...content.main_en, ...tabChrome.overridesEn },
+      };
+      return <HomeVariantRenderer route="/quest" pushPrompt={pushPrompt} content={mergedContent} title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} appearanceConfig={appearanceConfig} questSettings={questSettings} isHomeContext={false} showBack={false} />;
     }
 
     case '/companies': {

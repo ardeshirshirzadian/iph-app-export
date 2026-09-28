@@ -43,6 +43,58 @@ export const getCachedQuestAppearanceConfig = unstable_cache(
   { tags: ["quest-appearance-config"], revalidate: 300 }
 );
 
+// The quest_content_blocks rows driving the quest page's tab bar AND top
+// stat-row chrome -- label/icon/color for the 3 tabs (missions/leaderboard/
+// badges), the 3 top stat boxes (XP/scanned-booths/rank, each an icon+label
+// pair per QuestClient.js's `stats` object), and the 3 leaderboard rank-medal
+// icons. Confirmed against QuestClient.js's actual render code (not guessed)
+// -- these are the ONLY 'main'-section blocks that live-follow the icon-sync
+// source event; everything else in quest_content_blocks (page copy, the
+// icon_level_*/level_*_name blocks -- confirmed dead/unread by any current
+// code path -- etc.) stays per-event via the plain getCachedQuestContentBlocks
+// above. Callers pass the icon-sync-resolved event id here (see
+// resolveIconSyncEventId), NOT the requesting event's own id, and merge the
+// result over parseQuestBlocks(...).main so only these keys get overridden.
+//
+// MUST stay in sync with TAB_CHROME_BLOCK_KEYS in iph-apn's app/quest/page.js
+// (the admin read-only-when-follower lock uses its own copy of this list).
+const QUEST_TAB_CHROME_KEYS = [
+  'tab_missions', 'icon_tab_missions',
+  'tab_leaderboard', 'icon_tab_leaderboard',
+  'tab_badges', 'icon_tab_badges',
+  'icon_stat_xp', 'stat_xp_label',
+  'icon_stat_scanned', 'stat_scanned_label',
+  'icon_stat_rank', 'stat_rank_label',
+  'icon_rank_1', 'icon_rank_2', 'icon_rank_3',
+  'xp_label', 'xp_unit', 'xp_remaining_suffix', 'next_level_prefix',
+];
+
+export const getCachedQuestTabChrome = unstable_cache(
+  async (eventId) => {
+    await ensureQuestContentTable(eventId);
+    const result = await query(
+      `SELECT block_key, content, content_en FROM quest_content_blocks
+       WHERE event_id = $1 AND section = 'main' AND block_key = ANY($2::text[])`,
+      [eventId, QUEST_TAB_CHROME_KEYS]
+    );
+    const overrides = {};
+    const overridesEn = {};
+    for (const row of result.rows) {
+      if (row.block_key.startsWith("icon_")) {
+        try {
+          const p = JSON.parse(row.content);
+          if (typeof p === "object" && p !== null) { overrides[row.block_key] = p; continue; }
+        } catch {}
+      }
+      overrides[row.block_key] = row.content;
+      if (row.content_en) overridesEn[row.block_key] = row.content_en;
+    }
+    return { overrides, overridesEn };
+  },
+  ["quest-tab-chrome"],
+  { tags: ["quest-tab-chrome"], revalidate: 300 }
+);
+
 export const getCachedQuestSettings = unstable_cache(
   async (eventId) => {
     const result = await query(

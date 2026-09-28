@@ -3,6 +3,7 @@ import { unstable_cache } from 'next/cache';
 import { query } from '@/lib/db';
 import { ensureBottomNavTable } from '@/lib/initBottomNav';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { resolveIconSyncEventId } from '@/lib/iconSyncConfig';
 
 // Pure admin content (bottom_nav_items) -- same pattern as
 // app/api/companies/config/route.js.
@@ -65,8 +66,17 @@ const getCachedNavSettings = unstable_cache(
 export async function GET() {
   try {
     const eventId = await getCurrentEventId();
+    // Icon-sync: bottom-nav icons live-follow the sync source event when
+    // active -- resolved once here and used as the cache key, so the source
+    // event's own admin-save revalidation reaches every follower for free.
+    // scan_glow_color is part of quest_appearance_config, which is derived
+    // from each event's OWN theme_colors and must stay fully independent per
+    // event (never synced/copied from another event) -- explicitly out of
+    // icon-sync scope, so it keeps using the plain (unresolved) eventId.
+    // Title visibility (nav-settings) is likewise per-event, not icon config.
+    const iconEventId = await resolveIconSyncEventId(eventId);
     const [items, scanGlow, navSettings] = await Promise.all([
-      getCachedNavItems(eventId),
+      getCachedNavItems(iconEventId),
       getCachedScanGlow(eventId),
       getCachedNavSettings(eventId),
     ]);

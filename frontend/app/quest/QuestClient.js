@@ -70,7 +70,7 @@ const APPEARANCE_DEFAULTS = {
     mission_subtitle_size: 12, mission_subtitle_color: '#94a3b8',
     leaderboard_size: 14,      leaderboard_color: '#ffffff',
     badge_title_size: 14,      badge_title_color: '#94a3b8',
-    active_border_color: '#00ffb3',
+    active_border_color: 'var(--accent)',
     // scan_glow_color is intentionally absent here -- ScanButton itself
     // moved to components/ScanButton.js (now rendered from BottomNav.js,
     // not this file); see its own module comment for why it must never
@@ -114,7 +114,7 @@ function hexToRgba(hex, alpha) {
 
 const FALLBACK_LEVELS = [
   { name_fa: "تازه‌وارد", name_en: "Newcomer", icon_value: "🌱", icon_size: 14, min_xp: 0,   max_xp: 200,  color: "#64748b" },
-  { name_fa: "کاوشگر",    name_en: "Explorer", icon_value: "🕵️",  icon_size: 14, min_xp: 200, max_xp: 500,  color: "#22c55e" },
+  { name_fa: "کاوشگر",    name_en: "Explorer", icon_value: "🕵️",  icon_size: 14, min_xp: 200, max_xp: 500,  color: "var(--accent)" },
   { name_fa: "کاربلد",    name_en: "Expert",   icon_value: "😎",  icon_size: 14, min_xp: 500, max_xp: null, color: "#f59e0b" },
 ];
 
@@ -962,7 +962,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
       })()}
       {boothSegment?.active && (() => {
         const isActive = subTab === 'booths';
-        const color = boothSegment.color || '#10b981';
+        const color = boothSegment.color || 'var(--accent)';
         const name = lang === 'en' ? (boothSegment.name_en || boothSegment.name_fa) : boothSegment.name_fa;
         const iconIsImg = boothSegment.icon_type === 'image' && boothSegment.icon_value?.startsWith('/');
         return (
@@ -1209,7 +1209,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
     // tied to the segment TYPE, same as every other hardcoded string in
     // this branch (the empty-state text, the fallback company name, etc).
     const boothUnit = lang === 'en' ? 'Scans' : 'اسکن';
-    const boothColor = boothSegment?.color || '#10b981';
+    const boothColor = boothSegment?.color || 'var(--accent)';
 
     // xp holds the real-scan count here (this segment's own ranking metric)
     // -- same "count reused into the shared xp/xpUnit slot" convention the
@@ -3184,7 +3184,7 @@ function ReferralModal({ onClose, lang }) {
 
               <div className="grid grid-cols-3 gap-2 mb-4">
                 <div className="rounded-xl py-3 text-center" style={{ background: 'var(--surface-2)' }}>
-                  <div className="text-lg font-bold" style={{ color: '#22c55e' }}>{dNum(data.confirmed_count, lang)}</div>
+                  <div className="text-lg font-bold" style={{ color: 'var(--accent)' }}>{dNum(data.confirmed_count, lang)}</div>
                   <div className="text-[10px]" style={{ color: 'var(--text-dim)' }}>{lang === 'fa' ? 'تأییدشده' : 'Confirmed'}</div>
                 </div>
                 <div className="rounded-xl py-3 text-center" style={{ background: 'var(--surface-2)' }}>
@@ -3817,8 +3817,8 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
       }}
     >
       <div className="dark-only fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[#00ffb3]/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 left-0 w-[350px] h-[350px] bg-[#054041]/60 rounded-full blur-3xl" />
+        <div className="absolute top-0 right-0 w-[400px] h-[400px] rounded-full blur-3xl" style={{ background: "color-mix(in srgb, var(--accent) 5%, transparent)" }} />
+        <div className="absolute bottom-0 left-0 w-[350px] h-[350px] rounded-full blur-3xl" style={{ background: "color-mix(in srgb, var(--surface) 60%, transparent)" }} />
       </div>
 
       <div className="relative max-w-md mx-auto px-4 pb-32">
