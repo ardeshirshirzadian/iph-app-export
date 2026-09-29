@@ -5,17 +5,93 @@ import { getCurrentEventId } from '@/lib/currentEvent';
 import { getOrCreateReferralCode } from '@/lib/referralCode';
 import { createSessionToken, SESSION_COOKIE_NAME, SESSION_MAX_AGE_SEC } from '@/lib/userSession';
 
+const RASAYESH_GRAPHQL = 'https://api.rasayesh.com/graphql';
+// The ONLY confirmed-working pattern for calling Rasayesh anywhere in this
+// codebase is lib/apolloClient.js's createRasayeshFetch(), used by every
+// client-side call (LoginForm, AttendeeProvider, cart, booking, ...) -- and
+// it always sends these four headers alongside the Bearer token.
+const RASAYESH_ATTENDEE_HEADERS = {
+  'x-rasayesh-site': 'attendee',
+  origin: 'https://attendee.rasayesh.com',
+  referer: 'https://attendee.rasayesh.com/',
+  lang: 'fa',
+};
+
+// This route used to take the ENTIRE `user` object (including uuid) straight
+// from the client's own POST body and mint a session for it with zero
+// re-verification -- anyone could POST an arbitrary uuid, with no OTP, no
+// mobile, nothing, and get a fully valid session for it. Now: the client
+// sends only the Rasayesh accessToken it already holds, and this route asks
+// Rasayesh itself, server-side, who it belongs to (getAttendee) -- uuid and
+// every other identity field come from THAT response, never from the
+// request body. A forged, expired, or someone-else's token simply fails the
+// Rasayesh call and login is rejected.
 export async function POST(request) {
-  let user;
+  let accessToken;
   try {
-    ({ user } = await request.json());
+    ({ accessToken } = await request.json());
   } catch {
     return Response.json({ error: 'Invalid body' }, { status: 400 });
   }
 
-  if (!user?.uuid) {
-    return Response.json({ error: 'Missing user data' }, { status: 400 });
+  if (!accessToken || typeof accessToken !== 'string') {
+    return Response.json({ error: 'Missing accessToken' }, { status: 400 });
   }
+
+  let res;
+  try {
+    res = await fetch(RASAYESH_GRAPHQL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        authorization: `Bearer ${accessToken}`,
+        ...RASAYESH_ATTENDEE_HEADERS,
+      },
+      body: JSON.stringify({
+        query: `query Me {
+          getAttendee {
+            id
+            uuid
+            firstname_fa
+            lastname_fa
+            firstname_en
+            lastname_en
+            mobile
+            email
+            job_title_fa
+            profile
+          }
+        }`,
+      }),
+      signal: AbortSignal.timeout(12000),
+    });
+  } catch (err) {
+    console.error('[auth/finalize-login] Rasayesh fetch failed:', err.name, err.message);
+    return Response.json({ error: 'خطا در ارتباط با سرور' }, { status: 502 });
+  }
+
+  const rawBody = await res.text();
+  let payload;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch (err) {
+    console.error(
+      '[auth/finalize-login] Rasayesh response was not valid JSON. status=' + res.status,
+      'body:', rawBody.slice(0, 1000)
+    );
+    return Response.json({ error: 'خطا در ارتباط با سرور' }, { status: 502 });
+  }
+
+  const { data, errors } = payload;
+  if (errors?.length || !data?.getAttendee?.uuid) {
+    console.error(
+      '[auth/finalize-login] getAttendee rejected the token. status=' + res.status,
+      'errors:', JSON.stringify(errors)
+    );
+    return Response.json({ error: 'invalid_token' }, { status: 401 });
+  }
+
+  const u = data.getAttendee;
 
   let tokenVersion = 1;
   try {
@@ -29,15 +105,15 @@ export async function POST(request) {
   }
 
   const userPayload = {
-    id: user.id,
-    uuid: user.uuid,
-    firstname_fa: user.firstname_fa,
-    lastname_fa: user.lastname_fa,
-    firstname_en: user.firstname_en,
-    lastname_en: user.lastname_en,
-    mobile: user.mobile,
-    job_title_fa: user.job_title_fa,
-    email: user.email,
+    id: u.id,
+    uuid: u.uuid,
+    firstname_fa: u.firstname_fa,
+    lastname_fa: u.lastname_fa,
+    firstname_en: u.firstname_en,
+    lastname_en: u.lastname_en,
+    mobile: u.mobile,
+    job_title_fa: u.job_title_fa,
+    email: u.email,
     tokenVersion,
   };
 
@@ -59,7 +135,7 @@ export async function POST(request) {
 
   cookieStore.set(
     SESSION_COOKIE_NAME,
-    createSessionToken({ uuid: user.uuid, event_id: currentEventId, tokenVersion }),
+    createSessionToken({ uuid: u.uuid, event_id: currentEventId, tokenVersion }),
     {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -70,7 +146,7 @@ export async function POST(request) {
   );
 
   // Fire-and-forget: upsert into app_users — never block login on this
-  upsertAppUser(user, currentEventId).catch((err) =>
+  upsertAppUser(u, currentEventId).catch((err) =>
     console.error('[app_users upsert error]', err)
   );
 
