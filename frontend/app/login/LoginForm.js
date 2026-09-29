@@ -358,11 +358,28 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
 
       // Set iph_user cookie + upsert DB (fire-and-forget for the upsert)
       const u = result.user || {};
-      await fetch('/api/auth/finalize-login', {
+      const finalizeRes = await fetch('/api/auth/finalize-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accessToken: result.accessToken }),
       });
+
+      if (!finalizeRes.ok) {
+        // Was silently continuing as if login succeeded on any non-2xx here
+        // (dispatching iph-auth-changed, auto-enrolling, redirecting) even
+        // though no session was actually set. Surface whatever the server
+        // says (e.g. outdated_client's "please refresh") same as every
+        // other failure path in this form -- generic fallback otherwise.
+        hapticError();
+        let message = t(lang, "server_error");
+        try {
+          const errBody = await finalizeRes.json();
+          message = errBody?.message || message;
+        } catch {}
+        setError(message);
+        setLoading(false);
+        return;
+      }
 
       // The iph_user cookie is now set (finalize-login's Set-Cookie header
       // already applied by the time this fetch resolves). router.push()
@@ -401,7 +418,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
       }
       router.push(quickMode ? fromPath : "/");
     },
-    [quickMode, fromPath, router, referralCode, isEmail]
+    [quickMode, fromPath, router, referralCode, isEmail, lang]
   );
 
   const submitOtp = useCallback(
