@@ -361,7 +361,7 @@ export default function LoginForm({ settings, initialVerify, initialContact, ini
       await fetch('/api/auth/finalize-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user: u }),
+        body: JSON.stringify({ accessToken: result.accessToken }),
       });
 
       // The iph_user cookie is now set (finalize-login's Set-Cookie header
