@@ -27,14 +27,29 @@ const RASAYESH_ATTENDEE_HEADERS = {
 // request body. A forged, expired, or someone-else's token simply fails the
 // Rasayesh call and login is rejected.
 export async function POST(request) {
-  let accessToken;
+  let body;
   try {
-    ({ accessToken } = await request.json());
+    body = await request.json();
   } catch {
     return Response.json({ error: 'Invalid body' }, { status: 400 });
   }
 
+  const { accessToken } = body ?? {};
+
   if (!accessToken || typeof accessToken !== 'string') {
+    // A pre-fix client (stale cached bundle/service worker) still sends
+    // {user: {...}} and has no accessToken to give us -- distinguish that
+    // from a genuinely malformed request so it can be shown as "please
+    // refresh" instead of a generic failure.
+    if (body?.user && typeof body.user === 'object') {
+      return Response.json(
+        {
+          error: 'outdated_client',
+          message: 'نسخه فعلی صفحه قدیمی است. لطفاً صفحه را رفرش کنید.',
+        },
+        { status: 400 }
+      );
+    }
     return Response.json({ error: 'Missing accessToken' }, { status: 400 });
   }
 
