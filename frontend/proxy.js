@@ -4,6 +4,7 @@ import { createClient } from 'redis'
 import { verifyAdminToken } from '@/lib/adminAuth'
 import { ADMIN_SECTIONS } from '@/lib/adminSections'
 import { resolveEventIdForHost } from '@/lib/domainEventMap'
+import { verifySessionToken } from '@/lib/userSession'
 
 const APP_PUBLIC_URL = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://appapn.rasayesh.com'
 
@@ -144,11 +145,49 @@ function toLocalMobile(mobile) {
 
 function clearAuthCookies(response) {
   response.cookies.set('iph_user', '', { path: '/', maxAge: 0 })
+  response.cookies.set('iph_session', '', { path: '/', maxAge: 0 })
 }
 
 function getAdminSession(request) {
   const token = request.cookies.get('iph_admin_session')?.value
   return verifyAdminToken(token, process.env.ADMIN_SESSION_SECRET) // returns payload or null
+}
+
+// The counterpart cookie-issuing/clearing endpoints -- these must stay
+// reachable even when a caller's iph_user/iph_session pair is stale or
+// mismatched (e.g. leftover cookies from a different event's domain),
+// since rejecting them here would make it impossible to ever get a fresh,
+// valid session. Every other /api/* route is expected to already have a
+// valid session by the time it's called.
+const PUBLIC_API_PATHS = [
+  '/api/auth/send-otp',
+  '/api/auth/send-otp-email',
+  '/api/auth/verify-otp',
+  '/api/auth/verify-otp-email',
+  '/api/auth/finalize-login',
+  '/api/auth/logout',
+]
+
+// iph_user is httpOnly:false (read by client JS), so its contents -- tokenVersion
+// included -- can be forged from the browser console. iph_session is httpOnly
+// + HMAC-signed, so a valid one proves the claimed uuid, event and tokenVersion
+// were actually issued by us, not edited client-side. Returns the verified
+// payload (never trust iph_user's own fields once this succeeds -- read
+// uuid/tokenVersion/event_id off the returned payload instead) or null.
+// Never throws -- any parse/verify failure is treated as "not signed in".
+function getVerifiedUserSession(request, userCookieRaw, resolvedEventId) {
+  try {
+    const userUuid = JSON.parse(userCookieRaw)?.uuid
+    if (!userUuid) return null
+
+    const payload = verifySessionToken(request.cookies.get('iph_session')?.value)
+    if (!payload) return null
+    if (payload.uuid !== userUuid || payload.event_id !== resolvedEventId) return null
+
+    return payload
+  } catch {
+    return null
+  }
 }
 
 // Derived from ADMIN_SECTIONS — add new sections there, not here
@@ -275,15 +314,25 @@ export async function proxy(request) {
     return proceed()
   }
 
-  // ── All other API routes pass through (no user-auth check) ───────────────
+  // ── All other API routes ──────────────────────────────────────────────────
   if (pathname.startsWith('/api/')) {
+    const userCookieRaw = request.cookies.get('iph_user')?.value
+    const isPublic = PUBLIC_API_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'))
+
+    if (userCookieRaw && !isPublic && !getVerifiedUserSession(request, userCookieRaw, resolvedEventId)) {
+      const response = NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      clearAuthCookies(response)
+      return response
+    }
+
     return proceed()
   }
 
   // ── Regular user auth ─────────────────────────────────────────────────────
   const userCookieRaw = request.cookies.get('iph_user')?.value
+  const userSession = userCookieRaw ? getVerifiedUserSession(request, userCookieRaw, resolvedEventId) : null
 
-  if (userCookieRaw && (pathname.startsWith('/login') || pathname.startsWith('/signup'))) {
+  if (userSession && (pathname.startsWith('/login') || pathname.startsWith('/signup'))) {
     return NextResponse.redirect(new URL('/', request.url))
   }
 
@@ -357,9 +406,18 @@ export async function proxy(request) {
     return NextResponse.redirect(loginUrl)
   }
 
-  // Token version check: if DB version is higher, admin triggered force-logout
+  if (!userSession) {
+    const response = NextResponse.redirect(new URL('/login', request.url))
+    clearAuthCookies(response)
+    return response
+  }
+
+  // Token version check: if DB version is higher, admin triggered force-logout.
+  // Read off userSession (the signed iph_session payload), not the
+  // client-writable iph_user cookie -- forging a lower tokenVersion there
+  // must not be able to dodge a force-logout.
   try {
-    const userVersion = JSON.parse(userCookieRaw).tokenVersion ?? 1
+    const userVersion = userSession.tokenVersion ?? 1
     const currentVersion = await tokenVersionPromise
 
     if (userVersion < currentVersion) {

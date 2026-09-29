@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { extractProfilePhotoUrl, isNameValidForLang } from '@/lib/utils';
 import { getCurrentEventId } from '@/lib/currentEvent';
+import { createSessionToken, SESSION_COOKIE_NAME, SESSION_MAX_AGE_SEC } from '@/lib/userSession';
 
 const otpAttempts = new Map();
 const MAX_ATTEMPTS = 5;
@@ -110,6 +111,18 @@ export async function POST(request) {
     // flight. upsertAppUser keeps running after this handler returns, so
     // calling it there could hit headers() outside a request scope.
     const currentEventId = await getCurrentEventId();
+
+    cookieStore.set(
+      SESSION_COOKIE_NAME,
+      createSessionToken({ uuid: u.uuid, event_id: currentEventId, tokenVersion }),
+      {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: SESSION_MAX_AGE_SEC,
+      }
+    );
 
     upsertAppUser(u, currentEventId).catch((err) => console.error('[app_users upsert error]', err));
 
