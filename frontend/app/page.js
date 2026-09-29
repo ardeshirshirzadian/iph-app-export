@@ -2,7 +2,6 @@ import { unstable_cache } from 'next/cache';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { getCurrentEventId } from '@/lib/currentEvent';
-import { resolveIconSyncEventId } from '@/lib/iconSyncConfig';
 import { getPageTitle } from '@/lib/getPageTitles';
 import { getWelcomeToast } from '@/lib/getWelcomeToast';
 import { getPushPrompt } from '@/lib/getPushPrompt';
@@ -150,12 +149,6 @@ export default async function Home() {
       // These 4 reads are independent of each other, so fetch concurrently
       // instead of paying their round-trips one after another (same pattern
       // as the `default` branch's Promise.all below, and app/quest/page.js).
-      // Icon-sync applies to the 6 tab-chrome blocks only (tab label/icon/
-      // color). quest_appearance_config (mission icon colors/backgrounds) is
-      // explicitly OUT of icon-sync scope -- derived from each event's own
-      // theme_colors, must always stay independent per event -- so it keeps
-      // reading currentEventId directly, unresolved.
-      const iconEventId = await resolveIconSyncEventId(currentEventId);
       const [content, appearanceConfig, tabChrome, questSettings, pageTitle] = await Promise.all([
         getCachedQuestContentBlocks(currentEventId)
           .then(parseQuestBlocks)
@@ -164,7 +157,7 @@ export default async function Home() {
             return { main: {}, main_en: {}, missions: [], leaderboard: [], badges: [] };
           }),
         getCachedQuestAppearanceConfig(currentEventId).catch(() => ({})),
-        getCachedQuestTabChrome(iconEventId).catch(() => ({ overrides: {}, overridesEn: {} })),
+        getCachedQuestTabChrome(currentEventId).catch(() => ({ overrides: {}, overridesEn: {} })),
         getCachedQuestSettings(currentEventId).catch(() => ({})),
         // getPageTitle()'s own DEFAULTS merge already resolves 'never
         // customized' vs 'explicitly cleared' -- see app/quest/page.js.

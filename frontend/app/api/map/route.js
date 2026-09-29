@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { unstable_cache } from 'next/cache';
 import { query } from '@/lib/db';
 import { getCurrentEventId } from '@/lib/currentEvent';
-import { resolveIconSyncEventId } from '@/lib/iconSyncConfig';
 
 const GQL = 'https://api.rasayesh.com/graphql';
 
@@ -410,9 +409,7 @@ export async function GET() {
       getCachedGestureHintImagesConfig(currentEventId),
       getCachedRouteAppearanceConfig(currentEventId),
       getCachedMapLabelsConfig(currentEventId),
-      // Icon-sync applies to this one config only (the map's header icon) --
-      // every other map config above stays per-event.
-      getCachedHeaderIconsConfig(await resolveIconSyncEventId(currentEventId)),
+      getCachedHeaderIconsConfig(currentEventId),
     ]);
 
     return NextResponse.json({

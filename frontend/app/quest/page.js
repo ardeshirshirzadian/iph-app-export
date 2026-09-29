@@ -7,17 +7,10 @@ import {
   parseQuestBlocks,
 } from "@/lib/questPageCache";
 import { getCurrentEventId } from "@/lib/currentEvent";
-import { resolveIconSyncEventId } from "@/lib/iconSyncConfig";
 import QuestClient from "./QuestClient";
 
 export default async function QuestPage() {
   const currentEventId = await getCurrentEventId();
-  // Icon-sync applies to the 6 tab-chrome blocks only (tab label/icon/color).
-  // quest_appearance_config (mission icon colors/backgrounds) is explicitly
-  // OUT of icon-sync scope -- it's derived from each event's own theme_colors
-  // and must always stay independent per event, never synced from another
-  // event -- so it keeps reading currentEventId directly, unresolved.
-  const iconEventId = await resolveIconSyncEventId(currentEventId);
 
   // These 5 reads are independent of each other (no data dependency between
   // them), so fetch concurrently instead of paying their round-trips one
@@ -34,7 +27,7 @@ export default async function QuestPage() {
         return { main: {}, missions: [], leaderboard: [], badges: [] };
       }),
     getCachedQuestAppearanceConfig(currentEventId).catch(() => ({})),
-    getCachedQuestTabChrome(iconEventId).catch(() => ({ overrides: {}, overridesEn: {} })),
+    getCachedQuestTabChrome(currentEventId).catch(() => ({ overrides: {}, overridesEn: {} })),
     getCachedQuestSettings(currentEventId).catch(() => ({})),
     // getPageTitle()'s own DEFAULTS merge (lib/getPageTitles.js) already
     // resolves 'never customized' to the default title/subtitle and

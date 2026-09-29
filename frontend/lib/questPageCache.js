@@ -48,16 +48,15 @@ export const getCachedQuestAppearanceConfig = unstable_cache(
 // badges), the 3 top stat boxes (XP/scanned-booths/rank, each an icon+label
 // pair per QuestClient.js's `stats` object), and the 3 leaderboard rank-medal
 // icons. Confirmed against QuestClient.js's actual render code (not guessed)
-// -- these are the ONLY 'main'-section blocks that live-follow the icon-sync
-// source event; everything else in quest_content_blocks (page copy, the
+// -- these are the ONLY 'main'-section blocks with their own dedicated cached
+// read; everything else in quest_content_blocks (page copy, the
 // icon_level_*/level_*_name blocks -- confirmed dead/unread by any current
-// code path -- etc.) stays per-event via the plain getCachedQuestContentBlocks
-// above. Callers pass the icon-sync-resolved event id here (see
-// resolveIconSyncEventId), NOT the requesting event's own id, and merge the
-// result over parseQuestBlocks(...).main so only these keys get overridden.
+// code path -- etc.) stays on the plain getCachedQuestContentBlocks above.
+// Callers merge the result over parseQuestBlocks(...).main so only these
+// keys get overridden.
 //
-// MUST stay in sync with TAB_CHROME_BLOCK_KEYS in iph-apn's app/quest/page.js
-// (the admin read-only-when-follower lock uses its own copy of this list).
+// MUST stay in sync with QUEST_TAB_CHROME_KEYS in iph-apn's
+// app/api/admin/icon-import/route.js (the one-time import's copy scope).
 const QUEST_TAB_CHROME_KEYS = [
   'tab_missions', 'icon_tab_missions',
   'tab_leaderboard', 'icon_tab_leaderboard',
