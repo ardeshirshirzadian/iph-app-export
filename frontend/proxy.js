@@ -366,6 +366,20 @@ export async function proxy(request) {
     return proceed()
   }
 
+  // PWA manifest (per-event name/icons/colors — see app/manifest.js) is
+  // fetched by browsers before login (install prompt / "Add to Home
+  // Screen") and by the TWA/Android wrapper at runtime, so it must never
+  // hit the login redirect below. It used to be entirely excluded from this
+  // proxy via config.matcher's `.webmanifest$` skip -- meaning
+  // x-resolved-event-id never got set for it, so getCurrentEventId() always
+  // fell back to event_id=1 and every event but IranPharma silently got
+  // IranPharma's name/icons here. Now included in the matcher (see below)
+  // so this proxy runs and sets that header correctly, but still needs its
+  // own early, unauthenticated return here.
+  if (pathname === '/manifest.webmanifest') {
+    return proceed()
+  }
+
   // Exhibition kiosk screen ({event-domain}/expo) — public, unattended
   // display meant to run on a physical touch-stand/venue screen with no
   // login. Same shape as the /book/callback, /cart/callback exceptions above.
@@ -447,6 +461,11 @@ export async function proxy(request) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|manifest.json|sw\\.js|icons/|logo|fonts|uploads/|.*\\.png$|.*\\.jpg$|.*\\.svg$|.*\\.ico$|.*\\.webmanifest$|.*\\.woff2?$).*)',
+    // .webmanifest$ deliberately NOT excluded here (unlike the other static-
+    // asset extensions) — /manifest.webmanifest is a dynamic, per-event
+    // Next.js metadata route (app/manifest.js), not a static file, so it
+    // needs this proxy to run and set x-resolved-event-id. See the
+    // '/manifest.webmanifest' early-return above for why it's still public.
+    '/((?!_next/static|_next/image|favicon.ico|manifest.json|sw\\.js|icons/|logo|fonts|uploads/|.*\\.png$|.*\\.jpg$|.*\\.svg$|.*\\.ico$|.*\\.woff2?$).*)',
   ],
 }
