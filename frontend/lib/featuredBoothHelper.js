@@ -49,6 +49,28 @@ export function getTehranHour(at = new Date()) {
   return h % 24; // guards the rare ICU "24" midnight edge case
 }
 
+// Same fix, same reasoning, applied to a second pre-existing bug found
+// 2026-09-30: quest_attendance_log.event_date was written via a bare
+// Postgres `CURRENT_DATE` (see attendance/log/route.js) -- evaluated in
+// this UTC container, so a visitor logging attendance between 00:00 and
+// 03:29:59 Tehran local time (20:30:00-23:59:59 UTC the day before) got
+// the PREVIOUS day recorded instead of the Tehran calendar day they
+// actually experienced. Confirmed 2026-09-30: zero of 209 existing rows
+// were actually affected (attendance logging so far has only happened
+// during Tehran daytime hours, well outside the risky UTC window), so
+// this is a forward-looking fix, not a data-repair -- existing rows are
+// deliberately left untouched.
+//
+// en-CA's default date format is already ISO (YYYY-MM-DD), used here
+// purely as a formatting trick (same pattern as iph-apn's own
+// lib/tehranTime.js tehranDayKey, which does the read-side equivalent of
+// this write-side fix).
+export function getTehranDateString(at = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tehran', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(at);
+}
+
 // null/undefined start or end hour = no window configured = always active
 // (backward-compatible default for every featured_booth mission that
 // existed before this feature).

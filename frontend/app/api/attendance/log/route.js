@@ -4,6 +4,7 @@ import { query } from '@/lib/db';
 import { ensureAttendanceLogTable } from '@/lib/initQuestBadges';
 import { getCurrentEventId } from '@/lib/currentEvent';
 import { recordMissionHistory } from '@/lib/questMissionHistory';
+import { getTehranDateString } from '@/lib/featuredBoothHelper';
 
 export async function POST() {
   const cookieStore = await cookies();
@@ -20,11 +21,17 @@ export async function POST() {
   try {
     await ensureAttendanceLogTable();
     const currentEventId = await getCurrentEventId();
+    // Was a bare `CURRENT_DATE` (Postgres-evaluated, this container's UTC
+    // day) -- same naive-UTC bug class as repeatable_scan_hours'
+    // getTehranHour() fix, just in the write path instead of a read path.
+    // See getTehranDateString()'s own comment in lib/featuredBoothHelper.js
+    // for the full story and the (zero) historical impact.
+    const tehranDate = getTehranDateString();
     await query(
       `INSERT INTO quest_attendance_log (user_uuid, event_date, event_id)
-       VALUES ($1, CURRENT_DATE, $2)
+       VALUES ($1, $2::date, $3)
        ON CONFLICT (user_uuid, event_date, event_id) DO NOTHING`,
-      [userUuid, currentEventId]
+      [userUuid, tehranDate, currentEventId]
     );
 
     // One-time "attendance" mission XP -- awarded on first-ever logged
