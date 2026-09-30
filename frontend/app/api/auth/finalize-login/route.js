@@ -108,11 +108,27 @@ export async function POST(request) {
 
   const u = data.getAttendee;
 
+  // Resolved here (before the tokenVersion lookup that needs it, and
+  // before the fire-and-forget upsertAppUser call below) -- getCurrentEventId()
+  // reads next/headers, which is only valid while the request is in
+  // flight, so it can't be deferred into upsertAppUser, which keeps
+  // running after this handler returns.
+  const currentEventId = await getCurrentEventId();
+
+  // event_id-scoped: auth_token_version is a per-event row (an admin's
+  // force-logout-all only ever bumps THEIR event's row). Reading it
+  // without this filter returns whichever event's row Postgres happens
+  // to return first, baking a stray tokenVersion from a DIFFERENT event
+  // into this session -- confirmed live 2026-09-30: a real event-2 login
+  // was getting event-1's version, so event-2 sessions read as
+  // "force-logged-out" the moment event-1's admin ever force-logged out
+  // anyone. Fixed once already (2026-09-28) but that fix was never
+  // committed -- see project notes.
   let tokenVersion = 1;
   try {
     const tvResult = await query(
-      "SELECT value FROM app_settings WHERE key = 'auth_token_version'",
-      []
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'auth_token_version'",
+      [currentEventId]
     );
     tokenVersion = tvResult.rows[0]?.value?.version ?? 1;
   } catch {
@@ -140,13 +156,6 @@ export async function POST(request) {
     path: '/',
     maxAge: 60 * 60 * 24 * 30,
   });
-
-  // Resolved here (inside the request scope, before the fire-and-forget
-  // call below) rather than inside upsertAppUser -- getCurrentEventId()
-  // reads next/headers, which is only valid while the request is in
-  // flight. upsertAppUser keeps running after this handler returns, so
-  // calling it there could hit headers() outside a request scope.
-  const currentEventId = await getCurrentEventId();
 
   cookieStore.set(
     SESSION_COOKIE_NAME,

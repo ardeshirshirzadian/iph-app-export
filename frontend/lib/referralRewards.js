@@ -8,7 +8,7 @@ async function recordReferralHistory(dbQuery, eventId, missionId, userUuid, stat
   await dbQuery(
     `INSERT INTO quest_mission_history
        (event_id, mission_id, user_uuid, status, evidence_type, evidence_id, participated_at, completed_at)
-     VALUES ($1, $2, $3, $4, 'referral_redemption', $5, NOW(), CASE WHEN $4 = 'completed' THEN NOW() ELSE NULL END)
+     VALUES ($1, $2, $3, $4, 'referral_redemption', $5, NOW(), CASE WHEN $4::text = 'completed' THEN NOW() ELSE NULL END)
      ON CONFLICT (event_id, mission_id, user_uuid) DO UPDATE
        SET status = CASE WHEN EXCLUDED.status = 'completed' THEN 'completed' ELSE quest_mission_history.status END,
            evidence_id = COALESCE(EXCLUDED.evidence_id, quest_mission_history.evidence_id),

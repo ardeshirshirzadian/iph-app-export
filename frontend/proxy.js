@@ -72,11 +72,22 @@ function redisReady() {
 const TOKEN_VERSION_CACHE_TTL_SEC = 60
 const PAGES_CACHE_TTL_SEC = 60
 
-async function getCurrentTokenVersion() {
+// event_id-scoped, same as getAppPages() below -- auth_token_version is a
+// per-event row (an admin's force-logout-all only ever bumps THEIR event's
+// row; see iph-apn's force-logout-all/route.js). Reading it without this
+// filter (and caching it under one shared key) returns/caches whichever
+// event's row Postgres/Redis happens to have, so one event's force-logout
+// -- or just the ordinary existence of a second event's row -- silently
+// force-logs-out (or protects) sessions on a completely different event.
+// Fixed once already (2026-09-28) but that fix was never committed, so it
+// was lost the same way the QR/poster fix was -- see project notes
+// 2026-09-30.
+async function getCurrentTokenVersion(eventId) {
+  const cacheKey = PROXY_KEY_PREFIX + 'token-version:' + eventId
   const c = redisReady()
   if (c) {
     try {
-      const cached = await c.get(PROXY_KEY_PREFIX + 'token-version')
+      const cached = await c.get(cacheKey)
       if (cached !== null) return Number(cached)
     } catch (err) {
       console.error('[proxy] Redis get(token-version) failed, querying DB:', err.message)
@@ -85,11 +96,12 @@ async function getCurrentTokenVersion() {
   const client = await getProxyPool().connect()
   try {
     const { rows } = await client.query(
-      "SELECT value FROM app_settings WHERE key = 'auth_token_version'"
+      "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'auth_token_version'",
+      [eventId]
     )
     const version = rows[0]?.value?.version ?? 1
     if (c) {
-      c.setEx(PROXY_KEY_PREFIX + 'token-version', TOKEN_VERSION_CACHE_TTL_SEC, String(version)).catch((err) => {
+      c.setEx(cacheKey, TOKEN_VERSION_CACHE_TTL_SEC, String(version)).catch((err) => {
         console.error('[proxy] Redis setEx(token-version) failed:', err.message)
       })
     }
@@ -362,12 +374,13 @@ export async function proxy(request) {
   }
 
   // Kick off the token-version check now, in parallel with the app-pages
-  // lookup below — it depends on neither resolvedEventId nor getAppPages'
-  // result, so there's no reason to pay for it strictly after them. Only
-  // fired past this point (userCookieRaw already known, all the earlier
-  // no-auth-needed paths already returned) so requests that never reach the
-  // token-version check below don't pay for an unused lookup.
-  const tokenVersionPromise = userCookieRaw ? getCurrentTokenVersion() : null
+  // lookup below — it needs resolvedEventId (already resolved above) but
+  // not getAppPages' result, so there's no reason to pay for it strictly
+  // after that lookup. Only fired past this point (userCookieRaw already
+  // known, all the earlier no-auth-needed paths already returned) so
+  // requests that never reach the token-version check below don't pay for
+  // an unused lookup.
+  const tokenVersionPromise = userCookieRaw ? getCurrentTokenVersion(resolvedEventId) : null
   tokenVersionPromise?.catch(() => {}) // mark handled; real handling stays at the await below
 
   // ── App pages enforcement ─────────────────────────────────────────────────

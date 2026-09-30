@@ -66,9 +66,21 @@ export async function POST(request) {
 
     const u = result.user || {};
 
+    // Resolved here (before the tokenVersion lookup that needs it) --
+    // getCurrentEventId() reads next/headers, only valid while the
+    // request is in flight.
+    const currentEventId = await getCurrentEventId();
+
+    // event_id-scoped: see finalize-login/route.js's identical comment --
+    // reading auth_token_version without this filter bakes a stray
+    // tokenVersion from a DIFFERENT event into this session. Fixed once
+    // already (2026-09-28) but that fix was never committed.
     let tokenVersion = 1;
     try {
-      const tvResult = await query("SELECT value FROM app_settings WHERE key = 'auth_token_version'", []);
+      const tvResult = await query(
+        "SELECT value FROM app_settings WHERE event_id = $1 AND key = 'auth_token_version'",
+        [currentEventId]
+      );
       tokenVersion = tvResult.rows[0]?.value?.version ?? 1;
     } catch {}
 
@@ -104,13 +116,6 @@ export async function POST(request) {
     });
 
     resetAttempts(key);
-
-    // Resolved here (inside the request scope, before the fire-and-forget
-    // call below) rather than inside upsertAppUser -- getCurrentEventId()
-    // reads next/headers, which is only valid while the request is in
-    // flight. upsertAppUser keeps running after this handler returns, so
-    // calling it there could hit headers() outside a request scope.
-    const currentEventId = await getCurrentEventId();
 
     cookieStore.set(
       SESSION_COOKIE_NAME,

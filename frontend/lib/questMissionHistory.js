@@ -8,7 +8,7 @@ export async function recordMissionHistory(dbQuery, {
     await dbQuery(
       `INSERT INTO quest_mission_history
          (event_id, mission_id, user_uuid, status, evidence_type, evidence_id, participated_at, completed_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW(), CASE WHEN $4 = 'completed' THEN NOW() ELSE NULL END)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW(), CASE WHEN $4::text = 'completed' THEN NOW() ELSE NULL END)
        ON CONFLICT (event_id, mission_id, user_uuid) DO UPDATE
          SET status = CASE
                WHEN quest_mission_history.status = 'completed' THEN 'completed'
