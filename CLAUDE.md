@@ -206,6 +206,19 @@ docker run -d --name iph-superapp-frontend -p 3002:3000 \
   --restart unless-stopped iph-superapp-frontend
 ```
 
+## Deploy Rule (ALWAYS APPLY)
+**Never build or deploy from an uncommitted working tree.** Every deploy image is built from a real commit on `main` that has been pushed. A dirty working tree is normal *between* deploys (see project notes on the edit → build → deploy → commit-later workflow) — but nothing uncommitted may ever reach a built image. If the tree is dirty when a deploy is needed: commit what belongs to the current task to `main`, and either commit anything else genuinely unrelated to its own branch or explicitly discard it — never silently stash-and-build (a stash-and-build-from-main silently reverted a live QR-color fix and a poster renderer for weeks before anyone noticed, see project notes 2026-09-30).
+
+**Before every deploy**, confirm the new image is a strict superset of the currently-running container — nothing present in the running container may be missing from the new image:
+```bash
+docker cp <running-container>:/app/. /tmp/parity/old/
+docker create --name parity-new <new-image>
+docker cp parity-new:/app/. /tmp/parity/new/
+docker rm parity-new
+diff -rq --exclude=node_modules --exclude='.next' --exclude=uploads /tmp/parity/old /tmp/parity/new
+```
+Every file the diff reports as differing or missing from the new side must be an *intentional* part of the current deploy — if something present in the old side is absent from the new side and wasn't meant to be removed, stop and investigate before deploying, don't assume it's fine.
+
 ## Icon Size Rule (ALWAYS APPLY)
 Every admin-manageable icon must have a corresponding size control (px, min=12, max=120, step=4). Clamp and snap server-side: `Math.round(v / 4) * 4`. Size the icon only — never the container. Defaults: nav=24, service grid=48, notifications=32, quest=36, login logo=80.
 
