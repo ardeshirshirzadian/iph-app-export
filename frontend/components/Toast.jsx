@@ -32,6 +32,27 @@ export default function Toast({ message, icon = '👋', onDismiss }) {
           from { opacity: 1; transform: translateX(-50%) translateY(0)    scale(1); }
           to   { opacity: 0; transform: translateX(-50%) translateY(-12px) scale(0.97); }
         }
+        /* Plain var(--bg)/var(--accent) fallback declared BEFORE the
+           color-mix() one, standard CSS graceful-degradation: a browser
+           that doesn't understand color-mix() ignores that whole
+           declaration and keeps the plain one instead of falling through
+           to no background/border at all. Can't do this with a React
+           inline style object (duplicate keys collapse to one) -- hence a
+           real stylesheet rule here instead of style={{...}} for just
+           these three properties. var(--bg) (not --surface) for the
+           fallback specifically because it's always a solid opaque hex
+           per event/theme (see getThemeColors.js) -- --surface itself
+           already carries its own alpha, so it wouldn't guarantee opaque/
+           readable on its own the way the color-mix version does.
+        */
+        .iph-toast-panel {
+          background: var(--bg);
+          background: color-mix(in srgb, var(--surface) 88%, transparent);
+          border: 1px solid var(--accent);
+          border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+          box-shadow: 0 8px 32px rgba(0,0,0,0.35), 0 0 0 1px var(--accent);
+          box-shadow: 0 8px 32px rgba(0,0,0,0.35), 0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
+        }
       `}</style>
       <div
         dir={isRTL ? "rtl" : "ltr"}
@@ -48,11 +69,10 @@ export default function Toast({ message, icon = '👋', onDismiss }) {
         }}
       >
         <div
+          className="iph-toast-panel"
           style={{
-            background: "color-mix(in srgb, var(--surface) 88%, transparent)",
             backdropFilter: "blur(24px)",
             WebkitBackdropFilter: "blur(24px)",
-            border: "1px solid color-mix(in srgb, var(--accent) 28%, transparent)",
             borderRadius: "18px",
             padding: "12px 20px",
             display: "flex",
@@ -61,7 +81,6 @@ export default function Toast({ message, icon = '👋', onDismiss }) {
             color: "var(--text)",
             fontSize: "14px",
             fontWeight: 500,
-            boxShadow: "0 8px 32px rgba(0,0,0,0.35), 0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent)",
             whiteSpace: "nowrap",
           }}
         >

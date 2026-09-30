@@ -2260,28 +2260,43 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
           {/* RULE 4 compliance: no backdrop-filter — uses solid rgba background  */}
           {/* so it stays crisp during gestures without extra GPU compositing.   */}
           {view3D && showGestureHint && !externalPlanActive && (
-            <div
-              onClick={dismissGestureHint}
-              style={{
-                position: 'absolute',
-                bottom: 90,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                background: 'color-mix(in srgb, var(--bg) 92%, transparent)',
-                border: '1px solid color-mix(in srgb, var(--accent) 25%, transparent)',
-                borderRadius: 16,
-                padding: '14px 22px',
-                zIndex: 35,
-                cursor: 'pointer',
-                pointerEvents: 'auto',
-                userSelect: 'none',
-                minWidth: 220,
-                maxWidth: 300,
-                boxShadow: '0 4px 24px rgba(0,0,0,0.55)',
-              }}
-              dir={isEN ? 'ltr' : 'rtl'}
-              aria-label={isEN ? 'Gesture guide — tap to dismiss' : 'راهنمای اشاره‌گر — لمس کنید تا بسته شود'}
-            >
+            <>
+              {/* Plain var(--bg)/var(--accent) fallback declared BEFORE the
+                  color-mix() one -- a browser without color-mix() support
+                  ignores that whole declaration and keeps this one, instead
+                  of falling through to no background/border at all. Can't
+                  express "declare a property twice" in a React style={{}}
+                  object (duplicate keys collapse to one), hence a real
+                  stylesheet rule for just these two properties. */}
+              <style>{`
+                .iph-gesture-hint {
+                  background: var(--bg);
+                  background: color-mix(in srgb, var(--bg) 92%, transparent);
+                  border: 1px solid var(--accent);
+                  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+                }
+              `}</style>
+              <div
+                onClick={dismissGestureHint}
+                className="iph-gesture-hint"
+                style={{
+                  position: 'absolute',
+                  bottom: 90,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  borderRadius: 16,
+                  padding: '14px 22px',
+                  zIndex: 35,
+                  cursor: 'pointer',
+                  pointerEvents: 'auto',
+                  userSelect: 'none',
+                  minWidth: 220,
+                  maxWidth: 300,
+                  boxShadow: '0 4px 24px rgba(0,0,0,0.55)',
+                }}
+                dir={isEN ? 'ltr' : 'rtl'}
+                aria-label={isEN ? 'Gesture guide — tap to dismiss' : 'راهنمای اشاره‌گر — لمس کنید تا بسته شود'}
+              >
               {(() => {
                 const text = gestureHintConfig
                   ? (isEN ? gestureHintConfig.en : gestureHintConfig.fa)
@@ -2308,6 +2323,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                 {isEN ? 'Tap to dismiss' : 'برای بستن لمس کنید'}
               </div>
             </div>
+            </>
           )}
 
           {/* ── 2D mode: CSS-transform wrapper + SVG overlay ── */}
