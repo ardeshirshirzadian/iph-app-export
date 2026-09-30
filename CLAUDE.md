@@ -219,6 +219,8 @@ diff -rq --exclude=node_modules --exclude='.next' --exclude=uploads /tmp/parity/
 ```
 Every file the diff reports as differing or missing from the new side must be an *intentional* part of the current deploy — if something present in the old side is absent from the new side and wasn't meant to be removed, stop and investigate before deploying, don't assume it's fine.
 
+**After every deploy**, tag the now-running image with a clear release tag: `docker tag <new-image> iph-app:release-<YYYYMMDD>-<short-feature-name>` (e.g. `iph-app:release-20260930-attendancefix`) — in addition to, not instead of, the outgoing image's `pre-<feature>-<date>` rollback tag. One tag covers all 3 containers (iph-app, iph-app-3010, iph-app-3011), since they always run the same image. A `staging-*`/candidate-style build tag or a bare `pre-*` rollback tag doesn't say what's actually running months later; a `release-*` tag does. This also matters for `docker-cleanup.py`'s standing disk-hygiene policy (`/home/ubuntu/docker-cleanup/`, added 2026-10-01): it deliberately excludes any tag matching `staging`/`candidate` from its keep-2 rollback ranking and deletes those by age instead, so a deploy that only ever gets a candidate-style tag has nothing durable marking it once that tag ages out — `release-*` tags are exactly the kind of "real" tag that policy's keep-2-per-repo ranking is meant to protect.
+
 ## Icon Size Rule (ALWAYS APPLY)
 Every admin-manageable icon must have a corresponding size control (px, min=12, max=120, step=4). Clamp and snap server-side: `Math.round(v / 4) * 4`. Size the icon only — never the container. Defaults: nav=24, service grid=48, notifications=32, quest=36, login logo=80.
 
