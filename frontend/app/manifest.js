@@ -1,19 +1,12 @@
-import { existsSync } from 'fs';
-import { join } from 'path';
 import { getAppIdentity } from '@/lib/getAppIdentity';
+import { getPwaIcons } from '@/lib/getPwaIcons';
+import { getCurrentEventId } from '@/lib/currentEvent';
 
 export const dynamic = 'force-dynamic';
 
 export default async function manifest() {
-  const identity = await getAppIdentity();
-
-  const uploadsDir = join(process.cwd(), 'public', 'uploads', 'icons');
-  const icon192Src = existsSync(join(uploadsDir, 'icon-192.png'))
-    ? '/uploads/icons/icon-192.png'
-    : '/icons/icon-192.png';
-  const icon512Src = existsSync(join(uploadsDir, 'icon-512.png'))
-    ? '/uploads/icons/icon-512.png'
-    : '/icons/icon-512.png';
+  const eventId = await getCurrentEventId();
+  const [identity, icons] = await Promise.all([getAppIdentity(eventId), getPwaIcons(eventId)]);
 
   return {
     name: identity.title,
@@ -28,13 +21,13 @@ export default async function manifest() {
     dir: 'rtl',
     icons: [
       {
-        src: icon192Src,
+        src: icons['icon-192'],
         sizes: '192x192',
         type: 'image/png',
         purpose: 'any',
       },
       {
-        src: icon512Src,
+        src: icons['icon-512'],
         sizes: '512x512',
         type: 'image/png',
         purpose: 'any',

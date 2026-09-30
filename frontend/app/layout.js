@@ -13,10 +13,9 @@ import { getThemeColors } from "@/lib/getThemeColors";
 import { getThemeMode } from "@/lib/getThemeMode";
 import { getSingleLanguageMode } from "@/lib/getSingleLanguageMode";
 import { getAppIdentity } from "@/lib/getAppIdentity";
+import { getPwaIcons } from "@/lib/getPwaIcons";
 import { getCachedCompaniesConfig } from "@/lib/getCompaniesConfig";
 import { getCurrentEventId } from "@/lib/currentEvent";
-import { existsSync } from "fs";
-import { join } from "path";
 
 // Layout-scoped cache entries, one per underlying admin setting. Each wraps
 // the SAME shared lib/*.js function other call sites already use — the
@@ -69,15 +68,21 @@ const getCachedAppIdentity = unstable_cache(
   ["layout-app-identity"],
   { tags: ["layout-app-identity"], revalidate: 300 }
 );
+// manifest.js calls getPwaIcons() directly (unwrapped, own force-dynamic) --
+// same reasoning as header_logo/header_items in the icon-import comment.
+// This wrapped copy is only for the favicon/apple-touch-icon reads below.
+const getCachedPwaIcons = unstable_cache(
+  (eventId) => getPwaIcons(eventId),
+  ["layout-pwa-icons"],
+  { tags: ["layout-pwa-icons"], revalidate: 300 }
+);
 
 export async function generateMetadata() {
   const currentEventId = await getCurrentEventId();
-  const identity = await getCachedAppIdentity(currentEventId);
-
-  const uploadedFavicon = join(process.cwd(), 'public', 'uploads', 'icons', 'favicon.png');
-  const faviconHref = existsSync(uploadedFavicon)
-    ? '/uploads/icons/favicon.png'
-    : '/favicon.ico';
+  const [identity, icons] = await Promise.all([
+    getCachedAppIdentity(currentEventId),
+    getCachedPwaIcons(currentEventId),
+  ]);
 
   return {
     title: identity.title,
@@ -86,7 +91,7 @@ export async function generateMetadata() {
       capable: true,
     },
     icons: {
-      icon: faviconHref,
+      icon: icons.favicon,
     },
   };
 }
@@ -163,7 +168,7 @@ function buildFontEnStyle(activeFontEn) {
 
 export default async function RootLayout({ children }) {
   const currentEventId = await getCurrentEventId();
-  const [activeFont, activeFontEn, themeColors, themeMode, singleLanguage, companiesConfig] = await Promise.all([
+  const [activeFont, activeFontEn, themeColors, themeMode, singleLanguage, companiesConfig, pwaIcons] = await Promise.all([
     getCachedActiveFont(currentEventId),
     getCachedActiveFontEn(currentEventId),
     getCachedThemeColors(currentEventId),
@@ -174,6 +179,7 @@ export default async function RootLayout({ children }) {
     // todayEventPresence(eventId: ...) query never hardcodes a stale id
     // (see project memory on the rasayesh_event_id drift bug).
     getCachedCompaniesConfig(currentEventId),
+    getCachedPwaIcons(currentEventId),
   ]);
   const rasayeshEventId = companiesConfig.eventId;
   const fontStyle = buildFontStyle(activeFont);
@@ -192,8 +198,13 @@ export default async function RootLayout({ children }) {
         <script dangerouslySetInnerHTML={{ __html: buildLangInitScript(singleLanguage) }} />
         {/* eslint-disable-next-line react/no-danger */}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
-        {/* apple-touch-icon: pre-baked 180×180 with dark bg so iOS never restyles it */}
-        <link rel="apple-touch-icon" href="/uploads/icons/apple-touch-icon.png" />
+        {/* apple-touch-icon: pre-baked 180×180 with dark bg so iOS never restyles it.
+            Event-scoped (see lib/getPwaIcons.js) -- omitted entirely (rather
+            than linking to a guaranteed-404) when this event has never had
+            one generated. */}
+        {pwaIcons['apple-touch-icon'] && (
+          <link rel="apple-touch-icon" href={pwaIcons['apple-touch-icon']} />
+        )}
         {(isGoogleFont || isGoogleFontEn) && (
           <>
             <link rel="preconnect" href="https://fonts.googleapis.com" />
