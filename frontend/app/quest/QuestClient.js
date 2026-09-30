@@ -2623,7 +2623,7 @@ function SurveyModal({ survey, onClose, onComplete, lang }) {
               className="w-full py-3 rounded-xl font-bold text-sm transition-all"
               style={{
                 background: submitting ? 'color-mix(in srgb, var(--accent) 30%, transparent)' : 'var(--accent)',
-                color: submitting ? 'rgba(2,31,32,0.5)' : 'var(--bg)',
+                color: submitting ? 'color-mix(in srgb, var(--bg) 50%, transparent)' : 'var(--bg)',
               }}
             >
               {submitting ? '…' : (lang === 'fa' ? 'ثبت پاسخ' : 'Submit')}
@@ -2792,7 +2792,7 @@ function SocialShareModal({ share, onClose, onComplete, lang }) {
               className="w-full py-3 rounded-xl font-bold text-sm transition-all"
               style={{
                 background: state === 'submitting' ? 'color-mix(in srgb, var(--accent) 30%, transparent)' : 'var(--accent)',
-                color: state === 'submitting' ? 'rgba(2,31,32,0.5)' : 'var(--bg)',
+                color: state === 'submitting' ? 'color-mix(in srgb, var(--bg) 50%, transparent)' : 'var(--bg)',
               }}
             >
               {state === 'submitting' ? '…' : (isRTL ? 'ارسال لینک' : 'Submit link')}
@@ -3795,8 +3795,8 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         '--quest-badge-size':    (ea.badge_title_size   || 14) + 'px',
         '--quest-badge-color':    ea.badge_title_color  || 'var(--text-muted)',
         '--quest-active-border':  activeBorderColor,
-        '--quest-active-bg':      hexToRgba(ea.active_border_color, 0.05)  || 'rgba(0,255,179,0.05)',
-        '--quest-active-icon-bg': hexToRgba(ea.active_border_color, 0.15) || 'rgba(0,255,179,0.15)',
+        '--quest-active-bg':      hexToRgba(ea.active_border_color, 0.05)  || 'color-mix(in srgb, var(--accent) 5%, transparent)',
+        '--quest-active-icon-bg': hexToRgba(ea.active_border_color, 0.15) || 'color-mix(in srgb, var(--accent) 15%, transparent)',
         // Mission-row state colors -- distinct from --quest-active-* above,
         // which means "achieved highlight" (leaderboard current-user row,
         // earned badges) and is unrelated to mission completion state. These
@@ -3808,9 +3808,9 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         '--quest-mission-active-row-border':    ea.active_mission_row_border_color    || 'var(--border)',
         '--quest-mission-active-icon-bg':       ea.active_mission_icon_bg_color       || 'var(--surface-2)',
         '--quest-mission-active-icon-border':   ea.active_mission_icon_border_color   || 'transparent',
-        '--quest-mission-completed-row-bg':       ea.completed_mission_row_bg_color      || hexToRgba(ea.active_border_color, 0.05)  || 'rgba(0,255,179,0.05)',
+        '--quest-mission-completed-row-bg':       ea.completed_mission_row_bg_color      || hexToRgba(ea.active_border_color, 0.05)  || 'color-mix(in srgb, var(--accent) 5%, transparent)',
         '--quest-mission-completed-row-border':   ea.completed_mission_row_border_color  || activeBorderColor,
-        '--quest-mission-completed-icon-bg':      ea.completed_mission_icon_bg_color     || hexToRgba(ea.active_border_color, 0.15) || 'rgba(0,255,179,0.15)',
+        '--quest-mission-completed-icon-bg':      ea.completed_mission_icon_bg_color     || hexToRgba(ea.active_border_color, 0.15) || 'color-mix(in srgb, var(--accent) 15%, transparent)',
         '--quest-mission-completed-icon-border':  ea.completed_mission_icon_border_color || 'transparent',
         '--quest-rotation-size': (ea.rotation_text_size  || 11) + 'px',
         '--quest-rotation-color': ea.rotation_text_color || 'var(--text-dim)',

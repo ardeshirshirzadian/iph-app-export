@@ -2079,7 +2079,7 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
         }}
       >
         {/* background glows */}
-        <div className="dark-only absolute top-0 right-0 w-72 h-72 rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(0,255,179,0.03)", zIndex: 0 }} />
+        <div className="dark-only absolute top-0 right-0 w-72 h-72 rounded-full blur-3xl pointer-events-none" style={{ background: "color-mix(in srgb, var(--accent) 3%, transparent)", zIndex: 0 }} />
 
         {loading && <MapSkeleton />}
 
@@ -2267,8 +2267,8 @@ export default function MapClient({ title, subtitle, title_en, subtitle_en, isHo
                 bottom: 90,
                 left: '50%',
                 transform: 'translateX(-50%)',
-                background: 'rgba(2, 31, 32, 0.92)',
-                border: '1px solid rgba(0, 255, 179, 0.25)',
+                background: 'color-mix(in srgb, var(--bg) 92%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--accent) 25%, transparent)',
                 borderRadius: 16,
                 padding: '14px 22px',
                 zIndex: 35,

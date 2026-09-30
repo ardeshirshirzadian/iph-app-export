@@ -49,19 +49,19 @@ export default function Toast({ message, icon = '👋', onDismiss }) {
       >
         <div
           style={{
-            background: "rgba(5,64,65,0.88)",
+            background: "color-mix(in srgb, var(--surface) 88%, transparent)",
             backdropFilter: "blur(24px)",
             WebkitBackdropFilter: "blur(24px)",
-            border: "1px solid rgba(0,255,179,0.28)",
+            border: "1px solid color-mix(in srgb, var(--accent) 28%, transparent)",
             borderRadius: "18px",
             padding: "12px 20px",
             display: "flex",
             alignItems: "center",
             gap: "10px",
-            color: "#fff",
+            color: "var(--text)",
             fontSize: "14px",
             fontWeight: 500,
-            boxShadow: "0 8px 32px rgba(0,0,0,0.35), 0 0 0 1px rgba(0,255,179,0.08)",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.35), 0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent)",
             whiteSpace: "nowrap",
           }}
         >

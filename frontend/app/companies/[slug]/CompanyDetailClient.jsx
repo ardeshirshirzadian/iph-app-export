@@ -151,8 +151,8 @@ export default function CompanyDetailClient({ slug }) {
         dir={isRTL ? "rtl" : "ltr"}
         lang={lang}
       >
-        <div className="dark-only fixed top-0 right-0 w-72 h-72 rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(0,255,179,0.04)", zIndex: 0 }} />
-        <div className="dark-only fixed bottom-0 left-0 w-80 h-80 rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(5,64,65,0.5)", zIndex: 0 }} />
+        <div className="dark-only fixed top-0 right-0 w-72 h-72 rounded-full blur-3xl pointer-events-none" style={{ background: "color-mix(in srgb, var(--accent) 4%, transparent)", zIndex: 0 }} />
+        <div className="dark-only fixed bottom-0 left-0 w-80 h-80 rounded-full blur-3xl pointer-events-none" style={{ background: "color-mix(in srgb, var(--surface) 50%, transparent)", zIndex: 0 }} />
         <div className="relative z-10 max-w-lg mx-auto px-4 pt-4">
           <AppHeader />
           <div className="flex items-center gap-3 mb-5">
@@ -176,8 +176,8 @@ export default function CompanyDetailClient({ slug }) {
         dir={isRTL ? "rtl" : "ltr"}
         lang={lang}
       >
-        <div className="dark-only fixed top-0 right-0 w-72 h-72 rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(0,255,179,0.04)", zIndex: 0 }} />
-        <div className="dark-only fixed bottom-0 left-0 w-80 h-80 rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(5,64,65,0.5)", zIndex: 0 }} />
+        <div className="dark-only fixed top-0 right-0 w-72 h-72 rounded-full blur-3xl pointer-events-none" style={{ background: "color-mix(in srgb, var(--accent) 4%, transparent)", zIndex: 0 }} />
+        <div className="dark-only fixed bottom-0 left-0 w-80 h-80 rounded-full blur-3xl pointer-events-none" style={{ background: "color-mix(in srgb, var(--surface) 50%, transparent)", zIndex: 0 }} />
         <div className="relative z-10 max-w-lg mx-auto px-4 pt-4">
           <AppHeader />
           <div className="flex items-center gap-3 mb-5">
@@ -225,8 +225,8 @@ export default function CompanyDetailClient({ slug }) {
       lang={lang}
     >
       {/* Background glows */}
-      <div className="dark-only fixed top-0 right-0 w-72 h-72 rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(0,255,179,0.04)", zIndex: 0 }} />
-      <div className="dark-only fixed bottom-0 left-0 w-80 h-80 rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(5,64,65,0.5)", zIndex: 0 }} />
+      <div className="dark-only fixed top-0 right-0 w-72 h-72 rounded-full blur-3xl pointer-events-none" style={{ background: "color-mix(in srgb, var(--accent) 4%, transparent)", zIndex: 0 }} />
+      <div className="dark-only fixed bottom-0 left-0 w-80 h-80 rounded-full blur-3xl pointer-events-none" style={{ background: "color-mix(in srgb, var(--surface) 50%, transparent)", zIndex: 0 }} />
 
       <div className="relative z-10 max-w-lg mx-auto px-4 pt-4">
         <AppHeader />
