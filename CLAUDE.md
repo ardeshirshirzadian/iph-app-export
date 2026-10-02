@@ -1,5 +1,20 @@
 # CLAUDE.md
 
+## HARD STOP — Production Safety Rules (override bypass/auto-approve mode)
+
+These three rules are mandatory for every session and every task — they override any
+"bypass permissions" / auto-approve mode in effect, and must never be skipped even when
+the user has pre-approved other actions:
+
+1. **Before running ANY SQL that changes schema or data on the production DB** (including
+   migrations): STOP and show the user the exact SQL first. Do not execute it until they
+   explicitly approve.
+2. **Before deploying, retagging, or recreating any container**: STOP and show the user the
+   diff and test results first. Do not deploy until they explicitly approve.
+3. **Never run any statement that targets event 1 or event 2 data during testing.** Testing
+   must use a disposable test event only; every test/seed/cleanup statement must be
+   parameterized on that test event's id, never event 1 or 2.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Repo Layout
