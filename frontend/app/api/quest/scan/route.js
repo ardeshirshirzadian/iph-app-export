@@ -386,19 +386,52 @@ export async function POST(request) {
 
         } else if (m.mission_type === 'hall_scan') {
           if (!m.target_hall_name) continue;
-          // sub-phase 4: qs.company_id now holds companies_placement.id --
-          // join on id, not company_id. c.event_id scope still required
-          // (companies_placement has one row per event per company).
-          const { rows } = await query(
-            `SELECT COUNT(DISTINCT qs.company_id) AS cnt
-             FROM quest_scans qs
-             JOIN companies_placement c ON c.id = qs.company_id AND c.event_id = $4
-             WHERE qs.user_uuid = $1 AND c.hall_name = $2 AND c.rasayesh_event_id = $3`,
-            [userUuid, m.target_hall_name, Number(eventId), currentEventId]
-          );
-          const scanned = parseInt(rows[0].cnt, 10);
           participated = company.hall_name === m.target_hall_name;
-          completed = m.hall_match_mode === 'any' ? scanned >= 1 : scanned >= m.total;
+
+          if (m.hall_match_mode === 'all') {
+            // 'all' mode: both the required count AND which of the user's
+            // scans count toward it must reflect CURRENTLY active
+            // placements only -- a booth that's since been deactivated no
+            // longer "exists" for this mission, whether or not the user
+            // happened to scan it while it was still active (2026-10-02
+            // mission-123 fix). Evaluated with its own queries, entirely
+            // separate from the 'count'/'any' path below, so that path's
+            // existing, unchanged semantics -- where a scan still counts
+            // even if that booth is later deactivated -- stay untouched.
+            // requiredCount === 0 (hall emptied out) must never
+            // auto-complete, guarded explicitly rather than relying on
+            // "activeScanned >= 0" being vacuously true.
+            const { rows: activeScanRows } = await query(
+              `SELECT COUNT(DISTINCT qs.company_id) AS cnt
+               FROM quest_scans qs
+               JOIN companies_placement c ON c.id = qs.company_id AND c.event_id = $4
+               WHERE qs.user_uuid = $1 AND c.hall_name = $2 AND c.rasayesh_event_id = $3 AND c.is_active = true`,
+              [userUuid, m.target_hall_name, Number(eventId), currentEventId]
+            );
+            const activeScanned = parseInt(activeScanRows[0].cnt, 10);
+
+            const { rows: activeRows } = await query(
+              `SELECT COUNT(*) AS cnt FROM companies_placement
+               WHERE event_id = $1 AND hall_name = $2 AND rasayesh_event_id = $3 AND is_active = true`,
+              [currentEventId, m.target_hall_name, Number(eventId)]
+            );
+            const requiredCount = parseInt(activeRows[0].cnt, 10);
+
+            completed = requiredCount > 0 && activeScanned >= requiredCount;
+          } else {
+            // sub-phase 4: qs.company_id now holds companies_placement.id --
+            // join on id, not company_id. c.event_id scope still required
+            // (companies_placement has one row per event per company).
+            const { rows } = await query(
+              `SELECT COUNT(DISTINCT qs.company_id) AS cnt
+               FROM quest_scans qs
+               JOIN companies_placement c ON c.id = qs.company_id AND c.event_id = $4
+               WHERE qs.user_uuid = $1 AND c.hall_name = $2 AND c.rasayesh_event_id = $3`,
+              [userUuid, m.target_hall_name, Number(eventId), currentEventId]
+            );
+            const scanned = parseInt(rows[0].cnt, 10);
+            completed = m.hall_match_mode === 'any' ? scanned >= 1 : scanned >= m.total;
+          }
 
         } else if (m.mission_type === 'special_booth') {
           // sub-phase 4: target_company_id is companies_placement.id;
