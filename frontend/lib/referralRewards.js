@@ -2,6 +2,19 @@
 // `dbQuery` accepts lib/db's query function or a transaction client's query
 // method, so APN can keep a manual assignment atomic without duplicating XP
 // rules.
+//
+// End-competition awareness (added — see questCompetitionGuard.js, duplicated
+// the same way as this file): grantReferralRefereeXp()/grantUnlimitedReferralXp()
+// take the redemption's own `redemptionCreatedAt` and only grant XP if that
+// timestamp is <= the event's effective end — "redemptions made before the
+// end still count if approved later" — and when eligible, the grant's
+// granted_at is explicitly backdated to redemptionCreatedAt (not NOW()) so
+// it's correctly included by the frozen-leaderboard's timestamp filter and
+// accepted by the DB trigger backstop even though the INSERT itself happens
+// later. evaluateReferralTiers() grants an aggregate, threshold-crossing
+// bonus not tied to any single redemption's timestamp, so it simply stops
+// granting new tiers once the competition has ended (no backdating case).
+import { isQuestEndedNow, isTimestampEligible } from '@/lib/questCompetitionGuard';
 
 async function recordReferralHistory(dbQuery, eventId, missionId, userUuid, status, redemptionId) {
   if (!missionId || !userUuid) return;
@@ -42,17 +55,23 @@ export async function getReferralRefereeXp(dbQuery, eventId) {
   return rows[0]?.referral_referee_xp || 0;
 }
 
-export async function grantReferralRefereeXp(dbQuery, refereeUuid, eventId, redemptionId, refereeXp) {
+export async function grantReferralRefereeXp(dbQuery, refereeUuid, eventId, redemptionId, refereeXp, redemptionCreatedAt) {
   if (refereeXp <= 0) return;
+  const eligible = await isTimestampEligible(eventId, redemptionCreatedAt);
+  if (!eligible) return;
   await dbQuery(
-    `INSERT INTO quest_xp_grants (user_uuid, source_type, source_id, xp_amount, event_id)
-     VALUES ($1, 'referral_referee', $2, $3, $4)
+    `INSERT INTO quest_xp_grants (user_uuid, source_type, source_id, xp_amount, event_id, granted_at)
+     VALUES ($1, 'referral_referee', $2, $3, $4, $5)
      ON CONFLICT (user_uuid, source_type, source_id) DO NOTHING`,
-    [refereeUuid, redemptionId, refereeXp, eventId]
+    [refereeUuid, redemptionId, refereeXp, eventId, redemptionCreatedAt]
   );
 }
 
 export async function evaluateReferralTiers(dbQuery, referrerUuid, eventId) {
+  // Aggregate, threshold-crossing bonus — not tied to one redemption's
+  // timestamp, so this simply stops granting once ended (no backdating).
+  if (await isQuestEndedNow(eventId)) return;
+
   const { rows: countRows } = await dbQuery(
     `SELECT COUNT(*) FROM quest_referral_redemptions
      WHERE referrer_user_uuid = $1 AND event_id = $2 AND status = 'confirmed'`,
@@ -88,7 +107,10 @@ export async function evaluateReferralTiers(dbQuery, referrerUuid, eventId) {
   }
 }
 
-export async function grantUnlimitedReferralXp(dbQuery, referrerUuid, eventId, redemptionId) {
+export async function grantUnlimitedReferralXp(dbQuery, referrerUuid, eventId, redemptionId, redemptionCreatedAt) {
+  const eligible = await isTimestampEligible(eventId, redemptionCreatedAt);
+  if (!eligible) return;
+
   const { rows } = await dbQuery(
     `SELECT id, referral_per_invite_xp FROM quest_content
      WHERE event_id = $1 AND mission_type = 'referral_code' AND is_active = true
@@ -100,21 +122,26 @@ export async function grantUnlimitedReferralXp(dbQuery, referrerUuid, eventId, r
   const missionId = rows[0].id;
   const perInviteXp = rows[0].referral_per_invite_xp || 0;
   if (perInviteXp > 0) await dbQuery(
-    `INSERT INTO quest_xp_grants (user_uuid, source_type, source_id, xp_amount, event_id)
-     VALUES ($1, 'referral_referrer_unlimited', $2, $3, $4)
+    `INSERT INTO quest_xp_grants (user_uuid, source_type, source_id, xp_amount, event_id, granted_at)
+     VALUES ($1, 'referral_referrer_unlimited', $2, $3, $4, $5)
      ON CONFLICT (user_uuid, source_type, source_id) DO NOTHING`,
-    [referrerUuid, redemptionId, perInviteXp, eventId]
+    [referrerUuid, redemptionId, perInviteXp, eventId, redemptionCreatedAt]
   );
   await recordReferralHistory(dbQuery, eventId, missionId, referrerUuid, 'participated', redemptionId);
 }
 
 // Call this after a redemption becomes confirmed. Its redemption-id grant
 // keys make retries safe and prevent duplicate referee/unlimited XP.
+// `redemptionCreatedAt` is the redemption row's own created_at — required so
+// the two per-redemption grants above can apply the end-competition
+// eligibility + backdating rule. Callers already have the redemption row
+// loaded (that's how they know to call this), so this is just threading an
+// existing value through, not an extra query.
 export async function awardConfirmedReferralXp(
   dbQuery,
-  { refereeUuid, referrerUuid, eventId, redemptionId, refereeXp }
+  { refereeUuid, referrerUuid, eventId, redemptionId, refereeXp, redemptionCreatedAt }
 ) {
-  await grantReferralRefereeXp(dbQuery, refereeUuid, eventId, redemptionId, refereeXp);
+  await grantReferralRefereeXp(dbQuery, refereeUuid, eventId, redemptionId, refereeXp, redemptionCreatedAt);
   await evaluateReferralTiers(dbQuery, referrerUuid, eventId);
-  await grantUnlimitedReferralXp(dbQuery, referrerUuid, eventId, redemptionId);
+  await grantUnlimitedReferralXp(dbQuery, referrerUuid, eventId, redemptionId, redemptionCreatedAt);
 }

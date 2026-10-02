@@ -5,6 +5,7 @@ import { ensureBadgeProgressTable } from '@/lib/initQuestBadges';
 import { ensureFeaturedBoothState, markFeaturedBoothClaimed, isWithinDailyWindow } from '@/lib/featuredBoothHelper';
 import { getCurrentEventId } from '@/lib/currentEvent';
 import { recordMissionHistory } from '@/lib/questMissionHistory';
+import { isQuestEndedNow } from '@/lib/questCompetitionGuard';
 
 const RASAYESH_BASE = 'https://api.rasayesh.com/';
 
@@ -153,6 +154,15 @@ export async function POST(request) {
     }
 
     const company = companyResult.rows[0];
+
+    // End-competition guard: resolved once, right after the booth/company
+    // lookup, so it's available both for the quest_scans insert below (which
+    // always runs -- exhibitors need visit data after the end) and for the
+    // entire downstream mission-completion/progress/badge block (which does
+    // not run once ended). Booth scans are the one XP source with this
+    // "keep recording the visit, zero the reward" exception -- see
+    // questCompetitionGuard.js and the End Competition plan.
+    const ended = await isQuestEndedNow(currentEventId);
 
     // Manual-reward gate: once an admin deactivates either the placement row
     // itself (cp.is_active) or the mission it's linked to (quest_content.
@@ -321,6 +331,13 @@ export async function POST(request) {
     const baseXp    = company.booth_xp ?? 10;
     const xpEarned  = baseXp + bonusXp;
 
+    // Once the competition has ended, the visit row itself still gets
+    // recorded (exhibitors need booth-visit data for the rest of the
+    // exhibition) but the reward on it is zeroed -- computed above as
+    // today, then overridden here right before the INSERT's param list.
+    const insertXpEarned        = ended ? 0 : xpEarned;
+    const insertIsFeaturedBonus = ended ? false : bonusXp > 0;
+
     // sub-phase 4: quest_scans.company_id now stores companies_placement.id
     // (placement_id), not the global company id, matching quest_badges/
     // quest_content.target_company_id post-remap. Deployed together with
@@ -330,7 +347,7 @@ export async function POST(request) {
       `INSERT INTO quest_scans (user_uuid, company_id, booth_uuid, xp_earned, is_featured_booth_bonus, event_id)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id`,
-      [userUuid, company.placement_id, uuid, xpEarned, bonusXp > 0, currentEventId]
+      [userUuid, company.placement_id, uuid, insertXpEarned, insertIsFeaturedBonus, currentEventId]
     );
 
     // Cache user display name so leaderboard doesn't need live Rasayesh calls
@@ -342,6 +359,10 @@ export async function POST(request) {
     // the scan was recorded in quest_scans (per-booth XP), but the one-time mission
     // completion bonus from quest_content.xp_reward was never written.
     // ON CONFLICT DO NOTHING makes every check idempotent — safe to run on every scan.
+    // Entire block skipped once the competition has ended: the quest_scans row
+    // above is still recorded (visit data), but no mission-completion XP,
+    // progress, or badge writes happen past that point.
+    if (!ended) {
     try {
       const { rows: scanMissions } = await query(
         `SELECT id, mission_type, xp_reward, total, target_hall_name, hall_match_mode, target_company_id
@@ -454,12 +475,19 @@ export async function POST(request) {
         [bonusBadge.id, userUuid, currentEventId]
       ).catch(() => {});
     }
+    }
 
-    // Build response — bonus fields only present when golden booth was hit
-    const response = { success: true, points: xpEarned, company };
-    if (bonusXp > 0) {
+    // Build response — bonus fields only present when golden booth was hit;
+    // points/bonus reflect what was actually stored (zeroed once ended), and
+    // status: 'competition_ended' flags the no-XP case the same way the
+    // outside_window/cooldown/already_scanned branches above flag theirs.
+    const response = { success: true, points: insertXpEarned, company };
+    if (!ended && bonusXp > 0) {
       response.bonus     = true;
       response.bonus_xp  = bonusXp;
+    }
+    if (ended) {
+      response.status = 'competition_ended';
     }
     return NextResponse.json(response);
   } catch (err) {

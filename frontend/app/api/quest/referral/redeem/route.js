@@ -173,7 +173,7 @@ export async function POST(request) {
       `INSERT INTO quest_referral_redemptions
          (event_id, code_id, referrer_user_uuid, referee_user_uuid, status, referee_xp_amount, resolved_at)
        VALUES ($1, $2, $3, $4, 'confirmed', $5, NOW())
-       RETURNING id`,
+       RETURNING id, created_at`,
       [currentEventId, codeRow.id, codeRow.owner_user_uuid, uuid, refereeXp]
     );
     const redemptionId = insertResult.rows[0].id;
@@ -184,6 +184,7 @@ export async function POST(request) {
       eventId: currentEventId,
       redemptionId,
       refereeXp,
+      redemptionCreatedAt: insertResult.rows[0].created_at,
     });
 
     return Response.json({ outcome: 'confirmed' });

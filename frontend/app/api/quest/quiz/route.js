@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { getCurrentEventId } from '@/lib/currentEvent';
 import { recordMissionHistory } from '@/lib/questMissionHistory';
+import { isQuestEndedNow } from '@/lib/questCompetitionGuard';
 
 export async function POST(request) {
   const cookieStore = await cookies();
@@ -36,6 +37,16 @@ export async function POST(request) {
 
   try {
     const currentEventId = await getCurrentEventId();
+
+    // End-competition guard: quiz attempts carry no "exhibitor needs visit
+    // data" exception (unlike booth scans/attendance) -- once the
+    // competition has ended, nothing is inserted at all. Checked before any
+    // of this route's reads/inserts. Not the mission_inactive 410 status --
+    // that's reserved for an admin deactivating the mission's own content,
+    // this is a separate, event-level condition.
+    if (await isQuestEndedNow(currentEventId)) {
+      return NextResponse.json({ status: 'competition_ended' });
+    }
 
     // Check for existing attempt (single-attempt enforcement)
     const existingCheck = missionId

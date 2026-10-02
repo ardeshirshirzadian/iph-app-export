@@ -51,7 +51,7 @@ export async function POST(request) {
     const currentEventId = await getCurrentEventId();
 
     const pendingResult = await query(
-      `SELECT id, referrer_user_uuid, recheck_attempts
+      `SELECT id, referrer_user_uuid, recheck_attempts, created_at
        FROM quest_referral_redemptions
        WHERE event_id = $1 AND referee_user_uuid = $2 AND status = 'pending'`,
       [currentEventId, uuid]
@@ -135,6 +135,7 @@ export async function POST(request) {
       eventId: currentEventId,
       redemptionId: redemption.id,
       refereeXp,
+      redemptionCreatedAt: redemption.created_at,
     });
 
     return Response.json({ outcome: 'confirmed' });

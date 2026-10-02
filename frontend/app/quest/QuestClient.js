@@ -434,7 +434,7 @@ function isMissionCompleted(mission) {
   return false;
 }
 
-function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyClick, onSocialShareClick, onProfilePhotoClick, onManualScanClick, onReferralClick, lang: langProp, logoBaseUrl, sponsorLogoSize, sponsorNameColor, sponsorNameSize, missionIconColors }) {
+function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyClick, onSocialShareClick, onProfilePhotoClick, onManualScanClick, onReferralClick, lang: langProp, logoBaseUrl, sponsorLogoSize, sponsorNameColor, sponsorNameSize, missionIconColors, competitionEnded = false }) {
   const pct = useMemo(
     () => (mission.total > 0 ? Math.round((mission.progress / mission.total) * 100) : 0),
     [mission.progress, mission.total]
@@ -509,7 +509,11 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
     : fbLockReason === 'claimed' ? featuredBoothClaimedMessage(mission, langProp, fbClaimedMinutes)
     : featuredBoothCountdownText(mission.featured_booth_next_rotation, langProp, now);
 
-  const handleClick = quizClickable ? onQuizClick
+  // Competition-ended takes priority over every mission-specific click
+  // affordance below -- once ended, no mission of any type/completion state
+  // is clickable, regardless of what the per-mission *Clickable flags say.
+  const handleClick = competitionEnded ? undefined
+    : quizClickable ? onQuizClick
     : surveyClickable ? onSurveyClick
     : socialShareClickable ? onSocialShareClick
     : featuredClickable ? onFeaturedClick
@@ -532,7 +536,7 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
     <div
       onClick={handleClick}
       className={`backdrop-blur-xl border rounded-2xl p-4 flex items-center gap-4 transition-colors ${
-        (quizClickable || surveyClickable || socialShareClickable || featuredClickable || profilePhotoClickable || manualScanClickable || referralClickable) ? "cursor-pointer active:scale-[0.98]" : ""
+        (!competitionEnded && (quizClickable || surveyClickable || socialShareClickable || featuredClickable || profilePhotoClickable || manualScanClickable || referralClickable)) ? "cursor-pointer active:scale-[0.98]" : ""
       }`}
       style={done
         ? { borderColor: "var(--quest-mission-completed-row-border)", background: "var(--quest-mission-completed-row-bg)" }
@@ -608,7 +612,16 @@ function MissionCard({ mission, xpUnit, onQuizClick, onFeaturedClick, onSurveyCl
         <p className="leading-6 mb-1.5 truncate" style={{ fontSize: "var(--quest-subtitle-size)", color: "var(--quest-subtitle-color)" }}>
           {dNum(mission.description, langProp)}
         </p>
-        {isFeaturedBooth ? (
+        {competitionEnded ? (
+          // Takes priority over every mission-specific CTA/countdown branch
+          // below -- once the competition has ended, every mission (whatever
+          // its own type/completion state) shows this closed message instead.
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-medium" style={{ color: "var(--text-dim)" }}>
+              {langProp === 'fa' ? 'مسابقه به پایان رسیده است' : 'Competition has ended'}
+            </span>
+          </div>
+        ) : isFeaturedBooth ? (
           <div className="flex items-center justify-between gap-2">
             {done ? (
               <span className="text-[11px] font-bold" style={{ color: "var(--accent)" }}>✓ کشف شد!</span>
@@ -847,7 +860,7 @@ function LeaderboardRow({ user, isMe, badgeColor, badgeLabel, xpUnit, lang, rank
   );
 }
 
-function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUnit, lang, levels, rankIcons, referralSegment, scanSegment, boothSegment, overallSegment, logoBaseUrl }) {
+function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUnit, lang, levels, rankIcons, referralSegment, scanSegment, boothSegment, overallSegment, logoBaseUrl, competitionEnded = false }) {
   const [subTab, setSubTab] = useState('overall');
   const [levelCache, setLevelCache] = useState({});
 
@@ -987,10 +1000,27 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
     </div>
   ) : null;
 
+  // Purely cosmetic -- the real freeze is the backend's SQL filtering of the
+  // leaderboard query itself (see app/api/quest/leaderboard/route.js), this
+  // is just labeling what's already frozen. Rendered next to subTabBar at
+  // every one of this tab's early-return branches below (loading/empty/
+  // populated, for every segment), same as subTabBar itself is.
+  const finalResultsBadge = competitionEnded ? (
+    <div className="flex justify-center mb-2">
+      <span
+        className="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
+        style={{ background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent)" }}
+      >
+        {lang === 'en' ? 'Final results' : 'نتایج نهایی'}
+      </span>
+    </div>
+  ) : null;
+
   if (subTab === 'overall') {
     return (
       <div className="space-y-2">
         {subTabBar}
+        {finalResultsBadge}
         {users === null ? (
           <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
             {lang === 'en' ? 'Loading...' : 'در حال بارگذاری...'}
@@ -1018,6 +1048,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
       return (
         <div className="space-y-2">
           {subTabBar}
+          {finalResultsBadge}
           <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
             {lang === 'en' ? 'Loading...' : 'در حال بارگذاری...'}
           </div>
@@ -1054,6 +1085,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
     return (
       <div className="space-y-2">
         {subTabBar}
+        {finalResultsBadge}
         {referralRows.length === 0 ? (
           <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
             {lang === 'en' ? 'No referrals yet' : 'هنوز کسی کد معرف تأییدشده‌ای ندارد'}
@@ -1105,6 +1137,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
       return (
         <div className="space-y-2">
           {subTabBar}
+          {finalResultsBadge}
           <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
             {lang === 'en' ? 'Loading...' : 'در حال بارگذاری...'}
           </div>
@@ -1143,6 +1176,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
     return (
       <div className="space-y-2">
         {subTabBar}
+        {finalResultsBadge}
         {scanRows.length === 0 ? (
           <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
             {lang === 'en' ? 'No booth visits yet' : 'هنوز کسی غرفه‌ای را اسکن نکرده'}
@@ -1194,6 +1228,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
       return (
         <div className="space-y-2">
           {subTabBar}
+          {finalResultsBadge}
           <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
             {lang === 'en' ? 'Loading...' : 'در حال بارگذاری...'}
           </div>
@@ -1226,6 +1261,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
     return (
       <div className="space-y-2">
         {subTabBar}
+        {finalResultsBadge}
         {boothRows.length === 0 ? (
           <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
             {lang === 'en' ? 'No booths scanned yet' : 'هنوز هیچ غرفه‌ای اسکن نشده'}
@@ -1257,6 +1293,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
     return (
       <div className="space-y-2">
         {subTabBar}
+        {finalResultsBadge}
         <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
           {lang === 'en' ? 'Loading...' : 'در حال بارگذاری...'}
         </div>
@@ -1283,6 +1320,7 @@ function LeaderboardTab({ users, levelColors, thresholds, currentUserUuid, xpUni
   return (
     <div className="space-y-2">
       {subTabBar}
+      {finalResultsBadge}
       {levelRows.length === 0 ? (
         <div className="text-center py-8 text-sm" style={{ color: "var(--text-dim)" }}>
           {lang === 'en' ? 'No users at this level yet' : 'هنوز کاربری در این سطح نیست'}
@@ -3301,6 +3339,13 @@ function ReferralModal({ onClose, lang }) {
 // ── Main client component ───────────────────────────────────────────────────
 
 export default function QuestClient({ content, title, subtitle, title_en, subtitle_en, isHomeContext = false, showBack = true, appearanceConfig = {}, questSettings = {} }) {
+  // True once an admin has ended the competition for this event (see
+  // getCachedQuestEndState in lib/questPageCache.js, threaded in via
+  // questSettings.ended by app/quest/page.js). Gates the "closed" banner,
+  // MissionCard's no-op/closed-message branch, and LeaderboardTab's "final
+  // results" label -- purely cosmetic on this side, since the real freeze
+  // is enforced server-side (scan/route.js + the DB trigger backstop).
+  const competitionEnded = questSettings?.ended === true;
   const router = useRouter();
   const onProfilePhotoClick = useCallback(() => router.push('/profile/edit'), [router]);
   // Reuses the exact same route BottomNav's QR button (ScanButton -> Link
@@ -3753,6 +3798,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         sponsorNameColor={sponsorStyle.nameColor}
         sponsorNameSize={sponsorStyle.nameSize}
         missionIconColors={missionIconColors}
+        competitionEnded={competitionEnded}
         onQuizClick={m.is_active !== false && m.mission_type === 'quiz' ? () => setOpenQuiz({ ...m, isBadge: false }) : undefined}
         onSurveyClick={m.is_active !== false && m.mission_type === 'survey' ? () => setOpenSurvey({ ...m, isBadge: false }) : undefined}
         onSocialShareClick={m.is_active !== false && m.mission_type === 'social_share' ? () => setOpenSocialShare({ ...m, isBadge: false }) : undefined}
@@ -3762,7 +3808,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
         onReferralClick={m.is_active !== false && m.mission_type === 'referral_code' ? () => setOpenReferral(m) : undefined}
       />
     ),
-    [labels.xpUnit, lang, logoBaseUrl, sponsorStyle, missionIconColors, onProfilePhotoClick, onManualScanClick]
+    [labels.xpUnit, lang, logoBaseUrl, sponsorStyle, missionIconColors, competitionEnded, onProfilePhotoClick, onManualScanClick]
   );
 
   const activeMissionList = useMemo(
@@ -3824,6 +3870,23 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
       <div className="relative max-w-md mx-auto px-4 pb-32">
 
         <PageHeader title={title} subtitle={subtitle} title_en={title_en} subtitle_en={subtitle_en} isHomeContext={isHomeContext} showBack={showBack} />
+
+        {/* Competition-ended banner -- rendered once here, above the stats
+            grid and the missions/leaderboard/booths tab switch, so it's
+            visible regardless of which tab is active. Purely informational;
+            the actual freeze is enforced server-side. */}
+        {competitionEnded && (
+          <div
+            className="mb-4 px-3 py-2.5 rounded-xl text-xs leading-6 text-center font-medium"
+            style={{
+              background: "color-mix(in srgb, var(--accent) 10%, transparent)",
+              color: "var(--text)",
+              border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
+            }}
+          >
+            {lang === 'fa' ? '🏁 مسابقه به پایان رسید' : 'Competition has ended'}
+          </div>
+        )}
 
         {questStats && levelThresholds ? (
           <UserCard
@@ -3973,6 +4036,7 @@ export default function QuestClient({ content, title, subtitle, title_en, subtit
               boothSegment={boothSegment}
               overallSegment={overallSegment}
               logoBaseUrl={logoBaseUrl}
+              competitionEnded={competitionEnded}
             />
           ) : (
             <div className="space-y-2">

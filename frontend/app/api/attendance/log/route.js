@@ -5,6 +5,7 @@ import { ensureAttendanceLogTable } from '@/lib/initQuestBadges';
 import { getCurrentEventId } from '@/lib/currentEvent';
 import { recordMissionHistory } from '@/lib/questMissionHistory';
 import { getTehranDateString } from '@/lib/featuredBoothHelper';
+import { isQuestEndedNow } from '@/lib/questCompetitionGuard';
 
 export async function POST() {
   const cookieStore = await cookies();
@@ -40,31 +41,36 @@ export async function POST() {
     // the fixed source_id (the mission's id) makes every call after the
     // first a no-op regardless of how many days get logged afterward.
     // Isolated in its own try/catch so a failure here can't turn an
-    // otherwise-successful attendance log into a 500.
+    // otherwise-successful attendance log into a 500. Also skipped entirely
+    // once the competition has ended -- the presence row above is always
+    // recorded (exhibitors need visit data for the rest of the exhibition),
+    // but this one-time XP/progress bonus is not.
     try {
-      const { rows: missionRows } = await query(
-        `SELECT id, xp_reward FROM quest_content
-         WHERE mission_type = 'attendance' AND is_active = true AND event_id = $1
-         LIMIT 1`,
-        [currentEventId]
-      );
-      if (missionRows.length) {
-        const { id: missionId, xp_reward: xpReward } = missionRows[0];
-        await query(
-          `INSERT INTO quest_xp_grants (user_uuid, source_type, source_id, xp_amount, event_id)
-           VALUES ($1, 'mission_attendance', $2, $3, $4)
-           ON CONFLICT (user_uuid, source_type, source_id) DO NOTHING`,
-          [userUuid, missionId, xpReward, currentEventId]
+      if (!(await isQuestEndedNow(currentEventId))) {
+        const { rows: missionRows } = await query(
+          `SELECT id, xp_reward FROM quest_content
+           WHERE mission_type = 'attendance' AND is_active = true AND event_id = $1
+           LIMIT 1`,
+          [currentEventId]
         );
-        await recordMissionHistory(query, {
-          eventId: currentEventId, missionId, userUuid, status: 'completed', evidenceType: 'attendance',
-        });
-        await query(
-          `INSERT INTO quest_user_progress (mission_id, user_uuid, completed, completed_at)
-           VALUES ($1, $2, true, NOW())
-           ON CONFLICT (mission_id, user_uuid) DO UPDATE SET completed = true, completed_at = NOW()`,
-          [missionId, userUuid]
-        );
+        if (missionRows.length) {
+          const { id: missionId, xp_reward: xpReward } = missionRows[0];
+          await query(
+            `INSERT INTO quest_xp_grants (user_uuid, source_type, source_id, xp_amount, event_id)
+             VALUES ($1, 'mission_attendance', $2, $3, $4)
+             ON CONFLICT (user_uuid, source_type, source_id) DO NOTHING`,
+            [userUuid, missionId, xpReward, currentEventId]
+          );
+          await recordMissionHistory(query, {
+            eventId: currentEventId, missionId, userUuid, status: 'completed', evidenceType: 'attendance',
+          });
+          await query(
+            `INSERT INTO quest_user_progress (mission_id, user_uuid, completed, completed_at)
+             VALUES ($1, $2, true, NOW())
+             ON CONFLICT (mission_id, user_uuid) DO UPDATE SET completed = true, completed_at = NOW()`,
+            [missionId, userUuid]
+          );
+        }
       }
     } catch (xpErr) {
       console.error('[attendance/log] mission XP grant failed:', xpErr.message);

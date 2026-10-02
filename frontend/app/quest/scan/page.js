@@ -14,7 +14,7 @@ export default function QRScanPage() {
   const [status, setStatus] = useState("requesting"); // requesting | scanning | error | success
   const [errorMsg, setErrorMsg] = useState("");
   const [toast, setToast] = useState("");
-  const [scanResult, setScanResult] = useState(null); // { company, alreadyScanned, cooldown, outsideWindow, startHour, endHour, minutesRemaining, points, bonus, bonus_xp }
+  const [scanResult, setScanResult] = useState(null); // { company, alreadyScanned, cooldown, outsideWindow, featuredBoothClosed, competitionEnded, startHour, endHour, minutesRemaining, points, bonus, bonus_xp }
   const [logoErr, setLogoErr] = useState(false);
   const { lang, isRTL } = useLang();
 
@@ -81,6 +81,22 @@ export default function QRScanPage() {
             outsideWindow: true,
             startHour: data.start_hour,
             endHour: data.end_hour,
+          });
+          setStatus("success");
+          setTimeout(() => router.replace("/quest"), 3500);
+          return;
+        }
+
+        // Admin ended the competition after this QR was printed/shared --
+        // same shape/timing as outside_window above (the booth visit itself
+        // was still recorded server-side, only the reward is withheld), just
+        // its own flag + copy so the render section can show the right
+        // message below.
+        if (data.status === 'competition_ended') {
+          setLogoErr(false);
+          setScanResult({
+            company: data.company,
+            competitionEnded: true,
           });
           setStatus("success");
           setTimeout(() => router.replace("/quest"), 3500);
@@ -344,14 +360,14 @@ export default function QRScanPage() {
       {status === "success" && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 z-10 px-8">
           {/* Check icon or logo */}
-          {logoUrl && !scanResult?.outsideWindow && !scanResult?.featuredBoothClosed ? (
+          {logoUrl && !scanResult?.outsideWindow && !scanResult?.featuredBoothClosed && !scanResult?.competitionEnded ? (
             <div
               className="w-24 h-24 rounded-2xl overflow-hidden flex items-center justify-center bg-white"
               style={{ animation: "successPulse 1.4s ease-in-out infinite", border: "2px solid var(--accent)" }}
             >
               <img src={logoUrl} alt="" onError={() => setLogoErr(true)} className="w-full h-full object-contain" />
             </div>
-          ) : (scanResult?.outsideWindow || scanResult?.featuredBoothClosed) ? (
+          ) : (scanResult?.outsideWindow || scanResult?.featuredBoothClosed || scanResult?.competitionEnded) ? (
             <div className="w-24 h-24 rounded-full bg-amber-500/20 border-2 border-amber-400 flex items-center justify-center">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />
@@ -374,7 +390,11 @@ export default function QRScanPage() {
           )}
 
           <div className="text-center">
-            {scanResult?.outsideWindow ? (
+            {scanResult?.competitionEnded ? (
+              <p className="font-bold text-lg mb-1" style={{ color: "#f59e0b" }}>
+                {lang === "fa" ? "مسابقه به پایان رسیده — امتیازی ثبت نشد" : "Competition has ended — no points recorded"}
+              </p>
+            ) : scanResult?.outsideWindow ? (
               <>
                 <p className="font-bold text-lg mb-1" style={{ color: "#f59e0b" }}>
                   {lang === "fa" ? "خارج از بازه فعال" : "Outside active hours"}
@@ -451,7 +471,7 @@ export default function QRScanPage() {
               </p>
             )}
 
-            {!scanResult?.alreadyScanned && !scanResult?.cooldown && !scanResult?.outsideWindow && !scanResult?.featuredBoothClosed && (
+            {!scanResult?.alreadyScanned && !scanResult?.cooldown && !scanResult?.outsideWindow && !scanResult?.featuredBoothClosed && !scanResult?.competitionEnded && (
               <p className="text-white/40 text-sm mt-2">{t(lang, "scan_success_title")}</p>
             )}
           </div>

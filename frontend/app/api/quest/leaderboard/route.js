@@ -4,6 +4,7 @@ import { query } from '@/lib/db';
 import { getCurrentEventId } from '@/lib/currentEvent';
 import { isUnlimitedReferralActive } from '@/lib/referralUnlimited';
 import { resolveOccupationLabels } from '@/lib/occupationResolver';
+import { getQuestEndState } from '@/lib/questCompetitionGuard';
 
 export const dynamic = 'force-dynamic';
 
@@ -120,6 +121,10 @@ async function addOccupationLabels(leaderboard, currentUser, isIranPharma) {
 // rank by however many excluded users outranked them, even though the public
 // top-N list itself was always correct. quest_stats is untouched entirely
 // (it never reads app_users).
+// $2 is always the frozen-leaderboard cutoff (effectiveEnd, bound every
+// caller passes immediately after event_id) -- NULL pre-end/never-ended, so
+// the "$2::timestamptz IS NULL OR ... <= $2" clause is a no-op filter in
+// that case and only takes effect once the competition has an effective end.
 const XP_CTE = `
   WITH scan_agg AS (
     SELECT user_uuid,
@@ -127,6 +132,7 @@ const XP_CTE = `
            COUNT(*)::int       AS scan_count
     FROM quest_scans
     WHERE event_id = $1
+      AND ($2::timestamptz IS NULL OR scanned_at <= $2)
     GROUP BY user_uuid
   ),
   grant_agg AS (
@@ -134,6 +140,7 @@ const XP_CTE = `
            SUM(xp_amount)::int AS xp
     FROM quest_xp_grants
     WHERE event_id = $1
+      AND ($2::timestamptz IS NULL OR granted_at <= $2)
     GROUP BY user_uuid
   ),
   combined AS (
@@ -158,6 +165,14 @@ export async function GET(request) {
 
   const currentEventId = await getCurrentEventId();
   const referralLeaderboardActive = await isUnlimitedReferralActive(currentEventId);
+  // Frozen-leaderboard cutoff: null while the competition is still open (no
+  // filter applied below), or the effective end instant once it has ended /
+  // its scheduled end has passed. Bound as an extra query parameter
+  // immediately after event_id everywhere XP_CTE (or one of its separate
+  // quest_scans-aggregate siblings in the scans/booths segments) is used, so
+  // one query shape works both pre- and post-end with no parameter-position
+  // renumbering surprises.
+  const { effectiveEnd } = await getQuestEndState(currentEventId);
 
   const { searchParams } = new URL(request.url);
   const levelParam = searchParams.get('level');
@@ -199,6 +214,7 @@ export async function GET(request) {
             SELECT referrer_user_uuid AS user_uuid, COUNT(*)::int AS referral_count
             FROM quest_referral_redemptions
             WHERE event_id = $1 AND status = 'confirmed'
+              AND ($2::timestamptz IS NULL OR created_at <= $2)
             GROUP BY referrer_user_uuid
           )
           SELECT
@@ -220,8 +236,8 @@ export async function GET(request) {
           LEFT JOIN app_users        au ON ra.user_uuid = au.uuid AND au.event_id = $1
           WHERE (au.excluded_from_leaderboard IS NOT TRUE)
           ORDER BY ra.referral_count DESC, ra.user_uuid ASC
-          LIMIT $2
-        `, [currentEventId, limit]);
+          LIMIT $3
+        `, [currentEventId, effectiveEnd, limit]);
 
         leaderboard = topRows.map(row => ({
           rank:              row.rank,
@@ -241,6 +257,7 @@ export async function GET(request) {
             SELECT referrer_user_uuid AS user_uuid, COUNT(*)::int AS referral_count
             FROM quest_referral_redemptions
             WHERE event_id = $1 AND status = 'confirmed'
+              AND ($2::timestamptz IS NULL OR created_at <= $2)
             GROUP BY referrer_user_uuid
           )
           SELECT
@@ -257,8 +274,8 @@ export async function GET(request) {
           FROM referral_agg ra
           LEFT JOIN quest_user_names qn ON ra.user_uuid = qn.user_uuid
           LEFT JOIN app_users        au ON ra.user_uuid = au.uuid AND au.event_id = $1
-          WHERE ra.user_uuid = $2
-        `, [currentEventId, currentUuid]);
+          WHERE ra.user_uuid = $3
+        `, [currentEventId, effectiveEnd, currentUuid]);
 
         // No row = this user has zero confirmed referrals -- same as a
         // zero-XP user on the main board, currentUser simply stays null;
@@ -306,6 +323,7 @@ export async function GET(request) {
             FROM quest_scans qs
             JOIN companies_placement cp ON cp.id = qs.company_id AND cp.event_id = qs.event_id
             WHERE qs.event_id = $1 AND cp.is_manual = false
+              AND ($2::timestamptz IS NULL OR qs.scanned_at <= $2)
             GROUP BY qs.user_uuid
           )
           SELECT
@@ -327,8 +345,8 @@ export async function GET(request) {
           LEFT JOIN app_users        au ON sa.user_uuid = au.uuid AND au.event_id = $1
           WHERE (au.excluded_from_leaderboard IS NOT TRUE)
           ORDER BY sa.scan_count DESC, sa.user_uuid ASC
-          LIMIT $2
-        `, [currentEventId, limit]);
+          LIMIT $3
+        `, [currentEventId, effectiveEnd, limit]);
 
         leaderboard = topRows.map(row => ({
           rank:              row.rank,
@@ -349,6 +367,7 @@ export async function GET(request) {
             FROM quest_scans qs
             JOIN companies_placement cp ON cp.id = qs.company_id AND cp.event_id = qs.event_id
             WHERE qs.event_id = $1 AND cp.is_manual = false
+              AND ($2::timestamptz IS NULL OR qs.scanned_at <= $2)
             GROUP BY qs.user_uuid
           )
           SELECT
@@ -365,8 +384,8 @@ export async function GET(request) {
           FROM scan_agg sa
           LEFT JOIN quest_user_names qn ON sa.user_uuid = qn.user_uuid
           LEFT JOIN app_users        au ON sa.user_uuid = au.uuid AND au.event_id = $1
-          WHERE sa.user_uuid = $2
-        `, [currentEventId, currentUuid]);
+          WHERE sa.user_uuid = $3
+        `, [currentEventId, effectiveEnd, currentUuid]);
 
         // No row = this user has zero real-booth scans -- same as a zero-
         // referral user on that segment, currentUser simply stays null; not
@@ -413,6 +432,7 @@ export async function GET(request) {
             FROM quest_scans qs
             JOIN companies_placement cp ON cp.id = qs.company_id AND cp.event_id = qs.event_id
             WHERE qs.event_id = $1 AND cp.is_manual = false
+              AND ($2::timestamptz IS NULL OR qs.scanned_at <= $2)
             GROUP BY qs.company_id
           )
           SELECT cp.id, cp.brand_name_fa, cp.brand_name_en, cp.logo, sa.scan_count,
@@ -420,8 +440,8 @@ export async function GET(request) {
           FROM scan_agg sa
           JOIN companies_placement cp ON cp.id = sa.company_id AND cp.event_id = $1
           ORDER BY sa.scan_count DESC, cp.id ASC
-          LIMIT $2
-        `, [currentEventId, limit]);
+          LIMIT $3
+        `, [currentEventId, effectiveEnd, limit]);
 
         leaderboard = topRows.map(row => ({
           rank:           row.rank,
@@ -464,8 +484,8 @@ export async function GET(request) {
             SELECT c.user_uuid, c.total_xp, c.scan_count
             FROM combined c
             LEFT JOIN app_users au ON c.user_uuid = au.uuid AND au.event_id = $1
-            WHERE c.total_xp >= $2
-              ${maxXpFilter ? 'AND c.total_xp < $3' : ''}
+            WHERE c.total_xp >= $3
+              ${maxXpFilter ? 'AND c.total_xp < $4' : ''}
               AND (au.excluded_from_leaderboard IS NOT TRUE)
           ),
           ranked AS (
@@ -500,8 +520,8 @@ export async function GET(request) {
           LEFT JOIN quest_user_names qn ON r.user_uuid = qn.user_uuid
           LEFT JOIN app_users        au ON r.user_uuid = au.uuid AND au.event_id = $1
           ORDER BY r.rank
-          LIMIT $${maxXpFilter ? '4' : '3'}
-        `, maxXpFilter ? [currentEventId, min_xp, max_xp, limit] : [currentEventId, min_xp, limit]);
+          LIMIT $${maxXpFilter ? '5' : '4'}
+        `, maxXpFilter ? [currentEventId, effectiveEnd, min_xp, max_xp, limit] : [currentEventId, effectiveEnd, min_xp, limit]);
 
         leaderboard = topRows.map(row => ({
           rank:              row.rank,
@@ -531,8 +551,8 @@ export async function GET(request) {
           in_level AS (
             SELECT user_uuid, total_xp
             FROM combined
-            WHERE total_xp >= $2
-              ${maxXpFilter ? 'AND total_xp < $3' : ''}
+            WHERE total_xp >= $3
+              ${maxXpFilter ? 'AND total_xp < $4' : ''}
           )
           SELECT
             il.total_xp,
@@ -560,8 +580,8 @@ export async function GET(request) {
           FROM in_level il
           LEFT JOIN quest_user_names qn ON il.user_uuid = qn.user_uuid
           LEFT JOIN app_users        au ON il.user_uuid = au.uuid AND au.event_id = $1
-          WHERE il.user_uuid = $${maxXpFilter ? '4' : '3'}
-        `, maxXpFilter ? [currentEventId, min_xp, max_xp, currentUuid] : [currentEventId, min_xp, currentUuid]);
+          WHERE il.user_uuid = $${maxXpFilter ? '5' : '4'}
+        `, maxXpFilter ? [currentEventId, effectiveEnd, min_xp, max_xp, currentUuid] : [currentEventId, effectiveEnd, min_xp, currentUuid]);
 
         if (rankRows.length > 0) {
           currentUser = {
@@ -631,8 +651,8 @@ export async function GET(request) {
         LEFT JOIN app_users        au ON c.user_uuid = au.uuid AND au.event_id = $1
         WHERE (au.excluded_from_leaderboard IS NOT TRUE)
         ORDER BY c.total_xp DESC, c.user_uuid ASC
-        LIMIT $2
-      `, [currentEventId, limit]);
+        LIMIT $3
+      `, [currentEventId, effectiveEnd, limit]);
 
       leaderboard = leaderboardRows.map(row => ({
         rank:              row.rank,
@@ -658,9 +678,11 @@ export async function GET(request) {
       // their own numeric result is nulled below regardless).
       const { rows: rankRows } = await query(`
         WITH combined AS (
-          SELECT user_uuid, xp_earned AS xp FROM quest_scans WHERE event_id = $1
+          SELECT user_uuid, xp_earned AS xp FROM quest_scans
+          WHERE event_id = $1 AND ($2::timestamptz IS NULL OR scanned_at <= $2)
           UNION ALL
-          SELECT user_uuid, xp_amount AS xp FROM quest_xp_grants WHERE event_id = $1
+          SELECT user_uuid, xp_amount AS xp FROM quest_xp_grants
+          WHERE event_id = $1 AND ($2::timestamptz IS NULL OR granted_at <= $2)
         ),
         totals AS (
           SELECT user_uuid, SUM(xp)::int AS total_xp
@@ -682,8 +704,8 @@ export async function GET(request) {
         FROM totals t
         LEFT JOIN quest_user_names qn ON t.user_uuid = qn.user_uuid
         LEFT JOIN app_users        au ON t.user_uuid = au.uuid AND au.event_id = $1
-        WHERE t.user_uuid = $2
-      `, [currentEventId, currentUuid]);
+        WHERE t.user_uuid = $3
+      `, [currentEventId, effectiveEnd, currentUuid]);
 
       if (rankRows.length > 0) {
         currentUser = {

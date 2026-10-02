@@ -3,6 +3,7 @@ import { query } from '@/lib/db';
 import { ensureBadgeProgressTable } from '@/lib/initQuestBadges';
 import { getCurrentEventId } from '@/lib/currentEvent';
 import { recordMissionHistory } from '@/lib/questMissionHistory';
+import { isQuestEndedNow } from '@/lib/questCompetitionGuard';
 
 async function getUserUuid() {
   const cookieStore = await cookies();
@@ -24,6 +25,7 @@ export async function grantChatBadge() {
     const userUuid = await getUserUuid();
     if (!userUuid) return;
     const currentEventId = await getCurrentEventId();
+    if (await isQuestEndedNow(currentEventId)) return;
 
     const { rows: badgeRows } = await query(
       `SELECT id FROM quest_badges
@@ -56,6 +58,7 @@ export async function grantChatMissionXp() {
     const userUuid = await getUserUuid();
     if (!userUuid) return;
     const currentEventId = await getCurrentEventId();
+    if (await isQuestEndedNow(currentEventId)) return;
 
     const { rows } = await query(
       `SELECT id, xp_reward FROM quest_content

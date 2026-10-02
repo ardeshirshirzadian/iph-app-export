@@ -112,6 +112,28 @@ export const getCachedQuestPageTitle = unstable_cache(
   { tags: ["quest-page-title"], revalidate: 300 }
 );
 
+// End-competition state for the attendee app -- "ended" is the resolved
+// effective end (quest_ended_at if set, else a passed quest_end_scheduled_at),
+// same COALESCE logic as lib/questCompetitionGuard.js's getQuestEndState, just
+// cached here (short revalidate since this is time-sensitive) alongside this
+// module's other quest-config reads. Consumed by app/quest/page.js /
+// QuestClient.js (owned by a sibling agent) -- this file only adds the read.
+export const getCachedQuestEndState = unstable_cache(
+  async (eventId) => {
+    const result = await query(
+      "SELECT quest_ended_at, quest_end_scheduled_at FROM events WHERE id = $1",
+      [eventId]
+    );
+    const row = result.rows[0] || {};
+    const endedAt = row.quest_ended_at || null;
+    const scheduledAt = row.quest_end_scheduled_at || null;
+    const effectiveEnd = endedAt || (scheduledAt && new Date(scheduledAt).getTime() <= Date.now() ? scheduledAt : null);
+    return { ended: effectiveEnd !== null, endedAt: effectiveEnd };
+  },
+  ["quest-end-state"],
+  { tags: ["quest-end-state"], revalidate: 60 }
+);
+
 export function parseQuestBlocks(rows) {
   const main = {};
   const main_en = {};
