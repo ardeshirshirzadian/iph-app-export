@@ -14,7 +14,7 @@ const LEGACY_DIR = join(process.cwd(), 'public', 'uploads', 'icons');
 const STATIC_DEFAULTS = {
   'icon-192': '/icons/icon-192.png',
   'icon-512': '/icons/icon-512.png',
-  favicon: '/favicon.ico',
+  favicon: '/icons/favicon-default.ico',
   'apple-touch-icon': null,
 };
 
